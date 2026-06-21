@@ -12,9 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "basalt-launcher",
-        "width": 800,
-        "height": 600
+        "title": "Basalt Launcher",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 960,
+        "minHeight": 660,
+        "decorations": false,
+        "backgroundColor": "#000000"
       }
     ],
     "security": {

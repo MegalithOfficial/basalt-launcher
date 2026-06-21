@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Sidebar } from "./components/Sidebar";
+import { TitleBar } from "./components/TitleBar";
 import { AccountsView } from "./views/AccountsView";
 import { HomeView } from "./views/HomeView";
 import { InstancesView } from "./views/InstancesView";
@@ -29,9 +30,11 @@ function App() {
   const Current = VIEWS[view];
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-base text-content">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-base text-content">
+      <TitleBar />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col">
         {!ready ? (
           <div className="grid flex-1 place-items-center text-sm text-content-muted">
             Loading…
@@ -59,7 +62,8 @@ function App() {
             </motion.div>
           </AnimatePresence>
         )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

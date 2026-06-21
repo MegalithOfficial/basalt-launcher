@@ -16,13 +16,13 @@
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
   --font-pixel: "Monocraft", "JetBrains Mono Variable", monospace;
 
-  /* Basalt / volcanic palette — deep charcoal with a molten-lava accent */
-  --color-base: #0b0c0f;
-  --color-surface: #14161b;
-  --color-surface-2: #1c1f26;
-  --color-surface-3: #242832;
-  --color-border: #2a2e38;
-  --color-border-soft: #20242c;
+  /* Basalt / volcanic palette — OLED true-black base with a molten-lava accent */
+  --color-base: #000000;
+  --color-surface: #0c0e12;
+  --color-surface-2: #15171d;
+  --color-surface-3: #1e2128;
+  --color-border: #282c35;
+  --color-border-soft: #181b21;
 
   --color-content: #e8eaf0;
   --color-content-muted: #9aa1b0;
