@@ -44,14 +44,39 @@ pub struct McAuth {
     pub expires_in: i64,
 }
 
+#[derive(Deserialize)]
+struct AadError {
+    #[serde(default)]
+    error: String,
+    #[serde(default)]
+    error_description: String,
+}
+
+fn aad_message(text: &str) -> String {
+    match serde_json::from_str::<AadError>(text) {
+        Ok(e) if !e.error_description.is_empty() => {
+            e.error_description.lines().next().unwrap_or("").to_string()
+        }
+        Ok(e) if !e.error.is_empty() => e.error,
+        _ => text.chars().take(300).collect(),
+    }
+}
+
 pub async fn request_device_code(client: &reqwest::Client) -> Result<DeviceCode> {
     let resp = client
         .post(DEVICE_CODE_URL)
         .form(&[("client_id", CLIENT_ID), ("scope", SCOPE)])
         .send()
-        .await?
-        .error_for_status()?;
-    Ok(resp.json().await?)
+        .await?;
+    let status = resp.status();
+    let text = resp.text().await?;
+    if !status.is_success() {
+        return Err(Error::other(format!(
+            "Microsoft rejected the sign-in request ({status}): {}",
+            aad_message(&text)
+        )));
+    }
+    Ok(serde_json::from_str(&text)?)
 }
 
 #[derive(Deserialize)]
