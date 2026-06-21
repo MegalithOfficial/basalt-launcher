@@ -15,10 +15,36 @@ pub struct VersionJson {
     pub assets: String,
     pub downloads: Downloads,
     pub libraries: Vec<Library>,
+    #[serde(default)]
+    pub arguments: Option<Arguments>,
+    #[serde(rename = "minecraftArguments", default)]
+    pub minecraft_arguments: Option<String>,
     #[serde(rename = "javaVersion", default)]
     pub java_version: Option<JavaVersion>,
     #[serde(rename = "type")]
     pub kind: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Arguments {
+    #[serde(default)]
+    pub game: Vec<Arg>,
+    #[serde(default)]
+    pub jvm: Vec<Arg>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Arg {
+    Plain(String),
+    Conditional { rules: Vec<Rule>, value: ArgValue },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ArgValue {
+    Single(String),
+    Many(Vec<String>),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -131,7 +157,7 @@ fn arch_bits() -> &'static str {
     }
 }
 
-fn rules_allow(rules: &[Rule]) -> bool {
+pub fn rules_allow(rules: &[Rule]) -> bool {
     if rules.is_empty() {
         return true;
     }

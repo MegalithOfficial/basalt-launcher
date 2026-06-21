@@ -1,17 +1,15 @@
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::config::LauncherSettings;
+use crate::launch::process::RunningHandle;
 use crate::paths::Paths;
 
-/// Shared application state managed by Tauri and injected into commands via `State<AppState>`.
 pub struct AppState {
-    /// Shared HTTP client (connection pooling) for Mojang/Microsoft APIs and downloads.
     pub http: reqwest::Client,
-    /// Resolved on-disk layout.
     pub paths: Paths,
-    /// In-memory copy of persisted settings.
     pub settings: Mutex<LauncherSettings>,
-    // Running-instance registry is added in Milestone 4.
+    pub running: Mutex<HashMap<String, RunningHandle>>,
 }
 
 impl AppState {
@@ -24,6 +22,7 @@ impl AppState {
             http,
             paths,
             settings: Mutex::new(settings),
+            running: Mutex::new(HashMap::new()),
         }
     }
 }
