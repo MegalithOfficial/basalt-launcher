@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+/* Self-hosted Minecraft-style pixel font (OFL 1.1) */
+@font-face {
+  font-family: "Monocraft";
+  src: url("/fonts/Monocraft.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  /* Type system */
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-pixel: "Monocraft", "JetBrains Mono Variable", monospace;
+
+  /* Basalt / volcanic palette — deep charcoal with a molten-lava accent */
+  --color-base: #0b0c0f;
+  --color-surface: #14161b;
+  --color-surface-2: #1c1f26;
+  --color-surface-3: #242832;
+  --color-border: #2a2e38;
+  --color-border-soft: #20242c;
+
+  --color-content: #e8eaf0;
+  --color-content-muted: #9aa1b0;
+  --color-content-faint: #5e6472;
+
+  --color-lava: #ff6a2b;
+  --color-lava-bright: #ff8554;
+  --color-lava-deep: #d9480f;
+  --color-ember: #ffb066;
+
+  --color-ok: #46c08a;
+  --color-warn: #e9b949;
+  --color-danger: #e5484d;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-base);
+    color: var(--color-content);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* Themed thin scrollbars for the console + lists */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-surface-3);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border);
+    background-clip: padding-box;
+  }
+}
