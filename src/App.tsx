@@ -1,50 +1,66 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect } from "react";
+import { AnimatePresence, motion } from "motion/react";
+
+import { Sidebar } from "./components/Sidebar";
+import { AccountsView } from "./views/AccountsView";
+import { HomeView } from "./views/HomeView";
+import { InstancesView } from "./views/InstancesView";
+import { SettingsView } from "./views/SettingsView";
+import { useStore } from "./store";
+import type { View } from "./lib/types";
+
+const VIEWS: Record<View, React.ComponentType> = {
+  home: HomeView,
+  instances: InstancesView,
+  accounts: AccountsView,
+  settings: SettingsView,
+};
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const view = useStore((s) => s.view);
+  const ready = useStore((s) => s.ready);
+  const error = useStore((s) => s.error);
+  const init = useStore((s) => s.init);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    init();
+  }, [init]);
+
+  const Current = VIEWS[view];
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <div className="flex h-full w-full overflow-hidden bg-base text-content">
+      <Sidebar />
+      <main className="flex min-w-0 flex-1 flex-col">
+        {!ready ? (
+          <div className="grid flex-1 place-items-center text-sm text-content-muted">
+            Loading…
+          </div>
+        ) : error ? (
+          <div className="grid flex-1 place-items-center px-8 text-center">
+            <div>
+              <div className="font-display text-lg font-semibold text-danger">
+                Failed to start
+              </div>
+              <p className="mt-1 max-w-md text-sm text-content-muted">{error}</p>
+            </div>
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={view}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <Current />
+            </motion.div>
+          </AnimatePresence>
+        )}
+      </main>
+    </div>
   );
 }
 
