@@ -6,6 +6,8 @@ import type {
   Instance,
   JavaStatus,
   LauncherSettings,
+  LogLine,
+  RunningInfo,
   VersionEntry,
 } from "./types";
 
@@ -30,4 +32,12 @@ export const api = {
     invoke<void>("set_active_account", { accountId }),
   removeAccount: (accountId: string) =>
     invoke<void>("remove_account", { accountId }),
+  launchInstance: (instanceId: string) =>
+    invoke<string>("launch_instance", { instanceId }),
+  killInstance: (runningId: string) =>
+    invoke<void>("kill_instance", { runningId }),
+  listRunning: () => invoke<RunningInfo[]>("list_running"),
+  getLogs: (runningId: string) => invoke<LogLine[]>("get_logs", { runningId }),
+  closeRunning: (runningId: string) =>
+    invoke<void>("close_running", { runningId }),
 };

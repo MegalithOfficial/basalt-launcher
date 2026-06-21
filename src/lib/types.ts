@@ -57,4 +57,18 @@ export interface DeviceCodeInfo {
   message: string;
 }
 
-export type View = "home" | "instances" | "accounts" | "settings";
+export interface RunningInfo {
+  running_id: string;
+  instance_id: string;
+  pid: number;
+  started_at: number;
+  state: string;
+  exit_code: number | null;
+}
+
+export interface LogLine {
+  stream: string;
+  line: string;
+}
+
+export type View = "home" | "instances" | "accounts" | "settings" | "console";

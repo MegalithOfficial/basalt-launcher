@@ -8,6 +8,7 @@ import {
   Loader2,
   Play,
   Plus,
+  Terminal,
   TriangleAlert,
 } from "lucide-react";
 
@@ -39,12 +40,16 @@ export function HomeView() {
   const installs = useStore((s) => s.installs);
   const installedIds = useStore((s) => s.installedIds);
   const installInstance = useStore((s) => s.installInstance);
+  const launchInstance = useStore((s) => s.launchInstance);
+  const openConsole = useStore((s) => s.openConsole);
+  const running = useStore((s) => s.running);
   const account = useStore((s) => s.accounts.find((a) => a.active) ?? null);
   const setView = useStore((s) => s.setView);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(instances[0]?.id ?? null);
   const [java, setJava] = useState<JavaStatus | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   const selected = instances.find((i) => i.id === selectedId) ?? instances[0];
   const hasInstance = !!selected;
@@ -71,11 +76,24 @@ export function HomeView() {
   const percent =
     install && install.total > 0 ? Math.round((install.completed / install.total) * 100) : 0;
 
-  const onAction = () => {
-    if (!hasInstance) setModalOpen(true);
-    else if (installing) return;
-    else if (!installed) installInstance(selected.id);
-    else if (!account) setView("accounts");
+  const activeRun = selected
+    ? Object.values(running).find(
+        (r) => r.instance_id === selected.id && r.state === "running",
+      )
+    : undefined;
+
+  const onAction = async () => {
+    setLaunchError(null);
+    if (!hasInstance) return setModalOpen(true);
+    if (installing) return;
+    if (activeRun) return openConsole(activeRun.running_id);
+    if (!installed) return installInstance(selected.id);
+    if (!account) return setView("accounts");
+    try {
+      await launchInstance(selected.id);
+    } catch (e) {
+      setLaunchError(String(e));
+    }
   };
 
   let actionLabel = "INSTALL";
@@ -88,6 +106,9 @@ export function HomeView() {
       install.stage === "downloading" ? ` ${percent}%` : ""
     }`;
     actionIcon = <Loader2 className="size-5 animate-spin" />;
+  } else if (activeRun) {
+    actionLabel = "VIEW CONSOLE";
+    actionIcon = <Terminal className="size-5" />;
   } else if (installed && !account) {
     actionLabel = "SIGN IN TO PLAY";
     actionIcon = <Play className="size-5 fill-black" />;
@@ -199,6 +220,13 @@ export function HomeView() {
           </div>
         )}
       </motion.div>
+
+      {launchError && (
+        <div className="flex shrink-0 items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <span className="break-words">{launchError}</span>
+        </div>
+      )}
 
       <button
         onClick={onAction}

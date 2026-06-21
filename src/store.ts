@@ -7,6 +7,8 @@ import type {
   InstallState,
   Instance,
   LauncherSettings,
+  LogLine,
+  RunningInfo,
   View,
 } from "./lib/types";
 
@@ -38,6 +40,12 @@ interface AuthPayload {
   message?: string;
 }
 
+interface LogPayload {
+  running_id: string;
+  stream: string;
+  line: string;
+}
+
 export interface AuthFlow {
   status: "idle" | "starting" | "pending" | "error";
   userCode?: string;
@@ -55,6 +63,9 @@ interface AppStore {
   installedIds: string[];
   accounts: AccountView[];
   auth: AuthFlow;
+  running: Record<string, RunningInfo>;
+  logs: Record<string, LogLine[]>;
+  activeRunningId: string | null;
 
   setView: (view: View) => void;
   init: () => Promise<void>;
@@ -67,6 +78,10 @@ interface AppStore {
   setActiveAccount: (id: string) => Promise<void>;
   removeAccount: (id: string) => Promise<void>;
   resetAuth: () => void;
+  launchInstance: (id: string) => Promise<void>;
+  killInstance: (runningId: string) => Promise<void>;
+  closeRunning: (runningId: string) => Promise<void>;
+  openConsole: (runningId: string) => void;
 }
 
 let listenersBound = false;
@@ -81,6 +96,9 @@ export const useStore = create<AppStore>((set) => ({
   installedIds: [],
   accounts: [],
   auth: { status: "idle" },
+  running: {},
+  logs: {},
+  activeRunningId: null,
 
   setView: (view) => set({ view }),
 
@@ -134,6 +152,19 @@ export const useStore = create<AppStore>((set) => ({
           },
         }));
       });
+      await listen<LogPayload>("process:log", (e) => {
+        const p = e.payload;
+        set((s) => {
+          const prev = s.logs[p.running_id] ?? [];
+          const next = [...prev, { stream: p.stream, line: p.line }];
+          if (next.length > 6000) next.splice(0, next.length - 6000);
+          return { logs: { ...s.logs, [p.running_id]: next } };
+        });
+      });
+      await listen<RunningInfo>("process:state", (e) => {
+        const info = e.payload;
+        set((s) => ({ running: { ...s.running, [info.running_id]: info } }));
+      });
     }
 
     try {
@@ -180,6 +211,33 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   resetAuth: () => set({ auth: { status: "idle" } }),
+
+  launchInstance: async (id) => {
+    const runningId = await api.launchInstance(id);
+    set((s) => ({ activeRunningId: runningId, view: "console", logs: { ...s.logs, [runningId]: [] } }));
+  },
+
+  killInstance: async (runningId) => {
+    await api.killInstance(runningId);
+  },
+
+  closeRunning: async (runningId) => {
+    await api.closeRunning(runningId);
+    set((s) => {
+      const running = { ...s.running };
+      const logs = { ...s.logs };
+      delete running[runningId];
+      delete logs[runningId];
+      return {
+        running,
+        logs,
+        activeRunningId: s.activeRunningId === runningId ? null : s.activeRunningId,
+        view: s.activeRunningId === runningId ? "home" : s.view,
+      };
+    });
+  },
+
+  openConsole: (runningId) => set({ activeRunningId: runningId, view: "console" }),
 
   refreshInstances: async () => {
     set({ instances: await api.listInstances() });

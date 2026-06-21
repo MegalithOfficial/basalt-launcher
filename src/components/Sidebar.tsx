@@ -15,6 +15,13 @@ export function Sidebar() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const activeAccount = useStore((s) => s.accounts.find((a) => a.active));
+  const running = useStore((s) => s.running);
+  const openConsole = useStore((s) => s.openConsole);
+
+  const latestRun = Object.values(running).sort((a, b) => b.started_at - a.started_at)[0];
+  const openLatestLog = () => {
+    if (latestRun) openConsole(latestRun.running_id);
+  };
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border-soft bg-surface/50">
@@ -63,7 +70,9 @@ export function Sidebar() {
 
       <div className="flex flex-col gap-2 px-3 pb-4">
         <button
-          className="flex items-center justify-center gap-2 rounded-lg border border-border-soft bg-surface-2/60 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-2 hover:text-content"
+          onClick={openLatestLog}
+          disabled={!latestRun}
+          className="flex items-center justify-center gap-2 rounded-lg border border-border-soft bg-surface-2/60 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-2 hover:text-content disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ScrollText className="size-3.5" />
           View last log

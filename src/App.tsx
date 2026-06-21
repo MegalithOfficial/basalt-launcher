@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { AccountsView } from "./views/AccountsView";
+import { ConsoleView } from "./views/ConsoleView";
 import { HomeView } from "./views/HomeView";
 import { InstancesView } from "./views/InstancesView";
 import { SettingsView } from "./views/SettingsView";
@@ -15,6 +16,7 @@ const VIEWS: Record<View, React.ComponentType> = {
   instances: InstancesView,
   accounts: AccountsView,
   settings: SettingsView,
+  console: ConsoleView,
 };
 
 function App() {
