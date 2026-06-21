@@ -1,10 +1,17 @@
-use tauri::{AppHandle, State};
+use std::time::Duration;
 
+use serde::Serialize;
+use serde_json::json;
+use tauri::{AppHandle, Emitter, State};
+
+use crate::auth::account::{self, Account, AccountView};
+use crate::auth::microsoft::{self, PollOutcome};
 use crate::config::{self, Instance, LauncherSettings};
 use crate::error::{Error, Result};
 use crate::install;
 use crate::java::{self, JavaStatus};
 use crate::meta::manifest::{self, VersionEntry};
+use crate::paths::Paths;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -110,4 +117,104 @@ pub async fn get_java_status(
         found,
         ok,
     })
+}
+
+#[derive(Serialize)]
+pub struct DeviceCodeInfo {
+    pub user_code: String,
+    pub verification_uri: String,
+    pub message: String,
+}
+
+async fn run_auth_flow(
+    http: reqwest::Client,
+    paths: Paths,
+    device_code: String,
+    interval: u64,
+) -> Result<AccountView> {
+    let mut interval = interval.max(1);
+    let token = loop {
+        tokio::time::sleep(Duration::from_secs(interval)).await;
+        match microsoft::poll_token(&http, &device_code).await? {
+            PollOutcome::Pending => continue,
+            PollOutcome::SlowDown => {
+                interval += 5;
+                continue;
+            }
+            PollOutcome::Token(token) => break token,
+        }
+    };
+
+    let mc = microsoft::authenticate_minecraft(&http, &token.access_token).await?;
+    let account = Account {
+        id: mc.uuid.clone(),
+        name: mc.name,
+        mc_access_token: mc.access_token,
+        refresh_token: token.refresh_token,
+        expires_at: chrono::Utc::now().timestamp() + mc.expires_in,
+    };
+
+    let mut store = account::load(&paths)?;
+    store.upsert_active(account);
+    account::save(&paths, &store)?;
+
+    store
+        .views()
+        .into_iter()
+        .find(|v| v.id == mc.uuid)
+        .ok_or_else(|| Error::other("account vanished after save"))
+}
+
+#[tauri::command]
+pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<DeviceCodeInfo> {
+    let device = microsoft::request_device_code(&state.http).await?;
+    let info = DeviceCodeInfo {
+        user_code: device.user_code.clone(),
+        verification_uri: device.verification_uri.clone(),
+        message: device.message.clone(),
+    };
+
+    let http = state.http.clone();
+    let paths = state.paths.clone();
+    let device_code = device.device_code.clone();
+    let interval = device.interval;
+
+    tokio::spawn(async move {
+        match run_auth_flow(http, paths, device_code, interval).await {
+            Ok(view) => {
+                let _ = app.emit("auth:state", json!({ "status": "success", "account": view }));
+            }
+            Err(e) => {
+                let _ = app.emit("auth:state", json!({ "status": "error", "message": e.to_string() }));
+            }
+        }
+    });
+
+    Ok(info)
+}
+
+#[tauri::command]
+pub fn list_accounts(state: State<AppState>) -> Result<Vec<AccountView>> {
+    Ok(account::load(&state.paths)?.views())
+}
+
+#[tauri::command]
+pub fn set_active_account(state: State<AppState>, account_id: String) -> Result<()> {
+    let mut store = account::load(&state.paths)?;
+    if store.accounts.iter().any(|a| a.id == account_id) {
+        store.active_id = Some(account_id);
+        account::save(&state.paths, &store)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remove_account(state: State<AppState>, account_id: String) -> Result<()> {
+    let mut store = account::load(&state.paths)?;
+    store.accounts.retain(|a| a.id != account_id);
+    if store.active_id.as_deref() == Some(account_id.as_str()) {
+        store.active_id = store.accounts.first().map(|a| a.id.clone());
+    }
+    account::save(&state.paths, &store)?;
+    Ok(())
 }

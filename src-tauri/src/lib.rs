@@ -1,3 +1,4 @@
+mod auth;
 mod commands;
 mod config;
 mod download;
@@ -32,6 +33,10 @@ pub fn run() {
             commands::list_versions,
             commands::install_instance,
             commands::get_java_status,
+            commands::auth_begin,
+            commands::list_accounts,
+            commands::set_active_account,
+            commands::remove_account,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
