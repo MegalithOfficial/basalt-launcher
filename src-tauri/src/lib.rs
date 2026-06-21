@@ -1,6 +1,8 @@
 mod commands;
 mod config;
+mod download;
 mod error;
+mod meta;
 mod paths;
 mod state;
 
@@ -23,6 +25,7 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::list_instances,
+            commands::list_versions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
