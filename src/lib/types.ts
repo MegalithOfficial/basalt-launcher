@@ -26,4 +26,23 @@ export interface VersionEntry {
   sha1: string;
 }
 
+export interface JavaInfo {
+  path: string;
+  major: number;
+}
+
+export interface JavaStatus {
+  required_major: number;
+  found: JavaInfo | null;
+  ok: boolean;
+}
+
+export interface InstallState {
+  stage: string;
+  completed: number;
+  total: number;
+  downloadedBytes: number;
+  totalBytes: number;
+}
+
 export type View = "home" | "instances" | "accounts" | "settings";

@@ -1,8 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Boxes, Check, Play, Plus } from "lucide-react";
+import {
+  Boxes,
+  Check,
+  Coffee,
+  Download,
+  Loader2,
+  Play,
+  Plus,
+  TriangleAlert,
+} from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { api } from "../lib/api";
+import type { JavaStatus } from "../lib/types";
+import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { useStore } from "../store";
 
 const gridStyle: React.CSSProperties = {
@@ -14,21 +26,69 @@ const gridStyle: React.CSSProperties = {
   backgroundSize: "32px 32px, 32px 32px, 128px 128px, 128px 128px",
 };
 
-export function HomeView() {
-  const setView = useStore((s) => s.setView);
-  const instances = useStore((s) => s.instances);
+const STAGE_LABEL: Record<string, string> = {
+  metadata: "Reading metadata",
+  "assets-index": "Fetching asset index",
+  downloading: "Downloading files",
+  natives: "Extracting natives",
+  done: "Ready",
+};
 
+export function HomeView() {
+  const instances = useStore((s) => s.instances);
+  const installs = useStore((s) => s.installs);
+  const installedIds = useStore((s) => s.installedIds);
+  const installInstance = useStore((s) => s.installInstance);
+
+  const [modalOpen, setModalOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(instances[0]?.id ?? null);
+  const [java, setJava] = useState<JavaStatus | null>(null);
+
   const selected = instances.find((i) => i.id === selectedId) ?? instances[0];
   const hasInstance = !!selected;
+  const install = selected ? installs[selected.id] : undefined;
+  const installing = !!install;
+  const installed = selected ? installedIds.includes(selected.id) : false;
 
-  const account = null as { name: string } | null;
+  useEffect(() => {
+    if (!selected) {
+      setJava(null);
+      return;
+    }
+    let active = true;
+    setJava(null);
+    api
+      .getJavaStatus(selected.id)
+      .then((s) => active && setJava(s))
+      .catch(() => active && setJava(null));
+    return () => {
+      active = false;
+    };
+  }, [selected?.id]);
 
-  const playLabel = !hasInstance ? "CREATE INSTANCE" : !account ? "SIGN IN TO PLAY" : "PLAY";
-  const onPlay = () => {
-    if (!hasInstance) setView("instances");
-    else if (!account) setView("accounts");
+  const percent =
+    install && install.total > 0 ? Math.round((install.completed / install.total) * 100) : 0;
+
+  const onAction = () => {
+    if (!hasInstance) setModalOpen(true);
+    else if (installing) return;
+    else if (!installed) installInstance(selected.id);
   };
+
+  let actionLabel = "INSTALL";
+  let actionIcon = <Download className="size-5" />;
+  if (!hasInstance) {
+    actionLabel = "CREATE INSTANCE";
+    actionIcon = <Plus className="size-5" />;
+  } else if (installing) {
+    actionLabel = `${STAGE_LABEL[install.stage] ?? install.stage}${
+      install.stage === "downloading" ? ` ${percent}%` : ""
+    }`;
+    actionIcon = <Loader2 className="size-5 animate-spin" />;
+  } else if (installed) {
+    actionLabel = "PLAY";
+    actionIcon = <Play className="size-5 fill-black" />;
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
@@ -49,14 +109,30 @@ export function HomeView() {
                 <Boxes className="size-3.5" />
                 Your instances
               </div>
-              <span className="text-xs text-content-faint">
-                {instances.length} total
-              </span>
+              {java && (
+                <div
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium",
+                    java.ok
+                      ? "border-ok/30 bg-ok/10 text-ok"
+                      : "border-warn/30 bg-warn/10 text-warn",
+                  )}
+                >
+                  {java.ok ? <Coffee className="size-3" /> : <TriangleAlert className="size-3" />}
+                  Java {java.required_major}
+                  {java.found ? ` · found ${java.found.major}` : " · missing"}
+                </div>
+              )}
             </div>
 
             <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(180px,1fr))] content-start gap-3 overflow-y-auto px-6 pb-6">
               {instances.map((it) => {
                 const active = it.id === selected.id;
+                const itInstall = installs[it.id];
+                const itPercent =
+                  itInstall && itInstall.total > 0
+                    ? Math.round((itInstall.completed / itInstall.total) * 100)
+                    : 0;
                 return (
                   <button
                     key={it.id}
@@ -68,7 +144,7 @@ export function HomeView() {
                         : "border-border bg-base/40 backdrop-blur hover:border-border hover:bg-surface-2/60",
                     )}
                   >
-                    {active && (
+                    {active && !itInstall && (
                       <span className="absolute right-3 top-3 grid size-5 place-items-center rounded-full bg-lava text-black">
                         <Check className="size-3.5" />
                       </span>
@@ -82,12 +158,22 @@ export function HomeView() {
                     <div className="mt-0.5 truncate text-xs text-content-muted">
                       {it.version_id}
                     </div>
+                    {itInstall && (
+                      <div className="mt-3">
+                        <div className="h-1 overflow-hidden rounded-full bg-surface-3">
+                          <div
+                            className="h-full rounded-full bg-lava transition-all"
+                            style={{ width: `${itPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </button>
                 );
               })}
 
               <button
-                onClick={() => setView("instances")}
+                onClick={() => setModalOpen(true)}
                 className="flex min-h-[116px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-transparent text-content-faint transition-colors hover:border-lava/50 hover:text-content-muted"
               >
                 <Plus className="size-5" />
@@ -109,16 +195,27 @@ export function HomeView() {
       </motion.div>
 
       <button
-        onClick={onPlay}
-        className="group flex h-14 shrink-0 items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-b from-lava to-lava-deep font-pixel text-base tracking-wider text-black shadow-xl shadow-lava/25 transition-all hover:from-lava-bright hover:to-lava active:scale-[0.99]"
+        onClick={onAction}
+        disabled={installing}
+        className="group relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl bg-gradient-to-b from-lava to-lava-deep font-pixel text-base tracking-wider text-black shadow-xl shadow-lava/25 transition-all hover:from-lava-bright hover:to-lava active:scale-[0.99] disabled:active:scale-100"
       >
-        {hasInstance && account ? (
-          <Play className="size-5 fill-black" />
-        ) : (
-          <Plus className="size-5" />
+        {installing && install.stage === "downloading" && (
+          <span
+            className="absolute inset-y-0 left-0 bg-black/15 transition-all"
+            style={{ width: `${percent}%` }}
+          />
         )}
-        {playLabel}
+        <span className="relative flex items-center gap-2.5">
+          {actionIcon}
+          {actionLabel}
+        </span>
       </button>
+
+      <CreateInstanceModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={(id) => setSelectedId(id)}
+      />
     </div>
   );
 }
