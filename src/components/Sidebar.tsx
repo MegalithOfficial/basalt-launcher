@@ -18,7 +18,7 @@ export function Sidebar() {
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border-soft bg-surface/50">
       <div className="flex items-center gap-3 px-5 pb-6 pt-5">
-        <div className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-lava to-lava-deep shadow-lg shadow-lava/20">
+        <div className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-lava-bright to-lava shadow-lg shadow-lava/25">
           <span className="font-pixel text-[15px] leading-none text-black">B</span>
         </div>
         <div className="leading-none">
@@ -44,17 +44,17 @@ export function Sidebar() {
               {active && (
                 <motion.span
                   layoutId="nav-active"
-                  className="absolute inset-0 -z-10 rounded-lg bg-gradient-to-b from-lava to-lava-deep shadow-lg shadow-lava/20"
+                  className="absolute inset-0 rounded-lg bg-gradient-to-b from-lava to-lava-deep shadow-lg shadow-lava/20"
                   transition={{ type: "spring", stiffness: 500, damping: 38 }}
                 />
               )}
               <Icon
                 className={cn(
-                  "size-[18px] transition-colors",
+                  "relative z-10 size-[18px] transition-colors",
                   active ? "text-black" : "text-content-faint group-hover:text-content-muted",
                 )}
               />
-              {label}
+              <span className="relative z-10">{label}</span>
             </button>
           );
         })}

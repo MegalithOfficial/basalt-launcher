@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Boxes, Check, Play, Plus, Sparkles } from "lucide-react";
+import { Boxes, Check, Play, Plus } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { useStore } from "../store";
 
-// Faint blueprint grid (minor + major lines) with a lava glow — the hero backdrop.
 const gridStyle: React.CSSProperties = {
   backgroundImage: `
     linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px),
@@ -23,14 +22,12 @@ export function HomeView() {
   const selected = instances.find((i) => i.id === selectedId) ?? instances[0];
   const hasInstance = !!selected;
 
-  // Account wiring lands in M3; for now nobody is signed in.
   const account = null as { name: string } | null;
 
   const playLabel = !hasInstance ? "CREATE INSTANCE" : !account ? "SIGN IN TO PLAY" : "PLAY";
   const onPlay = () => {
     if (!hasInstance) setView("instances");
     else if (!account) setView("accounts");
-    // else: launch — arrives in Milestone 4.
   };
 
   return (
@@ -99,11 +96,7 @@ export function HomeView() {
             </div>
           </div>
         ) : (
-          <div className="relative flex min-h-0 flex-1 flex-col items-start justify-center p-8">
-            <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-lava/30 bg-lava/10 px-2.5 py-1 text-[11px] font-semibold text-ember">
-              <Sparkles className="size-3" />
-              Get started
-            </div>
+          <div className="relative flex min-h-0 flex-1 flex-col items-start justify-start p-8">
             <h1 className="font-pixel text-4xl leading-tight text-content drop-shadow">
               No instance yet
             </h1>

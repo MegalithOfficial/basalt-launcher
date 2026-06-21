@@ -34,7 +34,6 @@ export function TitleBar() {
       data-tauri-drag-region
       className="relative flex h-9 shrink-0 items-center justify-between border-b border-border-soft bg-base/80 backdrop-blur"
     >
-      {/* spacer keeps the wordmark centered */}
       <div className="w-24" />
 
       <div
