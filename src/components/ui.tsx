@@ -55,19 +55,22 @@ export function Button({
   variant = "primary",
   className,
   type = "button",
+  disabled,
 }: {
   children: ReactNode;
   onClick?: () => void;
   variant?: "primary" | "ghost";
   className?: string;
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
+      disabled={disabled}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all active:scale-[0.98]",
+        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" &&
           "bg-gradient-to-b from-lava to-lava-deep text-black shadow-lg shadow-lava/20 hover:from-lava-bright hover:to-lava",
         variant === "ghost" &&

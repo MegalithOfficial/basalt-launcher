@@ -14,6 +14,7 @@ const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
 export function Sidebar() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
+  const activeAccount = useStore((s) => s.accounts.find((a) => a.active));
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border-soft bg-surface/50">
@@ -76,8 +77,12 @@ export function Sidebar() {
             <UserCircle2 className="size-[18px]" />
           </div>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-xs font-semibold text-content-muted">No account</div>
-            <div className="truncate text-[11px] text-content-faint">Click to sign in</div>
+            <div className="truncate text-xs font-semibold text-content-muted">
+              {activeAccount?.name ?? "No account"}
+            </div>
+            <div className="truncate text-[11px] text-content-faint">
+              {activeAccount ? "Switch or manage" : "Click to sign in"}
+            </div>
           </div>
           <ChevronsUpDown className="size-3.5 shrink-0 text-content-faint" />
         </button>

@@ -39,6 +39,8 @@ export function HomeView() {
   const installs = useStore((s) => s.installs);
   const installedIds = useStore((s) => s.installedIds);
   const installInstance = useStore((s) => s.installInstance);
+  const account = useStore((s) => s.accounts.find((a) => a.active) ?? null);
+  const setView = useStore((s) => s.setView);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(instances[0]?.id ?? null);
@@ -73,6 +75,7 @@ export function HomeView() {
     if (!hasInstance) setModalOpen(true);
     else if (installing) return;
     else if (!installed) installInstance(selected.id);
+    else if (!account) setView("accounts");
   };
 
   let actionLabel = "INSTALL";
@@ -85,6 +88,9 @@ export function HomeView() {
       install.stage === "downloading" ? ` ${percent}%` : ""
     }`;
     actionIcon = <Loader2 className="size-5 animate-spin" />;
+  } else if (installed && !account) {
+    actionLabel = "SIGN IN TO PLAY";
+    actionIcon = <Play className="size-5 fill-black" />;
   } else if (installed) {
     actionLabel = "PLAY";
     actionIcon = <Play className="size-5 fill-black" />;

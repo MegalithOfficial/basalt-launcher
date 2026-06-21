@@ -45,4 +45,16 @@ export interface InstallState {
   totalBytes: number;
 }
 
+export interface AccountView {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface DeviceCodeInfo {
+  user_code: string;
+  verification_uri: string;
+  message: string;
+}
+
 export type View = "home" | "instances" | "accounts" | "settings";

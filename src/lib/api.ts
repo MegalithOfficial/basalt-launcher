@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { Instance, JavaStatus, LauncherSettings, VersionEntry } from "./types";
+import type {
+  AccountView,
+  DeviceCodeInfo,
+  Instance,
+  JavaStatus,
+  LauncherSettings,
+  VersionEntry,
+} from "./types";
 
 export const api = {
   getSettings: () => invoke<LauncherSettings>("get_settings"),
@@ -17,4 +24,10 @@ export const api = {
     invoke<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>
     invoke<JavaStatus>("get_java_status", { instanceId }),
+  authBegin: () => invoke<DeviceCodeInfo>("auth_begin"),
+  listAccounts: () => invoke<AccountView[]>("list_accounts"),
+  setActiveAccount: (accountId: string) =>
+    invoke<void>("set_active_account", { accountId }),
+  removeAccount: (accountId: string) =>
+    invoke<void>("remove_account", { accountId }),
 };

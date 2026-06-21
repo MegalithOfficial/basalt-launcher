@@ -2,7 +2,13 @@ import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 
 import { api } from "./lib/api";
-import type { InstallState, Instance, LauncherSettings, View } from "./lib/types";
+import type {
+  AccountView,
+  InstallState,
+  Instance,
+  LauncherSettings,
+  View,
+} from "./lib/types";
 
 interface StagePayload {
   instance_id: string;
@@ -26,6 +32,19 @@ const blankInstall: InstallState = {
   totalBytes: 0,
 };
 
+interface AuthPayload {
+  status: "success" | "error";
+  account?: AccountView;
+  message?: string;
+}
+
+export interface AuthFlow {
+  status: "idle" | "starting" | "pending" | "error";
+  userCode?: string;
+  verificationUri?: string;
+  message?: string;
+}
+
 interface AppStore {
   view: View;
   ready: boolean;
@@ -34,6 +53,8 @@ interface AppStore {
   instances: Instance[];
   installs: Record<string, InstallState>;
   installedIds: string[];
+  accounts: AccountView[];
+  auth: AuthFlow;
 
   setView: (view: View) => void;
   init: () => Promise<void>;
@@ -41,6 +62,11 @@ interface AppStore {
   createInstance: (name: string, versionId: string) => Promise<Instance>;
   deleteInstance: (id: string) => Promise<void>;
   installInstance: (id: string) => Promise<void>;
+  refreshAccounts: () => Promise<void>;
+  addAccount: () => Promise<void>;
+  setActiveAccount: (id: string) => Promise<void>;
+  removeAccount: (id: string) => Promise<void>;
+  resetAuth: () => void;
 }
 
 let listenersBound = false;
@@ -53,12 +79,23 @@ export const useStore = create<AppStore>((set) => ({
   instances: [],
   installs: {},
   installedIds: [],
+  accounts: [],
+  auth: { status: "idle" },
 
   setView: (view) => set({ view }),
 
   init: async () => {
     if (!listenersBound) {
       listenersBound = true;
+      await listen<AuthPayload>("auth:state", (e) => {
+        const p = e.payload;
+        if (p.status === "success") {
+          set({ auth: { status: "idle" } });
+          void useStore.getState().refreshAccounts();
+        } else {
+          set({ auth: { status: "error", message: p.message } });
+        }
+      });
       await listen<StagePayload>("install:stage", (e) => {
         const { instance_id, stage } = e.payload;
         set((s) => ({
@@ -100,15 +137,49 @@ export const useStore = create<AppStore>((set) => ({
     }
 
     try {
-      const [settings, instances] = await Promise.all([
+      const [settings, instances, accounts] = await Promise.all([
         api.getSettings(),
         api.listInstances(),
+        api.listAccounts(),
       ]);
-      set({ settings, instances, ready: true, error: null });
+      set({ settings, instances, accounts, ready: true, error: null });
     } catch (e) {
       set({ error: String(e), ready: true });
     }
   },
+
+  refreshAccounts: async () => {
+    set({ accounts: await api.listAccounts() });
+  },
+
+  addAccount: async () => {
+    set({ auth: { status: "starting" } });
+    try {
+      const info = await api.authBegin();
+      set({
+        auth: {
+          status: "pending",
+          userCode: info.user_code,
+          verificationUri: info.verification_uri,
+          message: info.message,
+        },
+      });
+    } catch (e) {
+      set({ auth: { status: "error", message: String(e) } });
+    }
+  },
+
+  setActiveAccount: async (id) => {
+    await api.setActiveAccount(id);
+    await useStore.getState().refreshAccounts();
+  },
+
+  removeAccount: async (id) => {
+    await api.removeAccount(id);
+    await useStore.getState().refreshAccounts();
+  },
+
+  resetAuth: () => set({ auth: { status: "idle" } }),
 
   refreshInstances: async () => {
     set({ instances: await api.listInstances() });
