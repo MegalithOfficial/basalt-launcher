@@ -13,9 +13,13 @@ export function PlayerHead({
   size?: number;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  const sources = [
+    `https://mc-heads.net/avatar/${uuid}/${size * 2}`,
+    `https://minotar.net/helm/${uuid}/${size * 2}.png`,
+  ];
+  const [sourceIndex, setSourceIndex] = useState(0);
 
-  if (failed) {
+  if (sourceIndex >= sources.length) {
     return (
       <span
         className={cn(
@@ -31,8 +35,8 @@ export function PlayerHead({
 
   return (
     <img
-      src={`https://crafatar.com/avatars/${uuid}?size=${size * 2}&overlay`}
-      onError={() => setFailed(true)}
+      src={sources[sourceIndex]}
+      onError={() => setSourceIndex((i) => i + 1)}
       alt={name}
       className={cn("rounded-md [image-rendering:pixelated]", className)}
       style={{ width: size, height: size }}
