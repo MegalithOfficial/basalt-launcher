@@ -156,6 +156,24 @@ impl Db {
         Ok(())
     }
 
+    pub fn update_instance_settings(
+        &self,
+        instance_id: &str,
+        name: &str,
+        min_memory_mb: Option<u32>,
+        max_memory_mb: Option<u32>,
+        java_path: Option<String>,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE instances
+             SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5
+             WHERE id = ?1",
+            params![instance_id, name, min_memory_mb, max_memory_mb, java_path],
+        )?;
+        Ok(())
+    }
+
     pub fn delete_instance(&self, instance_id: &str) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute("DELETE FROM instances WHERE id = ?1", params![instance_id])?;

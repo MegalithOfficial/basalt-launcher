@@ -19,6 +19,20 @@ export const api = {
   listInstances: () => invoke<Instance[]>("list_instances"),
   createInstance: (name: string, versionId: string) =>
     invoke<Instance>("create_instance", { name, versionId }),
+  updateInstance: (
+    instanceId: string,
+    name: string,
+    minMemoryMb: number | null,
+    maxMemoryMb: number | null,
+    javaPath: string | null,
+  ) =>
+    invoke<Instance>("update_instance", {
+      instanceId,
+      name,
+      minMemoryMb,
+      maxMemoryMb,
+      javaPath,
+    }),
   deleteInstance: (instanceId: string) =>
     invoke<void>("delete_instance", { instanceId }),
   listVersions: (includeSnapshots = false) =>

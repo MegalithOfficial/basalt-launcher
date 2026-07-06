@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Download,
   Loader2,
+  Pencil,
   Play,
   Plus,
   Terminal,
@@ -15,6 +16,7 @@ import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { EditInstanceModal } from "../components/EditInstanceModal";
 import { InstanceSheet } from "../components/InstanceSheet";
 import { useStore } from "../store";
 
@@ -89,6 +91,7 @@ export function HomeView() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [java, setJava] = useState<JavaStatus | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
@@ -174,13 +177,24 @@ export function HomeView() {
 
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
 
-        {java && !java.ok && (
-          <div className="absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-black/60 px-3 py-1.5 text-xs font-medium text-warn backdrop-blur">
-            <TriangleAlert className="size-3.5" />
-            Java {java.required_major} needed
-            {java.found ? ` · found ${java.found.major}` : " · none found"}
-          </div>
-        )}
+        <div className="absolute right-5 top-5 flex items-center gap-2">
+          {java && !java.ok && (
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-black/60 px-3 py-1.5 text-xs font-medium text-warn backdrop-blur">
+              <TriangleAlert className="size-3.5" />
+              Java {java.required_major} needed
+              {java.found ? ` · found ${java.found.major}` : " · none found"}
+            </div>
+          )}
+          {hasInstance && (
+            <button
+              onClick={() => setEditOpen(true)}
+              aria-label="Edit instance"
+              className="grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+            >
+              <Pencil className="size-4" />
+            </button>
+          )}
+        </div>
 
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-6 p-8">
           <div className="min-w-0">
@@ -268,6 +282,11 @@ export function HomeView() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={(id) => selectInstance(id)}
+      />
+
+      <EditInstanceModal
+        instance={editOpen && selected ? selected : null}
+        onClose={() => setEditOpen(false)}
       />
     </div>
   );

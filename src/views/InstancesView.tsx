@@ -1,19 +1,11 @@
 import { useEffect, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
-import {
-  Boxes,
-  Download,
-  FolderOpen,
-  ImageOff,
-  ImagePlus,
-  Loader2,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { Boxes, Download, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button, EmptyState, PageHeader } from "../components/ui";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { EditInstanceModal } from "../components/EditInstanceModal";
 import { mediaSrc } from "../lib/media";
+import type { Instance } from "../lib/types";
 import { useStore } from "../store";
 
 export function InstancesView() {
@@ -24,10 +16,9 @@ export function InstancesView() {
   const deleteInstance = useStore((s) => s.deleteInstance);
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
-  const pickBanner = useStore((s) => s.pickBanner);
-  const clearBanner = useStore((s) => s.clearBanner);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Instance | null>(null);
 
   useEffect(() => {
     instances.forEach((i) => loadMedia(i.id));
@@ -112,29 +103,12 @@ export function InstancesView() {
                 )}
 
                 <button
-                  onClick={() => openPath(it.dir)}
-                  title="Open instance folder"
+                  onClick={() => setEditing(it)}
+                  title="Edit instance"
                   className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
                 >
-                  <FolderOpen className="size-4" />
+                  <Pencil className="size-4" />
                 </button>
-                {mediaMap[it.id]?.local ? (
-                  <button
-                    onClick={() => clearBanner(it.id)}
-                    title="Remove custom banner"
-                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
-                  >
-                    <ImageOff className="size-4" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => pickBanner(it.id)}
-                    title="Set custom banner"
-                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
-                  >
-                    <ImagePlus className="size-4" />
-                  </button>
-                )}
                 <button
                   onClick={() => deleteInstance(it.id)}
                   className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
@@ -148,6 +122,7 @@ export function InstancesView() {
       )}
 
       <CreateInstanceModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={() => {}} />
+      <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
     </div>
   );
 }

@@ -75,6 +75,13 @@ interface AppStore {
   init: () => Promise<void>;
   refreshInstances: () => Promise<void>;
   createInstance: (name: string, versionId: string) => Promise<Instance>;
+  updateInstance: (
+    id: string,
+    name: string,
+    minMemoryMb: number | null,
+    maxMemoryMb: number | null,
+    javaPath: string | null,
+  ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
   installInstance: (id: string) => Promise<void>;
   refreshAccounts: () => Promise<void>;
@@ -315,6 +322,13 @@ export const useStore = create<AppStore>((set) => ({
         : s.installedIds,
     }));
     return instance;
+  },
+
+  updateInstance: async (id, name, minMemoryMb, maxMemoryMb, javaPath) => {
+    const updated = await api.updateInstance(id, name, minMemoryMb, maxMemoryMb, javaPath);
+    set((s) => ({
+      instances: s.instances.map((i) => (i.id === id ? updated : i)),
+    }));
   },
 
   deleteInstance: async (id) => {

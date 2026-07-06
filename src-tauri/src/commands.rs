@@ -56,6 +56,25 @@ pub fn create_instance(
 }
 
 #[tauri::command]
+pub fn update_instance(
+    state: State<AppState>,
+    instance_id: String,
+    name: String,
+    min_memory_mb: Option<u32>,
+    max_memory_mb: Option<u32>,
+    java_path: Option<String>,
+) -> Result<Instance> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(Error::other("Instance name cannot be empty."));
+    }
+    state
+        .db
+        .update_instance_settings(&instance_id, &name, min_memory_mb, max_memory_mb, java_path)?;
+    find_instance(&state, &instance_id)
+}
+
+#[tauri::command]
 pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
     state.db.delete_instance(&instance_id)?;
     let dir = state.paths.instance_dir(&instance_id);
