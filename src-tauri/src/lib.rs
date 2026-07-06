@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod config;
+mod content;
 mod db;
 mod download;
 mod error;
@@ -51,6 +52,10 @@ pub fn run() {
             commands::list_accounts,
             commands::set_active_account,
             commands::remove_account,
+            commands::list_instance_content,
+            commands::toggle_instance_content,
+            commands::delete_instance_content,
+            commands::add_instance_content,
             commands::launch_instance,
             commands::kill_instance,
             commands::list_running,

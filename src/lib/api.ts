@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   AccountView,
+  ContentItem,
   DeviceCodeInfo,
   Instance,
   JavaStatus,
@@ -26,6 +27,14 @@ export const api = {
     invoke<Instance>("create_instance", { name, versionId, loader, loaderVersion }),
   listLoaderVersions: (loader: string, gameVersion: string) =>
     invoke<string[]>("list_loader_versions", { loader, gameVersion }),
+  listInstanceContent: (instanceId: string, kind: string) =>
+    invoke<ContentItem[]>("list_instance_content", { instanceId, kind }),
+  toggleInstanceContent: (instanceId: string, kind: string, fileName: string) =>
+    invoke<boolean>("toggle_instance_content", { instanceId, kind, fileName }),
+  deleteInstanceContent: (instanceId: string, kind: string, fileName: string) =>
+    invoke<void>("delete_instance_content", { instanceId, kind, fileName }),
+  addInstanceContent: (instanceId: string, kind: string, sources: string[]) =>
+    invoke<number>("add_instance_content", { instanceId, kind, sources }),
   updateInstance: (
     instanceId: string,
     name: string,

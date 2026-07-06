@@ -25,6 +25,14 @@ export interface Instance {
 
 export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
 
+export type ContentKind = "mods" | "resourcepacks" | "shaderpacks";
+
+export interface ContentItem {
+  file_name: string;
+  size: number;
+  enabled: boolean;
+}
+
 export interface VersionEntry {
   id: string;
   type: string;
@@ -86,4 +94,4 @@ export interface LogLine {
   line: string;
 }
 
-export type View = "home" | "instances" | "accounts" | "settings" | "console";
+export type View = "home" | "instances" | "accounts" | "settings" | "console" | "instance";

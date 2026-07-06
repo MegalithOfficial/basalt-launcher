@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   Boxes,
-  Download,
   LayoutGrid,
   List,
-  Loader2,
   Pencil,
-  Play,
   Plus,
-  Terminal,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
@@ -21,95 +17,17 @@ import { loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
+import { PlayButton } from "../components/PlayButton";
 import { useStore } from "../store";
 
 type ViewMode = "list" | "grid";
-
-function PlayButton({
-  instance,
-  compact,
-  onError,
-}: {
-  instance: Instance;
-  compact?: boolean;
-  onError: (message: string | null) => void;
-}) {
-  const installs = useStore((s) => s.installs);
-  const installedIds = useStore((s) => s.installedIds);
-  const running = useStore((s) => s.running);
-  const installInstance = useStore((s) => s.installInstance);
-  const launchInstance = useStore((s) => s.launchInstance);
-  const openConsole = useStore((s) => s.openConsole);
-
-  const install = installs[instance.id];
-  const installed = installedIds.includes(instance.id);
-  const run = Object.values(running).find(
-    (r) => r.instance_id === instance.id && r.state === "running",
-  );
-  const percent =
-    install && install.total > 0 ? Math.round((install.completed / install.total) * 100) : 0;
-
-  const base = cn(
-    "inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-all",
-    compact ? "h-8 px-3" : "h-9 px-4",
-  );
-
-  if (install) {
-    return (
-      <span className={cn(base, "cursor-default bg-surface-3 text-content-muted")}>
-        <Loader2 className="size-3.5 animate-spin" />
-        {percent}%
-      </span>
-    );
-  }
-  if (run) {
-    return (
-      <button
-        onClick={() => openConsole(run.running_id)}
-        className={cn(base, "border border-ok/40 bg-ok/10 text-ok hover:bg-ok/20")}
-      >
-        <Terminal className="size-3.5" />
-        Console
-      </button>
-    );
-  }
-  if (!installed) {
-    return (
-      <button
-        onClick={() => installInstance(instance.id)}
-        className={cn(base, "border border-border bg-surface-3 text-content hover:bg-border")}
-      >
-        <Download className="size-3.5" />
-        Install
-      </button>
-    );
-  }
-  return (
-    <button
-      onClick={async () => {
-        onError(null);
-        try {
-          await launchInstance(instance.id);
-        } catch (e) {
-          onError(String(e));
-        }
-      }}
-      className={cn(
-        base,
-        "text-black shadow-md shadow-[var(--accent-glow)] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
-      )}
-    >
-      <Play className="size-3.5 fill-black" />
-      Play
-    </button>
-  );
-}
 
 export function InstancesView() {
   const instances = useStore((s) => s.instances);
   const deleteInstance = useStore((s) => s.deleteInstance);
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
+  const openInstance = useStore((s) => s.openInstance);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
@@ -193,15 +111,22 @@ export function InstancesView() {
               {mediaMap[it.id] ? (
                 <img
                   src={mediaSrc(mediaMap[it.id]!)}
-                  className="size-10 shrink-0 rounded-lg object-cover"
+                  className="size-10 shrink-0 cursor-pointer rounded-lg object-cover"
+                  onClick={() => openInstance(it.id)}
                   draggable={false}
                 />
               ) : (
-                <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-muted">
+                <div
+                  onClick={() => openInstance(it.id)}
+                  className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg bg-surface-3 text-content-muted"
+                >
                   <Boxes className="size-5" />
                 </div>
               )}
-              <div className="min-w-0 flex-1">
+              <div
+                className="min-w-0 flex-1 cursor-pointer"
+                onClick={() => openInstance(it.id)}
+              >
                 <div className="truncate font-display font-semibold text-content">{it.name}</div>
                 <div className="truncate text-xs text-content-muted">
                   {it.version_id}
@@ -238,7 +163,10 @@ export function InstancesView() {
                 key={it.id}
                 className="group overflow-hidden rounded-2xl border border-border bg-surface-2 transition-colors hover:border-content-faint/30"
               >
-                <div className="relative aspect-[16/9]">
+                <div
+                  className="relative aspect-[16/9] cursor-pointer"
+                  onClick={() => openInstance(it.id)}
+                >
                   {media ? (
                     <img
                       src={mediaSrc(media)}

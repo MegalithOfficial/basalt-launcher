@@ -70,6 +70,7 @@ interface AppStore {
   logs: Record<string, LogLine[]>;
   activeRunningId: string | null;
   media: Record<string, VersionMedia | null>;
+  detailInstanceId: string | null;
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
@@ -101,6 +102,7 @@ interface AppStore {
   openConsole: (runningId: string) => void;
   loadMedia: (instanceId: string) => Promise<void>;
   selectInstance: (id: string) => void;
+  openInstance: (id: string) => void;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
 }
@@ -122,6 +124,7 @@ export const useStore = create<AppStore>((set) => ({
   activeRunningId: null,
   media: {},
   selectedInstanceId: null,
+  detailInstanceId: null,
 
   setView: (view) => set({ view }),
 
@@ -284,6 +287,8 @@ export const useStore = create<AppStore>((set) => ({
   openConsole: (runningId) => set({ activeRunningId: runningId, view: "console" }),
 
   selectInstance: (id) => set({ selectedInstanceId: id }),
+
+  openInstance: (id) => set({ detailInstanceId: id, view: "instance" }),
 
   loadMedia: async (instanceId) => {
     if (instanceId in useStore.getState().media) return;

@@ -9,6 +9,7 @@ import { TitleBar } from "./components/TitleBar";
 import { AccountsView } from "./views/AccountsView";
 import { ConsoleView } from "./views/ConsoleView";
 import { HomeView } from "./views/HomeView";
+import { InstanceView } from "./views/InstanceView";
 import { InstancesView } from "./views/InstancesView";
 import { SettingsView } from "./views/SettingsView";
 import { useStore } from "./store";
@@ -20,6 +21,7 @@ const VIEWS: Record<View, React.ComponentType> = {
   accounts: AccountsView,
   settings: SettingsView,
   console: ConsoleView,
+  instance: InstanceView,
 };
 
 function App() {

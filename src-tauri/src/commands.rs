@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 use crate::auth::account::{Account, AccountView};
 use crate::auth::microsoft::{self, PollOutcome};
 use crate::config::{Instance, LauncherSettings};
+use crate::content::{self, ContentItem};
 use crate::db::Db;
 use crate::error::{Error, Result};
 use crate::install;
@@ -273,6 +274,47 @@ pub async fn get_java_status(
         found,
         ok,
     })
+}
+
+#[tauri::command]
+pub fn list_instance_content(
+    state: State<AppState>,
+    instance_id: String,
+    kind: String,
+) -> Result<Vec<ContentItem>> {
+    find_instance(&state, &instance_id)?;
+    content::list(&state.paths, &instance_id, &kind)
+}
+
+#[tauri::command]
+pub fn toggle_instance_content(
+    state: State<AppState>,
+    instance_id: String,
+    kind: String,
+    file_name: String,
+) -> Result<bool> {
+    content::toggle(&state.paths, &instance_id, &kind, &file_name)
+}
+
+#[tauri::command]
+pub fn delete_instance_content(
+    state: State<AppState>,
+    instance_id: String,
+    kind: String,
+    file_name: String,
+) -> Result<()> {
+    content::delete(&state.paths, &instance_id, &kind, &file_name)
+}
+
+#[tauri::command]
+pub fn add_instance_content(
+    state: State<AppState>,
+    instance_id: String,
+    kind: String,
+    sources: Vec<String>,
+) -> Result<usize> {
+    find_instance(&state, &instance_id)?;
+    content::add(&state.paths, &instance_id, &kind, &sources)
 }
 
 #[derive(Serialize)]
