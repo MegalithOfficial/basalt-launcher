@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "motion/react";
 
 import { accentVars } from "./lib/accent";
+import { cn } from "./lib/cn";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { AccountsView } from "./views/AccountsView";
@@ -29,15 +31,30 @@ function App() {
     s.selectedInstanceId ? (s.media[s.selectedInstanceId]?.accent ?? null) : null,
   );
 
+  const [maximized, setMaximized] = useState(false);
+
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const sync = () => win.isMaximized().then(setMaximized);
+    sync();
+    const unlisten = win.onResized(sync);
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   const Current = VIEWS[view];
 
   return (
     <div
-      className="flex h-full w-full flex-col overflow-hidden bg-base text-content"
+      className={cn(
+        "flex h-full w-full flex-col overflow-hidden bg-base text-content",
+        !maximized && "rounded-xl border border-border-soft",
+      )}
       style={accentVars(accent)}
     >
       <TitleBar />

@@ -54,7 +54,7 @@
 
   body {
     margin: 0;
-    background-color: var(--color-base);
+    background-color: transparent;
     color: var(--color-content);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
