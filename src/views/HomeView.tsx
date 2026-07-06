@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  ChevronUp,
+  ChevronDown,
   Download,
   Loader2,
   Play,
@@ -185,9 +185,17 @@ export function HomeView() {
           <div className="min-w-0">
             {hasInstance ? (
               <>
-                <h1 className="truncate font-display text-4xl font-bold tracking-tight text-white drop-shadow-lg">
-                  {selected.name}
-                </h1>
+                <button
+                  onClick={() => setSheetOpen(true)}
+                  className="group flex max-w-full items-center gap-2.5 text-left"
+                >
+                  <h1 className="truncate font-display text-4xl font-bold tracking-tight text-white drop-shadow-lg transition-colors group-hover:text-white/80">
+                    {selected.name}
+                  </h1>
+                  <span className="mt-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-black/40 text-white/60 backdrop-blur transition-all group-hover:bg-black/60 group-hover:text-white">
+                    <ChevronDown className="size-4 transition-transform group-hover:translate-y-0.5" />
+                  </span>
+                </button>
                 <div className="mt-2.5 flex items-center gap-2">
                   {selected.name !== selected.version_id && (
                     <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/80 backdrop-blur">
@@ -241,14 +249,6 @@ export function HomeView() {
           <span className="break-words">{launchError}</span>
         </div>
       )}
-
-      <button
-        onClick={() => setSheetOpen(true)}
-        className="group flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-border-soft bg-surface/60 text-xs font-medium text-content-faint transition-colors hover:bg-surface-2 hover:text-content-muted"
-      >
-        <ChevronUp className="size-4 transition-transform group-hover:-translate-y-0.5" />
-        Instances
-      </button>
 
       <InstanceSheet
         open={sheetOpen}
