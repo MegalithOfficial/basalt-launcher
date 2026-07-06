@@ -115,6 +115,12 @@ interface AppStore {
   openInstance: (id: string) => void;
   openSearch: (kind: ContentKind) => void;
   openProject: (provider: SearchProvider, id: string, kind?: ContentKind) => void;
+  openModpacks: () => void;
+  installModpack: (
+    provider: SearchProvider,
+    projectId: string,
+    versionId: string,
+  ) => Promise<Instance>;
   goBack: () => void;
   refreshContentSources: (instanceId: string, kind: string) => Promise<void>;
   installContent: (params: {
@@ -175,6 +181,28 @@ export const useStore = create<AppStore>((set) => ({
       view: "search",
       viewStack: s.view !== "search" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
+
+  openModpacks: () =>
+    set((s) => ({
+      view: "modpacks",
+      viewStack: s.view !== "modpacks" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+    })),
+
+  installModpack: async (provider, projectId, versionId) => {
+    const instance = await api.installModpack(provider, projectId, versionId);
+    const installedVersions = await api.listInstalledVersions();
+    set((s) => {
+      const instances = [...s.instances, instance];
+      return {
+        instances,
+        selectedInstanceId: instance.id,
+        installedIds: instances
+          .filter((i) => isInstanceInstalled(i, installedVersions))
+          .map((i) => i.id),
+      };
+    });
+    return instance;
+  },
 
   refreshContentSources: async (instanceId, kind) => {
     try {

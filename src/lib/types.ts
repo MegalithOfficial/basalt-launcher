@@ -22,6 +22,9 @@ export interface Instance {
   loader: string | null;
   loader_version: string | null;
   launch_version_id: string | null;
+  pack_provider: string | null;
+  pack_project_id: string | null;
+  pack_version_id: string | null;
 }
 
 export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
@@ -190,4 +193,5 @@ export type View =
   | "console"
   | "instance"
   | "search"
-  | "project";
+  | "project"
+  | "modpacks";

@@ -222,6 +222,11 @@ export function HomeView() {
                   <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/50 backdrop-blur">
                     {loaderLabel(selected).toUpperCase()}
                   </span>
+                  {selected.pack_project_id && (
+                    <span className="rounded-md bg-[var(--accent-glow)] px-2 py-1 font-pixel text-[10px] tracking-wider text-white/80 backdrop-blur">
+                      MODPACK
+                    </span>
+                  )}
                 </div>
                 {media?.short_text && (
                   <p className="mt-2.5 line-clamp-2 max-w-xl text-sm leading-relaxed text-white/70">

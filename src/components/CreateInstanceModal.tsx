@@ -238,7 +238,16 @@ export function CreateInstanceModal({
               )}
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4">
+            <div className="flex items-center gap-2 border-t border-border-soft px-5 py-4">
+              <button
+                onClick={() => {
+                  onClose();
+                  useStore.getState().openModpacks();
+                }}
+                className="mr-auto text-xs font-medium text-content-muted transition-colors hover:text-content"
+              >
+                Browse modpacks instead
+              </button>
               <button
                 onClick={onClose}
                 className="rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-content hover:bg-surface-3"

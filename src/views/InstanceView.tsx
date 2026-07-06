@@ -189,6 +189,7 @@ export function InstanceView() {
             <div className="mt-1.5 flex items-center gap-2 text-[11px] text-white/60">
               <span className="rounded-md bg-black/50 px-2 py-0.5 font-pixel tracking-wider backdrop-blur">
                 {instance.version_id} · {loaderLabel(instance).toUpperCase()}
+                {instance.pack_project_id && " · MODPACK"}
               </span>
               {instance.last_played_at && (
                 <span>

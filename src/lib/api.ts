@@ -105,6 +105,8 @@ export const api = {
       iconUrl,
       withDependencies,
     }),
+  installModpack: (provider: string, projectId: string, versionId: string) =>
+    invoke<Instance>("install_modpack", { provider, projectId, versionId }),
   getMissingDependencies: (
     provider: string,
     projectId: string,
