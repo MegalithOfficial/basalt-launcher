@@ -68,6 +68,7 @@ interface AppStore {
   logs: Record<string, LogLine[]>;
   activeRunningId: string | null;
   media: Record<string, VersionMedia | null>;
+  selectedInstanceId: string | null;
 
   setView: (view: View) => void;
   init: () => Promise<void>;
@@ -85,6 +86,7 @@ interface AppStore {
   closeRunning: (runningId: string) => Promise<void>;
   openConsole: (runningId: string) => void;
   loadMedia: (versionId: string) => Promise<void>;
+  selectInstance: (id: string) => void;
 }
 
 let listenersBound = false;
@@ -103,6 +105,7 @@ export const useStore = create<AppStore>((set) => ({
   logs: {},
   activeRunningId: null,
   media: {},
+  selectedInstanceId: null,
 
   setView: (view) => set({ view }),
 
@@ -181,7 +184,15 @@ export const useStore = create<AppStore>((set) => ({
       const installedIds = instances
         .filter((i) => installedVersions.includes(i.version_id))
         .map((i) => i.id);
-      set({ settings, instances, accounts, installedIds, ready: true, error: null });
+      set((s) => ({
+        settings,
+        instances,
+        accounts,
+        installedIds,
+        ready: true,
+        error: null,
+        selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
+      }));
     } catch (e) {
       set({ error: String(e), ready: true });
     }
@@ -253,6 +264,8 @@ export const useStore = create<AppStore>((set) => ({
 
   openConsole: (runningId) => set({ activeRunningId: runningId, view: "console" }),
 
+  selectInstance: (id) => set({ selectedInstanceId: id }),
+
   loadMedia: async (versionId) => {
     if (versionId in useStore.getState().media) return;
     set((s) => ({ media: { ...s.media, [versionId]: null } }));
@@ -273,6 +286,7 @@ export const useStore = create<AppStore>((set) => ({
     const installedVersions = await api.listInstalledVersions();
     set((s) => ({
       instances: [...s.instances, instance],
+      selectedInstanceId: instance.id,
       installedIds: installedVersions.includes(instance.version_id)
         ? [...s.installedIds, instance.id]
         : s.installedIds,
@@ -282,10 +296,15 @@ export const useStore = create<AppStore>((set) => ({
 
   deleteInstance: async (id) => {
     await api.deleteInstance(id);
-    set((s) => ({
-      instances: s.instances.filter((i) => i.id !== id),
-      installedIds: s.installedIds.filter((x) => x !== id),
-    }));
+    set((s) => {
+      const instances = s.instances.filter((i) => i.id !== id);
+      return {
+        instances,
+        installedIds: s.installedIds.filter((x) => x !== id),
+        selectedInstanceId:
+          s.selectedInstanceId === id ? (instances[0]?.id ?? null) : s.selectedInstanceId,
+      };
+    });
   },
 
   installInstance: async (id) => {

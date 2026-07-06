@@ -52,7 +52,7 @@ export function Sidebar() {
               {active && (
                 <motion.span
                   layoutId="nav-active"
-                  className="absolute inset-0 rounded-lg bg-gradient-to-b from-lava to-lava-deep shadow-lg shadow-lava/20"
+                  className="absolute inset-0 rounded-lg shadow-lg shadow-[var(--accent-glow)] transition-colors duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))]"
                   transition={{ type: "spring", stiffness: 500, damping: 38 }}
                 />
               )}

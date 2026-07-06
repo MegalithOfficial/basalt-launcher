@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
+import { accentVars } from "./lib/accent";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { AccountsView } from "./views/AccountsView";
@@ -24,6 +25,10 @@ function App() {
   const ready = useStore((s) => s.ready);
   const error = useStore((s) => s.error);
   const init = useStore((s) => s.init);
+  const accent = useStore((s) => {
+    const selected = s.instances.find((i) => i.id === s.selectedInstanceId);
+    return selected ? (s.media[selected.version_id]?.accent ?? null) : null;
+  });
 
   useEffect(() => {
     init();
@@ -32,7 +37,10 @@ function App() {
   const Current = VIEWS[view];
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-base text-content">
+    <div
+      className="flex h-full w-full flex-col overflow-hidden bg-base text-content"
+      style={accentVars(accent)}
+    >
       <TitleBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />

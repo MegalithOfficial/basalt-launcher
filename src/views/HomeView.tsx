@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  ChevronUp,
   Download,
   Loader2,
   Play,
@@ -9,11 +10,10 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
-import { cn } from "../lib/cn";
 import { api } from "../lib/api";
-import { accentVars } from "../lib/accent";
-import type { Instance, JavaStatus, VersionMedia } from "../lib/types";
+import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { InstanceSheet } from "../components/InstanceSheet";
 import { useStore } from "../store";
 
 const gridStyle: React.CSSProperties = {
@@ -58,51 +58,11 @@ function HeroArt({ media, id }: { media: VersionMedia | null; id: string }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.3 }}
-        className="absolute inset-0 h-full w-full object-cover"
+        transition={{ duration: 0.4 }}
+        className="absolute inset-0 h-full w-full object-cover [image-rendering:pixelated]"
         draggable={false}
       />
     </AnimatePresence>
-  );
-}
-
-function ShelfTile({
-  instance,
-  media,
-  active,
-  onSelect,
-}: {
-  instance: Instance;
-  media: VersionMedia | null;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      className={cn(
-        "group relative h-24 w-40 shrink-0 overflow-hidden rounded-xl border text-left transition-all duration-300",
-        active
-          ? "border-transparent ring-2 ring-[var(--accent)] shadow-lg shadow-[var(--accent-glow)]"
-          : "border-border opacity-70 hover:opacity-100",
-      )}
-    >
-      {media ? (
-        <img
-          src={media.image_url}
-          className="absolute inset-0 h-full w-full object-cover"
-          draggable={false}
-        />
-      ) : (
-        <div className="absolute inset-0 bg-surface-2" style={gridStyle} />
-      )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-3 pb-2 pt-6">
-        <div className="truncate text-xs font-semibold text-white">{instance.name}</div>
-        <div className="truncate font-pixel text-[9px] text-white/60">
-          {instance.version_id}
-        </div>
-      </div>
-    </button>
   );
 }
 
@@ -118,9 +78,11 @@ export function HomeView() {
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
   const setView = useStore((s) => s.setView);
+  const selectedId = useStore((s) => s.selectedInstanceId);
+  const selectInstance = useStore((s) => s.selectInstance);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(instances[0]?.id ?? null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [java, setJava] = useState<JavaStatus | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
@@ -196,10 +158,7 @@ export function HomeView() {
   }
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col gap-4 p-5"
-      style={accentVars(media?.accent)}
-    >
+    <div className="flex min-h-0 flex-1 flex-col gap-3 p-5">
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-border bg-surface">
         {hasInstance ? (
           <HeroArt media={media} id={selected.id} />
@@ -207,8 +166,7 @@ export function HomeView() {
           <GridFallback />
         )}
 
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
 
         {java && !java.ok && (
           <div className="absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-black/60 px-3 py-1.5 text-xs font-medium text-warn backdrop-blur">
@@ -222,19 +180,21 @@ export function HomeView() {
           <div className="min-w-0">
             {hasInstance ? (
               <>
-                <h1 className="truncate font-display text-5xl font-bold tracking-tight text-white drop-shadow-lg">
+                <h1 className="truncate font-display text-4xl font-bold tracking-tight text-white drop-shadow-lg">
                   {selected.name}
                 </h1>
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/80 backdrop-blur">
-                    {selected.version_id}
-                  </span>
+                <div className="mt-2.5 flex items-center gap-2">
+                  {selected.name !== selected.version_id && (
+                    <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/80 backdrop-blur">
+                      {selected.version_id}
+                    </span>
+                  )}
                   <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/50 backdrop-blur">
                     VANILLA
                   </span>
                 </div>
                 {media?.short_text && (
-                  <p className="mt-3 max-w-xl truncate text-sm text-white/70">
+                  <p className="mt-2.5 line-clamp-2 max-w-xl text-sm leading-relaxed text-white/70">
                     {media.short_text}
                   </p>
                 )}
@@ -277,29 +237,24 @@ export function HomeView() {
         </div>
       )}
 
-      <div className="flex shrink-0 items-center gap-3 overflow-x-auto pb-1">
-        {instances.map((it) => (
-          <ShelfTile
-            key={it.id}
-            instance={it}
-            media={mediaMap[it.version_id] ?? null}
-            active={selected?.id === it.id}
-            onSelect={() => setSelectedId(it.id)}
-          />
-        ))}
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex h-24 w-40 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border text-content-faint transition-colors hover:border-[var(--accent)] hover:text-content-muted"
-        >
-          <Plus className="size-5" />
-          <span className="text-xs font-medium">New instance</span>
-        </button>
-      </div>
+      <button
+        onClick={() => setSheetOpen(true)}
+        className="group flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-border-soft bg-surface/60 text-xs font-medium text-content-faint transition-colors hover:bg-surface-2 hover:text-content-muted"
+      >
+        <ChevronUp className="size-4 transition-transform group-hover:-translate-y-0.5" />
+        Instances
+      </button>
+
+      <InstanceSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onCreate={() => setModalOpen(true)}
+      />
 
       <CreateInstanceModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onCreated={(id) => setSelectedId(id)}
+        onCreated={(id) => selectInstance(id)}
       />
     </div>
   );
