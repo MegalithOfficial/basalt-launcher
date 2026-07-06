@@ -67,6 +67,23 @@ pub fn delete_instance(state: State<AppState>, instance_id: String) -> Result<()
 }
 
 #[tauri::command]
+pub fn list_installed_versions(state: State<AppState>) -> Result<Vec<String>> {
+    let mut installed = Vec::new();
+    let entries = match std::fs::read_dir(state.paths.versions()) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(installed),
+        Err(e) => return Err(e.into()),
+    };
+    for entry in entries.flatten() {
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if state.paths.version_json(&id).is_file() && state.paths.version_jar(&id).is_file() {
+            installed.push(id);
+        }
+    }
+    Ok(installed)
+}
+
+#[tauri::command]
 pub async fn list_versions(
     state: State<'_, AppState>,
     include_snapshots: bool,
@@ -110,8 +127,8 @@ pub async fn get_java_status(
         .java_path
         .clone()
         .or_else(|| state.settings.lock().unwrap().java_path.clone());
-    let found = java::detect(explicit.as_deref()).await;
-    let ok = found.as_ref().map_or(false, |j| j.major == required_major);
+    let found = java::find_for_major(required_major, explicit.as_deref()).await;
+    let ok = found.as_ref().map_or(false, |j| j.major >= required_major);
 
     Ok(JavaStatus {
         required_major,

@@ -32,6 +32,7 @@ pub fn run() {
             commands::create_instance,
             commands::delete_instance,
             commands::list_versions,
+            commands::list_installed_versions,
             commands::install_instance,
             commands::get_java_status,
             commands::auth_begin,

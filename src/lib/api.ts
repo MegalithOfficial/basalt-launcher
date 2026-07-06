@@ -22,6 +22,7 @@ export const api = {
     invoke<void>("delete_instance", { instanceId }),
   listVersions: (includeSnapshots = false) =>
     invoke<VersionEntry[]>("list_versions", { includeSnapshots }),
+  listInstalledVersions: () => invoke<string[]>("list_installed_versions"),
   installInstance: (instanceId: string) =>
     invoke<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>

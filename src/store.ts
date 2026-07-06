@@ -168,12 +168,16 @@ export const useStore = create<AppStore>((set) => ({
     }
 
     try {
-      const [settings, instances, accounts] = await Promise.all([
+      const [settings, instances, accounts, installedVersions] = await Promise.all([
         api.getSettings(),
         api.listInstances(),
         api.listAccounts(),
+        api.listInstalledVersions(),
       ]);
-      set({ settings, instances, accounts, ready: true, error: null });
+      const installedIds = instances
+        .filter((i) => installedVersions.includes(i.version_id))
+        .map((i) => i.id);
+      set({ settings, instances, accounts, installedIds, ready: true, error: null });
     } catch (e) {
       set({ error: String(e), ready: true });
     }
@@ -214,7 +218,13 @@ export const useStore = create<AppStore>((set) => ({
 
   launchInstance: async (id) => {
     const runningId = await api.launchInstance(id);
-    set((s) => ({ activeRunningId: runningId, view: "console", logs: { ...s.logs, [runningId]: [] } }));
+    set({ activeRunningId: runningId, view: "console" });
+    const backfill = await api.getLogs(runningId);
+    set((s) => {
+      const streamed = s.logs[runningId] ?? [];
+      const merged = backfill.length >= streamed.length ? backfill : streamed;
+      return { logs: { ...s.logs, [runningId]: merged } };
+    });
   },
 
   killInstance: async (runningId) => {
@@ -245,7 +255,13 @@ export const useStore = create<AppStore>((set) => ({
 
   createInstance: async (name, versionId) => {
     const instance = await api.createInstance(name, versionId);
-    set((s) => ({ instances: [...s.instances, instance] }));
+    const installedVersions = await api.listInstalledVersions();
+    set((s) => ({
+      instances: [...s.instances, instance],
+      installedIds: installedVersions.includes(instance.version_id)
+        ? [...s.installedIds, instance.id]
+        : s.installedIds,
+    }));
     return instance;
   },
 

@@ -90,13 +90,21 @@ pub async fn launch_instance(
         (instance.java_path.clone(), settings.java_path.clone())
     };
     let explicit = java_path.or(settings_java);
-    let java = java::detect(explicit.as_deref()).await.ok_or_else(|| {
-        Error::other(format!(
-            "No Java found. Minecraft {} needs Java {}.",
-            version.id,
-            version.required_java_major()
-        ))
-    })?;
+    let required = version.required_java_major();
+    let java = java::find_for_major(required, explicit.as_deref())
+        .await
+        .ok_or_else(|| {
+            Error::other(format!(
+                "No Java found. Minecraft {} needs Java {required}.",
+                version.id
+            ))
+        })?;
+    if java.major < required {
+        return Err(Error::other(format!(
+            "Minecraft {} needs Java {required}, but the newest Java found is {} ({}).",
+            version.id, java.major, java.path
+        )));
+    }
 
     let resolved = version.resolve_libraries(&state.paths);
     let mut classpath: Vec<String> = resolved

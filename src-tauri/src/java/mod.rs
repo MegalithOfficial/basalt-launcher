@@ -37,18 +37,47 @@ pub async fn probe(path: &str) -> Option<JavaInfo> {
     })
 }
 
-pub async fn detect(explicit: Option<&str>) -> Option<JavaInfo> {
+async fn candidates(explicit: Option<&str>) -> Vec<JavaInfo> {
+    let mut paths: Vec<String> = Vec::new();
     if let Some(path) = explicit {
-        if let Some(info) = probe(path).await {
-            return Some(info);
-        }
+        paths.push(path.to_string());
     }
     if let Ok(home) = std::env::var("JAVA_HOME") {
-        if let Some(info) = probe(&format!("{home}/bin/java")).await {
-            return Some(info);
+        paths.push(format!("{home}/bin/java"));
+    }
+    paths.push("java".to_string());
+    for base in ["/usr/lib/jvm", "/usr/lib64/jvm", "/opt/java"] {
+        if let Ok(entries) = std::fs::read_dir(base) {
+            for entry in entries.flatten() {
+                let bin = entry.path().join("bin/java");
+                if bin.is_file() {
+                    paths.push(bin.display().to_string());
+                }
+            }
         }
     }
-    probe("java").await
+
+    let mut found: Vec<JavaInfo> = Vec::new();
+    for path in paths {
+        if let Some(info) = probe(&path).await {
+            found.push(info);
+        }
+    }
+    found
+}
+
+pub async fn detect(explicit: Option<&str>) -> Option<JavaInfo> {
+    candidates(explicit).await.into_iter().next()
+}
+
+pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<JavaInfo> {
+    let found = candidates(explicit).await;
+    found
+        .iter()
+        .find(|j| j.major == required)
+        .or_else(|| found.iter().find(|j| j.major > required))
+        .or_else(|| found.first())
+        .cloned()
 }
 
 #[cfg(test)]
