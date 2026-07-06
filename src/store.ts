@@ -71,6 +71,7 @@ interface AppStore {
   activeRunningId: string | null;
   media: Record<string, VersionMedia | null>;
   detailInstanceId: string | null;
+  previousView: View | null;
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
@@ -103,6 +104,7 @@ interface AppStore {
   loadMedia: (instanceId: string) => Promise<void>;
   selectInstance: (id: string) => void;
   openInstance: (id: string) => void;
+  goBack: () => void;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
 }
@@ -125,8 +127,11 @@ export const useStore = create<AppStore>((set) => ({
   media: {},
   selectedInstanceId: null,
   detailInstanceId: null,
+  previousView: null,
 
-  setView: (view) => set({ view }),
+  setView: (view) => set((s) => ({ view, previousView: s.view !== view ? s.view : s.previousView })),
+
+  goBack: () => set((s) => ({ view: s.previousView ?? "home", previousView: null })),
 
   init: async () => {
     if (!listenersBound) {
@@ -255,7 +260,11 @@ export const useStore = create<AppStore>((set) => ({
 
   launchInstance: async (id) => {
     const runningId = await api.launchInstance(id);
-    set({ activeRunningId: runningId, view: "console" });
+    set((s) => ({
+      activeRunningId: runningId,
+      view: "console",
+      previousView: s.view !== "console" ? s.view : s.previousView,
+    }));
     const backfill = await api.getLogs(runningId);
     set((s) => {
       const streamed = s.logs[runningId] ?? [];
@@ -284,11 +293,21 @@ export const useStore = create<AppStore>((set) => ({
     });
   },
 
-  openConsole: (runningId) => set({ activeRunningId: runningId, view: "console" }),
+  openConsole: (runningId) =>
+    set((s) => ({
+      activeRunningId: runningId,
+      view: "console",
+      previousView: s.view !== "console" ? s.view : s.previousView,
+    })),
 
   selectInstance: (id) => set({ selectedInstanceId: id }),
 
-  openInstance: (id) => set({ detailInstanceId: id, view: "instance" }),
+  openInstance: (id) =>
+    set((s) => ({
+      detailInstanceId: id,
+      view: "instance",
+      previousView: s.view !== "instance" ? s.view : s.previousView,
+    })),
 
   loadMedia: async (instanceId) => {
     if (instanceId in useStore.getState().media) return;

@@ -76,15 +76,17 @@ function useUptime(startedAt: number, live: boolean) {
       : `${s}s`;
 }
 
+const EMPTY_LOGS: never[] = [];
+
 export function ConsoleView() {
   const runningId = useStore((s) => s.activeRunningId);
   const info = useStore((s) => (runningId ? s.running[runningId] : undefined));
-  const logs = useStore((s) => (runningId ? (s.logs[runningId] ?? []) : []));
+  const logs = useStore((s) => (runningId ? (s.logs[runningId] ?? EMPTY_LOGS) : EMPTY_LOGS));
   const instance = useStore((s) =>
     s.instances.find((i) => i.id === info?.instance_id),
   );
   const killInstance = useStore((s) => s.killInstance);
-  const closeRunning = useStore((s) => s.closeRunning);
+  const goBack = useStore((s) => s.goBack);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoscroll, setAutoscroll] = useState(true);
@@ -165,7 +167,7 @@ export function ConsoleView() {
             </button>
           ) : (
             <button
-              onClick={() => closeRunning(runningId)}
+              onClick={goBack}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-semibold text-content hover:bg-surface-3"
             >
               <X className="size-3.5" />
