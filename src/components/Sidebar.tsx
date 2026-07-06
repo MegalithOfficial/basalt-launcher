@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Boxes, ChevronsUpDown, Play, ScrollText, Settings, UserCircle2 } from "lucide-react";
+import { Boxes, Play, ScrollText, Settings, UserCircle2 } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import type { View } from "../lib/types";
@@ -11,6 +11,51 @@ const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
+function Tooltip({ label }: { label: string }) {
+  return (
+    <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium text-content opacity-0 shadow-xl shadow-black/40 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 -translate-x-1">
+      {label}
+    </span>
+  );
+}
+
+function RailButton({
+  label,
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className={cn(
+        "group relative grid size-11 place-items-center rounded-xl transition-colors",
+        active ? "text-black" : "text-content-faint hover:bg-surface-2 hover:text-content",
+        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-content-faint",
+      )}
+    >
+      {active && (
+        <motion.span
+          layoutId="rail-active"
+          className="absolute inset-0 rounded-xl shadow-lg shadow-[var(--accent-glow)] transition-colors duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))]"
+          transition={{ type: "spring", stiffness: 500, damping: 38 }}
+        />
+      )}
+      <span className="relative z-10">{children}</span>
+      {!disabled && <Tooltip label={label} />}
+    </button>
+  );
+}
+
 export function Sidebar() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
@@ -19,82 +64,64 @@ export function Sidebar() {
   const openConsole = useStore((s) => s.openConsole);
 
   const latestRun = Object.values(running).sort((a, b) => b.started_at - a.started_at)[0];
-  const openLatestLog = () => {
-    if (latestRun) openConsole(latestRun.running_id);
-  };
+  const anyRunning = Object.values(running).some((r) => r.state === "running");
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-border-soft bg-surface/50">
-      <div className="flex items-center gap-3 px-5 pb-6 pt-5">
-        <div className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-lava-bright to-lava shadow-lg shadow-lava/25">
-          <span className="font-pixel text-[15px] leading-none text-black">B</span>
-        </div>
-        <div className="leading-none">
-          <div className="font-pixel text-[13px] tracking-wide text-content">BASALT</div>
-          <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-content-faint">
-            Launcher
-          </div>
-        </div>
-      </div>
+    <aside className="flex w-[68px] shrink-0 flex-col items-center border-r border-border-soft bg-surface/40 py-4">
+      <button
+        onClick={() => setView("home")}
+        aria-label="Basalt"
+        className="group relative grid size-10 place-items-center rounded-xl bg-gradient-to-br from-lava-bright to-lava shadow-lg shadow-lava/25 transition-transform hover:scale-105 active:scale-95"
+      >
+        <span className="font-pixel text-[15px] leading-none text-black">B</span>
+        <Tooltip label="Basalt Launcher" />
+      </button>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3">
-        {NAV.map(({ id, label, icon: Icon }) => {
-          const active = view === id;
-          return (
-            <button
-              key={id}
-              onClick={() => setView(id)}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                active ? "text-black" : "text-content-muted hover:bg-surface-2 hover:text-content",
-              )}
-            >
-              {active && (
-                <motion.span
-                  layoutId="nav-active"
-                  className="absolute inset-0 rounded-lg shadow-lg shadow-[var(--accent-glow)] transition-colors duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))]"
-                  transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                />
-              )}
-              <Icon
-                className={cn(
-                  "relative z-10 size-[18px] transition-colors",
-                  active ? "text-black" : "text-content-faint group-hover:text-content-muted",
-                )}
-              />
-              <span className="relative z-10">{label}</span>
-            </button>
-          );
-        })}
+      <nav className="mt-6 flex flex-col gap-1.5">
+        {NAV.map(({ id, label, icon: Icon }) => (
+          <RailButton key={id} label={label} active={view === id} onClick={() => setView(id)}>
+            <Icon className="size-[19px]" />
+          </RailButton>
+        ))}
       </nav>
 
-      <div className="flex flex-col gap-2 px-3 pb-4">
-        <button
-          onClick={openLatestLog}
-          disabled={!latestRun}
-          className="flex items-center justify-center gap-2 rounded-lg border border-border-soft bg-surface-2/60 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-2 hover:text-content disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <ScrollText className="size-3.5" />
-          View last log
-        </button>
+      <div className="flex-1" />
 
-        <button
-          onClick={() => setView("accounts")}
-          className="flex items-center gap-2.5 rounded-lg border border-border-soft bg-surface-2/70 px-2.5 py-2 text-left transition-colors hover:bg-surface-2"
+      <div className="flex flex-col items-center gap-1.5">
+        <RailButton
+          label={anyRunning ? "Console · running" : "Last log"}
+          active={view === "console"}
+          disabled={!latestRun}
+          onClick={() => latestRun && openConsole(latestRun.running_id)}
         >
-          <div className="grid size-8 shrink-0 place-items-center rounded-md bg-surface-3 text-content-faint">
-            <UserCircle2 className="size-[18px]" />
-          </div>
-          <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-xs font-semibold text-content-muted">
-              {activeAccount?.name ?? "No account"}
-            </div>
-            <div className="truncate text-[11px] text-content-faint">
-              {activeAccount ? "Switch or manage" : "Click to sign in"}
-            </div>
-          </div>
-          <ChevronsUpDown className="size-3.5 shrink-0 text-content-faint" />
-        </button>
+          <span className="relative">
+            <ScrollText className="size-[19px]" />
+            {anyRunning && view !== "console" && (
+              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-surface" />
+            )}
+          </span>
+        </RailButton>
+
+        <RailButton
+          label={activeAccount ? activeAccount.name : "Sign in"}
+          active={view === "accounts"}
+          onClick={() => setView("accounts")}
+        >
+          {activeAccount ? (
+            <span
+              className={cn(
+                "grid size-7 place-items-center rounded-full text-[11px] font-bold",
+                view === "accounts"
+                  ? "bg-black/25 text-black"
+                  : "bg-surface-3 text-content group-hover:bg-border",
+              )}
+            >
+              {activeAccount.name.slice(0, 1).toUpperCase()}
+            </span>
+          ) : (
+            <UserCircle2 className="size-[19px]" />
+          )}
+        </RailButton>
       </div>
     </aside>
   );
