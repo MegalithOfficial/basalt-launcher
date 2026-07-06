@@ -18,7 +18,12 @@ export interface Instance {
   last_played_at: number | null;
   playtime_secs: number;
   dir: string;
+  loader: string | null;
+  loader_version: string | null;
+  launch_version_id: string | null;
 }
+
+export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
 
 export interface VersionEntry {
   id: string;

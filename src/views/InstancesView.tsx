@@ -17,6 +17,7 @@ import { Button, EmptyState, PageHeader } from "../components/ui";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { cn } from "../lib/cn";
+import { loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
@@ -204,6 +205,7 @@ export function InstancesView() {
                 <div className="truncate font-display font-semibold text-content">{it.name}</div>
                 <div className="truncate text-xs text-content-muted">
                   {it.version_id}
+                  {it.loader && ` · ${loaderLabel(it)}`}
                   {it.last_played_at && ` · played ${relativeTime(it.last_played_at)}`}
                   {formatPlaytime(it.playtime_secs) && ` · ${formatPlaytime(it.playtime_secs)}`}
                 </div>
@@ -255,6 +257,7 @@ export function InstancesView() {
                     <div className="truncate font-display font-semibold text-white">{it.name}</div>
                     <div className="truncate font-pixel text-[10px] text-white/60">
                       {it.version_id}
+                      {it.loader && ` · ${loaderLabel(it)}`}
                     </div>
                   </div>
                 </div>

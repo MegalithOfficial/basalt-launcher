@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Check, Plus } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { useStore } from "../store";
 
@@ -91,6 +92,7 @@ export function InstanceSheet({
                       </div>
                       <div className="truncate font-pixel text-[10px] text-white/60">
                         {it.version_id}
+                        {it.loader && ` · ${loaderLabel(it)}`}
                       </div>
                     </div>
                     {active && (

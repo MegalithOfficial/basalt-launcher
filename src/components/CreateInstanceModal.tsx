@@ -4,7 +4,8 @@ import { Check, Loader2, Search, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
-import type { VersionEntry } from "../lib/types";
+import { LOADERS } from "../lib/loader";
+import type { LoaderKind, VersionEntry } from "../lib/types";
 import { useStore } from "../store";
 
 export function CreateInstanceModal({
@@ -25,6 +26,10 @@ export function CreateInstanceModal({
   const [selected, setSelected] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loader, setLoader] = useState<LoaderKind | null>(null);
+  const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
+  const [loaderVersion, setLoaderVersion] = useState<string | null>(null);
+  const [loaderLoading, setLoaderLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -35,21 +40,49 @@ export function CreateInstanceModal({
       .finally(() => setLoading(false));
   }, [open, includeSnapshots]);
 
+  useEffect(() => {
+    setLoaderVersions([]);
+    setLoaderVersion(null);
+    if (!loader || !selected) return;
+    let live = true;
+    setLoaderLoading(true);
+    api
+      .listLoaderVersions(loader, selected)
+      .then((list) => {
+        if (!live) return;
+        setLoaderVersions(list);
+        setLoaderVersion(list[0] ?? null);
+      })
+      .catch(() => live && setLoaderVersions([]))
+      .finally(() => live && setLoaderLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [loader, selected]);
+
   const filtered = useMemo(
     () => versions.filter((v) => v.id.toLowerCase().includes(query.toLowerCase())),
     [versions, query],
   );
 
+  const createDisabled = !selected || busy || (loader !== null && !loaderVersion);
+
   const create = async () => {
-    if (!selected) return;
+    if (!selected || (loader && !loaderVersion)) return;
     setBusy(true);
     try {
-      const instance = await createInstance(name.trim() || selected, selected);
+      const instance = await createInstance(
+        name.trim() || selected,
+        selected,
+        loader,
+        loader ? loaderVersion : null,
+      );
       onCreated(instance.id);
       onClose();
       setSelected(null);
       setName("");
       setQuery("");
+      setLoader(null);
     } finally {
       setBusy(false);
     }
@@ -113,6 +146,67 @@ export function CreateInstanceModal({
                   Snapshots
                 </button>
               </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex flex-1 rounded-lg border border-border bg-surface-2 p-0.5">
+                  <button
+                    onClick={() => setLoader(null)}
+                    className={cn(
+                      "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                      loader === null
+                        ? "bg-surface-3 text-content"
+                        : "text-content-faint hover:text-content-muted",
+                    )}
+                  >
+                    Vanilla
+                  </button>
+                  {LOADERS.map((l) => (
+                    <button
+                      key={l.id}
+                      onClick={() => setLoader(l.id)}
+                      className={cn(
+                        "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                        loader === l.id
+                          ? "bg-surface-3 text-content"
+                          : "text-content-faint hover:text-content-muted",
+                      )}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {loader && (
+                <div className="flex items-center gap-2">
+                  {loaderLoading ? (
+                    <div className="flex items-center gap-2 py-1 text-xs text-content-muted">
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Loading loader versions
+                    </div>
+                  ) : !selected ? (
+                    <div className="py-1 text-xs text-content-faint">
+                      Pick a game version to list loader builds.
+                    </div>
+                  ) : loaderVersions.length === 0 ? (
+                    <div className="py-1 text-xs text-warn">
+                      No {loader} builds for {selected}.
+                    </div>
+                  ) : (
+                    <select
+                      value={loaderVersion ?? ""}
+                      onChange={(e) => setLoaderVersion(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none focus:border-[var(--accent)]"
+                    >
+                      {loaderVersions.slice(0, 100).map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto border-t border-border-soft px-2 py-2">
@@ -154,7 +248,7 @@ export function CreateInstanceModal({
               </button>
               <button
                 onClick={create}
-                disabled={!selected || busy}
+                disabled={createDisabled}
                 className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-b from-lava to-lava-deep px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-lava/20 transition-all hover:from-lava-bright hover:to-lava disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy && <Loader2 className="size-4 animate-spin" />}

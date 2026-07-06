@@ -17,8 +17,15 @@ export const api = {
   updateSettings: (settings: LauncherSettings) =>
     invoke<void>("update_settings", { settings }),
   listInstances: () => invoke<Instance[]>("list_instances"),
-  createInstance: (name: string, versionId: string) =>
-    invoke<Instance>("create_instance", { name, versionId }),
+  createInstance: (
+    name: string,
+    versionId: string,
+    loader: string | null = null,
+    loaderVersion: string | null = null,
+  ) =>
+    invoke<Instance>("create_instance", { name, versionId, loader, loaderVersion }),
+  listLoaderVersions: (loader: string, gameVersion: string) =>
+    invoke<string[]>("list_loader_versions", { loader, gameVersion }),
   updateInstance: (
     instanceId: string,
     name: string,

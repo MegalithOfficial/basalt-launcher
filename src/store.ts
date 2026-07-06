@@ -3,6 +3,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 
 import { api } from "./lib/api";
+import { launchVersionOf } from "./lib/loader";
 import type {
   AccountView,
   InstallState,
@@ -74,7 +75,12 @@ interface AppStore {
   setView: (view: View) => void;
   init: () => Promise<void>;
   refreshInstances: () => Promise<void>;
-  createInstance: (name: string, versionId: string) => Promise<Instance>;
+  createInstance: (
+    name: string,
+    versionId: string,
+    loader?: string | null,
+    loaderVersion?: string | null,
+  ) => Promise<Instance>;
   updateInstance: (
     id: string,
     name: string,
@@ -195,7 +201,7 @@ export const useStore = create<AppStore>((set) => ({
         api.listInstalledVersions(),
       ]);
       const installedIds = instances
-        .filter((i) => installedVersions.includes(i.version_id))
+        .filter((i) => installedVersions.includes(launchVersionOf(i)))
         .map((i) => i.id);
       set((s) => ({
         settings,
@@ -311,13 +317,13 @@ export const useStore = create<AppStore>((set) => ({
     set({ instances: await api.listInstances() });
   },
 
-  createInstance: async (name, versionId) => {
-    const instance = await api.createInstance(name, versionId);
+  createInstance: async (name, versionId, loader, loaderVersion) => {
+    const instance = await api.createInstance(name, versionId, loader, loaderVersion);
     const installedVersions = await api.listInstalledVersions();
     set((s) => ({
       instances: [...s.instances, instance],
       selectedInstanceId: instance.id,
-      installedIds: installedVersions.includes(instance.version_id)
+      installedIds: installedVersions.includes(launchVersionOf(instance))
         ? [...s.installedIds, instance.id]
         : s.installedIds,
     }));

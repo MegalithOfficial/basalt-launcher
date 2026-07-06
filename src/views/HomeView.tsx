@@ -13,6 +13,7 @@ import {
 
 import { api } from "../lib/api";
 import { mediaSrc } from "../lib/media";
+import { loaderLabel } from "../lib/loader";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
@@ -34,6 +35,8 @@ const STAGE_LABEL: Record<string, string> = {
   "assets-index": "Fetching asset index",
   downloading: "Downloading",
   natives: "Extracting natives",
+  "loader-profile": "Fetching loader",
+  "loader-installer": "Setting up loader",
   done: "Ready",
 };
 
@@ -218,7 +221,7 @@ export function HomeView() {
                     </span>
                   )}
                   <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/50 backdrop-blur">
-                    VANILLA
+                    {loaderLabel(selected).toUpperCase()}
                   </span>
                 </div>
                 {media?.short_text && (

@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 
+import { loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
@@ -142,7 +143,10 @@ export function EditInstanceModal({
                   {instance.name}
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/60">
-                  <span className="font-pixel">{instance.version_id}</span>
+                  <span className="font-pixel">
+                    {instance.version_id}
+                    {instance.loader && ` · ${loaderLabel(instance)}`}
+                  </span>
                   {instance.last_played_at && (
                     <span className="inline-flex items-center gap-1">
                       <Clock className="size-3" />
