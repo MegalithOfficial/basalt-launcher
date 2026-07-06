@@ -62,9 +62,14 @@ export function Sidebar() {
       <button
         onClick={() => setView("home")}
         aria-label="Basalt"
-        className="group relative grid size-10 place-items-center rounded-xl bg-gradient-to-br from-lava-bright to-lava shadow-lg shadow-lava/25 transition-transform hover:scale-105 active:scale-95"
+        className="group relative size-10 overflow-hidden rounded-xl transition-transform hover:scale-105 active:scale-95"
       >
-        <span className="font-pixel text-[15px] leading-none text-black">B</span>
+        <img
+          src="/logo.png"
+          alt="Basalt"
+          className="size-full scale-[1.45] object-cover"
+          draggable={false}
+        />
       </button>
 
       <nav className="mt-6 flex flex-col gap-1.5">
