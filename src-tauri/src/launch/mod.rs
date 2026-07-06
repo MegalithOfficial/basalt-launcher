@@ -113,10 +113,17 @@ pub async fn launch_instance(
         .iter()
         .map(|spec| spec.dest.display().to_string())
         .collect();
+    classpath.extend(
+        resolved
+            .natives
+            .iter()
+            .map(|native| native.spec.dest.display().to_string()),
+    );
     classpath.push(state.paths.version_jar(version.jar_id()).display().to_string());
     let classpath = classpath.join(classpath_separator());
 
     let natives_dir = state.paths.natives_dir(&version.id);
+    std::fs::create_dir_all(&natives_dir)?;
     let game_dir = state.paths.instance_dir(&instance.id);
     std::fs::create_dir_all(&game_dir)?;
 
