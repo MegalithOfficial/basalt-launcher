@@ -95,6 +95,7 @@ interface AppStore {
     javaPath: string | null,
     loader: string | null,
     loaderVersion: string | null,
+    versionId: string,
   ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
   installInstance: (id: string) => Promise<void>;
@@ -387,7 +388,16 @@ export const useStore = create<AppStore>((set) => ({
     return instance;
   },
 
-  updateInstance: async (id, name, minMemoryMb, maxMemoryMb, javaPath, loader, loaderVersion) => {
+  updateInstance: async (
+    id,
+    name,
+    minMemoryMb,
+    maxMemoryMb,
+    javaPath,
+    loader,
+    loaderVersion,
+    versionId,
+  ) => {
     const updated = await api.updateInstance(
       id,
       name,
@@ -396,17 +406,22 @@ export const useStore = create<AppStore>((set) => ({
       javaPath,
       loader,
       loaderVersion,
+      versionId,
     );
     const installedVersions = await api.listInstalledVersions();
     set((s) => {
       const instances = s.instances.map((i) => (i.id === id ? updated : i));
+      const media = { ...s.media };
+      delete media[id];
       return {
         instances,
+        media,
         installedIds: instances
           .filter((i) => isInstanceInstalled(i, installedVersions))
           .map((i) => i.id),
       };
     });
+    void useStore.getState().loadMedia(id);
   },
 
   deleteInstance: async (id) => {

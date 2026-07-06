@@ -93,6 +93,8 @@ export function EditInstanceModal({
   const [loaderVersion, setLoaderVersion] = useState<string | null>(null);
   const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
   const [loaderLoading, setLoaderLoading] = useState(false);
+  const [gameVersion, setGameVersion] = useState("");
+  const [gameVersions, setGameVersions] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,18 +106,34 @@ export function EditInstanceModal({
     setJavaPath(instance.java_path ?? "");
     setLoader(instance.loader ?? VANILLA);
     setLoaderVersion(instance.loader_version ?? null);
+    setGameVersion(instance.version_id);
     setError(null);
   }, [instance?.id]);
 
   useEffect(() => {
-    if (!instance || loader === VANILLA) {
+    if (!instance) return;
+    let live = true;
+    api
+      .listVersions(true)
+      .then((list) => {
+        if (!live) return;
+        setGameVersions(list.map((v) => v.id));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [instance?.id]);
+
+  useEffect(() => {
+    if (!instance || loader === VANILLA || !gameVersion) {
       setLoaderVersions([]);
       return;
     }
     let live = true;
     setLoaderLoading(true);
     api
-      .listLoaderVersions(loader, instance.version_id)
+      .listLoaderVersions(loader, gameVersion)
       .then((list) => {
         if (!live) return;
         setLoaderVersions(list);
@@ -128,7 +146,7 @@ export function EditInstanceModal({
     return () => {
       live = false;
     };
-  }, [loader, instance?.id]);
+  }, [loader, gameVersion, instance?.id]);
 
   useEscape(!!instance, onClose);
 
@@ -144,12 +162,21 @@ export function EditInstanceModal({
 
   const newLoader = loader === VANILLA ? null : loader;
   const newLoaderVersion = loader === VANILLA ? null : loaderVersion;
-  const warning = loaderWarning(
+  const versionChanged = gameVersion !== instance.version_id;
+  const warnings: Array<{ tone: "info" | "warn" | "danger"; message: string }> = [];
+  if (versionChanged) {
+    warnings.push({
+      tone: "warn",
+      message: `Changing the game version to ${gameVersion} requires a reinstall, mods must match the new version, and worlds opened on it may not load on ${instance.version_id} again.`,
+    });
+  }
+  const loaderChange = loaderWarning(
     instance.loader,
     instance.loader_version,
     newLoader,
     newLoaderVersion,
   );
+  if (loaderChange) warnings.push(loaderChange);
 
   const save = async () => {
     setBusy(true);
@@ -163,6 +190,7 @@ export function EditInstanceModal({
         javaPath.trim() || null,
         newLoader,
         newLoaderVersion,
+        gameVersion,
       );
       onClose();
     } catch (e) {
@@ -294,6 +322,15 @@ export function EditInstanceModal({
               />
             </Field>
 
+            <Field label="Game version" hint="changing requires a reinstall">
+              <Select
+                value={gameVersion || null}
+                options={gameVersions.length > 0 ? gameVersions : [instance.version_id]}
+                onChange={setGameVersion}
+                placeholder="Pick a version"
+              />
+            </Field>
+
             <div className="grid grid-cols-2 gap-4">
               <Field label="Loader">
                 <Select
@@ -331,8 +368,9 @@ export function EditInstanceModal({
               </Field>
             </div>
 
-            {warning && (
+            {warnings.map((warning) => (
               <div
+                key={warning.message}
                 className={
                   warning.tone === "danger"
                     ? "rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
@@ -343,7 +381,7 @@ export function EditInstanceModal({
               >
                 {warning.message}
               </div>
-            )}
+            ))}
 
             <button
               onClick={() => openPath(instance.dir)}

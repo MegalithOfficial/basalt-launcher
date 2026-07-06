@@ -89,10 +89,14 @@ pub fn update_instance(
     java_path: Option<String>,
     loader: Option<String>,
     loader_version: Option<String>,
+    version_id: String,
 ) -> Result<Instance> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err(Error::other("Instance name cannot be empty."));
+    }
+    if version_id.trim().is_empty() {
+        return Err(Error::other("Game version cannot be empty."));
     }
     if let Some(loader) = loader.as_deref() {
         loaders::Loader::parse(loader)?;
@@ -101,8 +105,9 @@ pub fn update_instance(
         }
     }
     let existing = find_instance(&state, &instance_id)?;
-    let loader_changed =
-        existing.loader != loader || existing.loader_version != loader_version;
+    let needs_reset = existing.loader != loader
+        || existing.loader_version != loader_version
+        || existing.version_id != version_id;
     state.db.update_instance_settings(
         &instance_id,
         &name,
@@ -111,8 +116,12 @@ pub fn update_instance(
         java_path,
         loader,
         loader_version,
-        loader_changed,
+        &version_id,
+        needs_reset,
     )?;
+    if existing.version_id != version_id {
+        state.media_cache.lock().unwrap().remove(&instance_id);
+    }
     find_instance(&state, &instance_id)
 }
 

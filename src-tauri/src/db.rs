@@ -206,6 +206,7 @@ impl Db {
         java_path: Option<String>,
         loader: Option<String>,
         loader_version: Option<String>,
+        version_id: &str,
         reset_launch_version: bool,
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
@@ -213,17 +214,18 @@ impl Db {
             conn.execute(
                 "UPDATE instances
                  SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
-                     loader = ?6, loader_version = ?7, launch_version_id = NULL
+                     loader = ?6, loader_version = ?7, version_id = ?8,
+                     launch_version_id = NULL
                  WHERE id = ?1",
-                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version],
+                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version, version_id],
             )?;
         } else {
             conn.execute(
                 "UPDATE instances
                  SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
-                     loader = ?6, loader_version = ?7
+                     loader = ?6, loader_version = ?7, version_id = ?8
                  WHERE id = ?1",
-                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version],
+                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version, version_id],
             )?;
         }
         Ok(())

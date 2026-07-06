@@ -832,6 +832,34 @@ export function ProjectView() {
                               </div>
                               {expanded && (
                                 <div className="border-t border-border-soft px-4 py-3">
+                                  <div className="mb-3">
+                                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-faint">
+                                      Supports
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {v.game_versions.map((g) => (
+                                        <span
+                                          key={g}
+                                          className={cn(
+                                            "rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium",
+                                            g === instance.version_id
+                                              ? "bg-ok/20 text-ok"
+                                              : "text-content-muted",
+                                          )}
+                                        >
+                                          {g}
+                                        </span>
+                                      ))}
+                                      {v.loaders.map((l) => (
+                                        <span
+                                          key={l}
+                                          className="rounded bg-[var(--accent-glow)] px-1.5 py-0.5 text-[10px] font-medium capitalize text-content-muted"
+                                        >
+                                          {l}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
                                   {v.dependencies.length > 0 && (
                                     <div className="mb-3">
                                       <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-faint">

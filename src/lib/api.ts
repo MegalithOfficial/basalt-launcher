@@ -104,6 +104,7 @@ export const api = {
     javaPath: string | null,
     loader: string | null,
     loaderVersion: string | null,
+    versionId: string,
   ) =>
     invoke<Instance>("update_instance", {
       instanceId,
@@ -113,6 +114,7 @@ export const api = {
       javaPath,
       loader,
       loaderVersion,
+      versionId,
     }),
   deleteInstance: (instanceId: string) =>
     invoke<void>("delete_instance", { instanceId }),
