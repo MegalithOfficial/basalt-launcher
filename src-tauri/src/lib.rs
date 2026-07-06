@@ -18,6 +18,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let paths = Paths::resolve(app.handle())?;
             paths.ensure_dirs()?;
@@ -33,7 +34,9 @@ pub fn run() {
             commands::delete_instance,
             commands::list_versions,
             commands::list_installed_versions,
-            commands::get_version_media,
+            commands::get_instance_media,
+            commands::set_instance_banner,
+            commands::clear_instance_banner,
             commands::install_instance,
             commands::get_java_status,
             commands::auth_begin,

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Boxes, Download, Loader2, Plus, Trash2 } from "lucide-react";
+import { Boxes, Download, ImageOff, ImagePlus, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { Button, EmptyState, PageHeader } from "../components/ui";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { mediaSrc } from "../lib/media";
 import { useStore } from "../store";
 
 export function InstancesView() {
@@ -13,11 +14,13 @@ export function InstancesView() {
   const deleteInstance = useStore((s) => s.deleteInstance);
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
+  const pickBanner = useStore((s) => s.pickBanner);
+  const clearBanner = useStore((s) => s.clearBanner);
 
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    instances.forEach((i) => loadMedia(i.version_id));
+    instances.forEach((i) => loadMedia(i.id));
   }, [instances, loadMedia]);
 
   return (
@@ -59,9 +62,9 @@ export function InstancesView() {
                 key={it.id}
                 className="flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-3"
               >
-                {mediaMap[it.version_id] ? (
+                {mediaMap[it.id] ? (
                   <img
-                    src={mediaMap[it.version_id]!.image_url}
+                    src={mediaSrc(mediaMap[it.id]!)}
                     className="size-10 shrink-0 rounded-lg object-cover"
                     draggable={false}
                   />
@@ -98,6 +101,23 @@ export function InstancesView() {
                   </button>
                 )}
 
+                {mediaMap[it.id]?.local ? (
+                  <button
+                    onClick={() => clearBanner(it.id)}
+                    title="Remove custom banner"
+                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                  >
+                    <ImageOff className="size-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => pickBanner(it.id)}
+                    title="Set custom banner"
+                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                  >
+                    <ImagePlus className="size-4" />
+                  </button>
+                )}
                 <button
                   onClick={() => deleteInstance(it.id)}
                   className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"

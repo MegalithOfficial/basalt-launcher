@@ -61,6 +61,7 @@ export interface VersionMedia {
   image_url: string;
   short_text: string | null;
   accent: string | null;
+  local: boolean;
 }
 
 export interface RunningInfo {

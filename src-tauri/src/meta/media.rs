@@ -30,7 +30,10 @@ pub struct VersionMedia {
     pub image_url: String,
     pub short_text: Option<String>,
     pub accent: Option<String>,
+    pub local: bool,
 }
+
+const BANNER_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "gif"];
 
 pub async fn fetch_notes(client: &reqwest::Client, paths: &Paths) -> Result<PatchNotes> {
     let cache = paths.root.join("patch_notes.json");
@@ -124,17 +127,115 @@ async fn accent_for(
         }
     };
 
-    let accent = tokio::task::spawn_blocking(move || {
+    let accent = compute_accent(bytes).await;
+    let _ = tokio::fs::write(&accent_path, accent.clone().unwrap_or_default()).await;
+    accent
+}
+
+async fn compute_accent(bytes: Vec<u8>) -> Option<String> {
+    tokio::task::spawn_blocking(move || {
         let img = image::load_from_memory(&bytes).ok()?;
         let small = img.resize_exact(32, 32, image::imageops::FilterType::Triangle);
         accent_from_pixels(&small.to_rgb8())
     })
     .await
     .ok()
-    .flatten();
+    .flatten()
+}
 
-    let _ = tokio::fs::write(&accent_path, accent.clone().unwrap_or_default()).await;
-    accent
+fn banner_paths(paths: &Paths, instance_id: &str) -> Vec<std::path::PathBuf> {
+    let media_dir = paths.root.join("media");
+    BANNER_EXTENSIONS
+        .iter()
+        .map(|ext| media_dir.join(format!("instance-{instance_id}.{ext}")))
+        .collect()
+}
+
+fn banner_accent_path(paths: &Paths, instance_id: &str) -> std::path::PathBuf {
+    paths.root.join("media").join(format!("instance-{instance_id}.accent"))
+}
+
+pub async fn custom_banner(paths: &Paths, instance_id: &str) -> Option<VersionMedia> {
+    let img_path = {
+        let mut found = None;
+        for candidate in banner_paths(paths, instance_id) {
+            if candidate.is_file() {
+                found = Some(candidate);
+                break;
+            }
+        }
+        found?
+    };
+
+    let accent_path = banner_accent_path(paths, instance_id);
+    let accent = match tokio::fs::read_to_string(&accent_path).await {
+        Ok(cached) => {
+            let cached = cached.trim().to_string();
+            if cached.is_empty() { None } else { Some(cached) }
+        }
+        Err(_) => {
+            let bytes = tokio::fs::read(&img_path).await.ok()?;
+            let accent = compute_accent(bytes).await;
+            let _ = tokio::fs::write(&accent_path, accent.clone().unwrap_or_default()).await;
+            accent
+        }
+    };
+
+    Some(VersionMedia {
+        image_url: img_path.display().to_string(),
+        short_text: None,
+        accent,
+        local: true,
+    })
+}
+
+pub async fn set_custom_banner(
+    paths: &Paths,
+    instance_id: &str,
+    source: &str,
+) -> crate::error::Result<VersionMedia> {
+    use crate::error::Error;
+
+    let source_path = std::path::Path::new(source);
+    let ext = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if !BANNER_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(Error::other(format!(
+            "Unsupported image type .{ext}. Use png, jpg, webp, or gif."
+        )));
+    }
+
+    clear_custom_banner(paths, instance_id).await;
+
+    let media_dir = paths.root.join("media");
+    tokio::fs::create_dir_all(&media_dir).await?;
+    let dest = media_dir.join(format!("instance-{instance_id}.{ext}"));
+    tokio::fs::copy(source_path, &dest).await?;
+
+    let bytes = tokio::fs::read(&dest).await?;
+    let accent = compute_accent(bytes).await;
+    let _ = tokio::fs::write(
+        banner_accent_path(paths, instance_id),
+        accent.clone().unwrap_or_default(),
+    )
+    .await;
+
+    Ok(VersionMedia {
+        image_url: dest.display().to_string(),
+        short_text: None,
+        accent,
+        local: true,
+    })
+}
+
+pub async fn clear_custom_banner(paths: &Paths, instance_id: &str) {
+    for path in banner_paths(paths, instance_id) {
+        let _ = tokio::fs::remove_file(path).await;
+    }
+    let _ = tokio::fs::remove_file(banner_accent_path(paths, instance_id)).await;
 }
 
 pub async fn media_for(
@@ -151,5 +252,6 @@ pub async fn media_for(
         image_url,
         short_text: entry.short_text.clone(),
         accent,
+        local: false,
     })
 }

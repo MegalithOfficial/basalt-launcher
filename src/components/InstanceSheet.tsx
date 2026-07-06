@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Check, Plus } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { mediaSrc } from "../lib/media";
 import { useStore } from "../store";
 
 const tileGrid: React.CSSProperties = {
@@ -56,7 +57,7 @@ export function InstanceSheet({
 
             <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 p-6 pt-2">
               {instances.map((it) => {
-                const media = mediaMap[it.version_id] ?? null;
+                const media = mediaMap[it.id] ?? null;
                 const active = it.id === selectedId;
                 return (
                   <button
@@ -74,8 +75,11 @@ export function InstanceSheet({
                   >
                     {media ? (
                       <img
-                        src={media.image_url}
-                        className="absolute inset-0 h-full w-full object-cover [image-rendering:pixelated] transition-transform duration-300 group-hover:scale-[1.03]"
+                        src={mediaSrc(media)}
+                        className={cn(
+                          "absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]",
+                          !media.local && "[image-rendering:pixelated]",
+                        )}
                         draggable={false}
                       />
                     ) : (

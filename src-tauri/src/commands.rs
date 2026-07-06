@@ -56,7 +56,7 @@ pub fn create_instance(
 }
 
 #[tauri::command]
-pub fn delete_instance(state: State<AppState>, instance_id: String) -> Result<()> {
+pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
     let mut instances = config::load_instances(&state.paths)?;
     instances.retain(|i| i.id != instance_id);
     config::save_instances(&state.paths, &instances)?;
@@ -64,37 +64,71 @@ pub fn delete_instance(state: State<AppState>, instance_id: String) -> Result<()
     if dir.exists() {
         std::fs::remove_dir_all(dir)?;
     }
+    media::clear_custom_banner(&state.paths, &instance_id).await;
+    state.media_cache.lock().unwrap().remove(&instance_id);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_version_media(
+pub async fn get_instance_media(
     state: State<'_, AppState>,
-    version_id: String,
+    instance_id: String,
 ) -> Result<Option<VersionMedia>> {
-    if let Some(cached) = state.media_cache.lock().unwrap().get(&version_id) {
+    if let Some(cached) = state.media_cache.lock().unwrap().get(&instance_id) {
         return Ok(cached.clone());
     }
 
-    let notes = {
-        let cached = state.patch_notes.lock().unwrap().clone();
-        match cached {
-            Some(notes) => notes,
-            None => {
-                let notes = media::fetch_notes(&state.http, &state.paths).await?;
-                *state.patch_notes.lock().unwrap() = Some(notes.clone());
-                notes
-            }
+    let result = match media::custom_banner(&state.paths, &instance_id).await {
+        Some(banner) => Some(banner),
+        None => {
+            let instance = find_instance(&state, &instance_id)?;
+            let notes = {
+                let cached = state.patch_notes.lock().unwrap().clone();
+                match cached {
+                    Some(notes) => notes,
+                    None => {
+                        let notes = media::fetch_notes(&state.http, &state.paths).await?;
+                        *state.patch_notes.lock().unwrap() = Some(notes.clone());
+                        notes
+                    }
+                }
+            };
+            media::media_for(&state.http, &state.paths, &notes, &instance.version_id).await
         }
     };
 
-    let result = media::media_for(&state.http, &state.paths, &notes, &version_id).await;
     state
         .media_cache
         .lock()
         .unwrap()
-        .insert(version_id, result.clone());
+        .insert(instance_id, result.clone());
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn set_instance_banner(
+    state: State<'_, AppState>,
+    instance_id: String,
+    source_path: String,
+) -> Result<VersionMedia> {
+    find_instance(&state, &instance_id)?;
+    let media = media::set_custom_banner(&state.paths, &instance_id, &source_path).await?;
+    state
+        .media_cache
+        .lock()
+        .unwrap()
+        .insert(instance_id, Some(media.clone()));
+    Ok(media)
+}
+
+#[tauri::command]
+pub async fn clear_instance_banner(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<()> {
+    media::clear_custom_banner(&state.paths, &instance_id).await;
+    state.media_cache.lock().unwrap().remove(&instance_id);
+    Ok(())
 }
 
 #[tauri::command]

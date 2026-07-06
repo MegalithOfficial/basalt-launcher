@@ -25,10 +25,9 @@ function App() {
   const ready = useStore((s) => s.ready);
   const error = useStore((s) => s.error);
   const init = useStore((s) => s.init);
-  const accent = useStore((s) => {
-    const selected = s.instances.find((i) => i.id === s.selectedInstanceId);
-    return selected ? (s.media[selected.version_id]?.accent ?? null) : null;
-  });
+  const accent = useStore((s) =>
+    s.selectedInstanceId ? (s.media[s.selectedInstanceId]?.accent ?? null) : null,
+  );
 
   useEffect(() => {
     init();

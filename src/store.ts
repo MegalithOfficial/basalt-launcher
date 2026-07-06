@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 
 import { api } from "./lib/api";
@@ -85,8 +86,10 @@ interface AppStore {
   killInstance: (runningId: string) => Promise<void>;
   closeRunning: (runningId: string) => Promise<void>;
   openConsole: (runningId: string) => void;
-  loadMedia: (versionId: string) => Promise<void>;
+  loadMedia: (instanceId: string) => Promise<void>;
   selectInstance: (id: string) => void;
+  pickBanner: (instanceId: string) => Promise<void>;
+  clearBanner: (instanceId: string) => Promise<void>;
 }
 
 let listenersBound = false;
@@ -266,15 +269,32 @@ export const useStore = create<AppStore>((set) => ({
 
   selectInstance: (id) => set({ selectedInstanceId: id }),
 
-  loadMedia: async (versionId) => {
-    if (versionId in useStore.getState().media) return;
-    set((s) => ({ media: { ...s.media, [versionId]: null } }));
+  loadMedia: async (instanceId) => {
+    if (instanceId in useStore.getState().media) return;
+    set((s) => ({ media: { ...s.media, [instanceId]: null } }));
     try {
-      const media = await api.getVersionMedia(versionId);
-      set((s) => ({ media: { ...s.media, [versionId]: media } }));
+      const media = await api.getInstanceMedia(instanceId);
+      set((s) => ({ media: { ...s.media, [instanceId]: media } }));
     } catch {
-      set((s) => ({ media: { ...s.media, [versionId]: null } }));
+      set((s) => ({ media: { ...s.media, [instanceId]: null } }));
     }
+  },
+
+  pickBanner: async (instanceId) => {
+    const file = await openFileDialog({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+    });
+    if (typeof file !== "string") return;
+    const media = await api.setInstanceBanner(instanceId, file);
+    set((s) => ({ media: { ...s.media, [instanceId]: media } }));
+  },
+
+  clearBanner: async (instanceId) => {
+    await api.clearInstanceBanner(instanceId);
+    const media = await api.getInstanceMedia(instanceId).catch(() => null);
+    set((s) => ({ media: { ...s.media, [instanceId]: media } }));
   },
 
   refreshInstances: async () => {

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { api } from "../lib/api";
+import { mediaSrc } from "../lib/media";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { InstanceSheet } from "../components/InstanceSheet";
@@ -53,13 +54,17 @@ function HeroArt({ media, id }: { media: VersionMedia | null; id: string }) {
     <AnimatePresence mode="popLayout">
       <motion.img
         key={id + media.image_url}
-        src={media.image_url}
+        src={mediaSrc(media)}
         onError={() => setFailed(true)}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.4 }}
-        className="absolute inset-0 h-full w-full object-cover [image-rendering:pixelated]"
+        className={
+          media.local
+            ? "absolute inset-0 h-full w-full object-cover"
+            : "absolute inset-0 h-full w-full object-cover [image-rendering:pixelated]"
+        }
         draggable={false}
       />
     </AnimatePresence>
@@ -88,13 +93,13 @@ export function HomeView() {
 
   const selected = instances.find((i) => i.id === selectedId) ?? instances[0];
   const hasInstance = !!selected;
-  const media = selected ? (mediaMap[selected.version_id] ?? null) : null;
+  const media = selected ? (mediaMap[selected.id] ?? null) : null;
   const install = selected ? installs[selected.id] : undefined;
   const installing = !!install;
   const installed = selected ? installedIds.includes(selected.id) : false;
 
   useEffect(() => {
-    instances.forEach((i) => loadMedia(i.version_id));
+    instances.forEach((i) => loadMedia(i.id));
   }, [instances, loadMedia]);
 
   useEffect(() => {

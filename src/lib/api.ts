@@ -24,8 +24,12 @@ export const api = {
   listVersions: (includeSnapshots = false) =>
     invoke<VersionEntry[]>("list_versions", { includeSnapshots }),
   listInstalledVersions: () => invoke<string[]>("list_installed_versions"),
-  getVersionMedia: (versionId: string) =>
-    invoke<VersionMedia | null>("get_version_media", { versionId }),
+  getInstanceMedia: (instanceId: string) =>
+    invoke<VersionMedia | null>("get_instance_media", { instanceId }),
+  setInstanceBanner: (instanceId: string, sourcePath: string) =>
+    invoke<VersionMedia>("set_instance_banner", { instanceId, sourcePath }),
+  clearInstanceBanner: (instanceId: string) =>
+    invoke<void>("clear_instance_banner", { instanceId }),
   installInstance: (instanceId: string) =>
     invoke<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>
