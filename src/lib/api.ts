@@ -8,7 +8,9 @@ import type {
   JavaStatus,
   LauncherSettings,
   LogLine,
+  ProjectDetails,
   RunningInfo,
+  SearchResult,
   VersionEntry,
   VersionMedia,
 } from "./types";
@@ -35,6 +37,32 @@ export const api = {
     invoke<void>("delete_instance_content", { instanceId, kind, fileName }),
   addInstanceContent: (instanceId: string, kind: string, sources: string[]) =>
     invoke<number>("add_instance_content", { instanceId, kind, sources }),
+  searchContent: (
+    provider: string,
+    kind: string,
+    query: string,
+    gameVersion: string,
+    loader: string | null,
+  ) =>
+    invoke<SearchResult[]>("search_content", { provider, kind, query, gameVersion, loader }),
+  getProjectDetails: (provider: string, projectId: string) =>
+    invoke<ProjectDetails>("get_project_details", { provider, projectId }),
+  installContent: (
+    provider: string,
+    projectId: string,
+    instanceId: string,
+    kind: string,
+    gameVersion: string,
+    loader: string | null,
+  ) =>
+    invoke<string>("install_content", {
+      provider,
+      projectId,
+      instanceId,
+      kind,
+      gameVersion,
+      loader,
+    }),
   updateInstance: (
     instanceId: string,
     name: string,

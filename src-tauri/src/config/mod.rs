@@ -7,6 +7,7 @@ pub struct LauncherSettings {
     pub max_memory_mb: u32,
     pub java_path: Option<String>,
     pub concurrent_downloads: usize,
+    pub curseforge_api_key: Option<String>,
 }
 
 impl Default for LauncherSettings {
@@ -16,6 +17,7 @@ impl Default for LauncherSettings {
             max_memory_mb: 2048,
             java_path: None,
             concurrent_downloads: 16,
+            curseforge_api_key: None,
         }
     }
 }

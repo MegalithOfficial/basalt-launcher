@@ -26,6 +26,14 @@ const TABS: Array<{ kind: ContentKind; label: string; extensions: string[] }> = 
   { kind: "shaderpacks", label: "Shaders", extensions: ["zip"] },
 ];
 
+const SCHEMATICS_TAB = {
+  kind: "schematics" as ContentKind,
+  label: "Schematics",
+  extensions: ["litematic", "schem", "schematic", "nbt"],
+};
+
+const SCHEMATIC_MOD_MARKERS = ["litematica", "worldedit", "schematica", "axiom", "schematic"];
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -57,12 +65,14 @@ export function InstanceView() {
   const instance = useStore((s) => s.instances.find((i) => i.id === s.detailInstanceId));
   const media = useStore((s) => (detailId ? (s.media[detailId] ?? null) : null));
   const setView = useStore((s) => s.setView);
+  const openSearch = useStore((s) => s.openSearch);
 
   const [tab, setTab] = useState<ContentKind>("mods");
   const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [hasSchematicMod, setHasSchematicMod] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!instance) return;
@@ -80,6 +90,26 @@ export function InstanceView() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!instance) return;
+    let live = true;
+    api
+      .listInstanceContent(instance.id, "mods")
+      .then((mods) => {
+        if (!live) return;
+        const found = mods.some((m) =>
+          SCHEMATIC_MOD_MARKERS.some((marker) =>
+            m.file_name.toLowerCase().includes(marker),
+          ),
+        );
+        setHasSchematicMod(found);
+      })
+      .catch(() => live && setHasSchematicMod(false));
+    return () => {
+      live = false;
+    };
+  }, [instance?.id, items]);
+
   if (!instance) {
     return (
       <div className="grid flex-1 place-items-center text-sm text-content-muted">
@@ -88,9 +118,14 @@ export function InstanceView() {
     );
   }
 
-  const tabMeta = TABS.find((t) => t.kind === tab)!;
+  const allTabs = hasSchematicMod ? [...TABS, SCHEMATICS_TAB] : TABS;
+  const tabMeta = allTabs.find((t) => t.kind === tab) ?? TABS[0];
 
   const addContent = async () => {
+    if (tab !== "schematics") {
+      openSearch(tab);
+      return;
+    }
     const files = await openFileDialog({
       multiple: true,
       directory: false,
@@ -175,7 +210,7 @@ export function InstanceView() {
 
       <div className="flex items-center justify-between gap-4 border-b border-border-soft px-6 pt-4">
         <div className="flex gap-1">
-          {TABS.map((t) => (
+          {allTabs.map((t) => (
             <button
               key={t.kind}
               onClick={() => setTab(t.kind)}

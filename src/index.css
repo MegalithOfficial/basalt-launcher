@@ -64,6 +64,91 @@
     user-select: none;
   }
 
+  .prose-basalt {
+    color: var(--color-content-muted);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    user-select: text;
+  }
+  .prose-basalt h1,
+  .prose-basalt h2,
+  .prose-basalt h3,
+  .prose-basalt h4 {
+    color: var(--color-content);
+    font-family: var(--font-display);
+    font-weight: 650;
+    margin: 1.4em 0 0.5em;
+    line-height: 1.25;
+  }
+  .prose-basalt h1 { font-size: 1.4rem; }
+  .prose-basalt h2 { font-size: 1.2rem; }
+  .prose-basalt h3 { font-size: 1.05rem; }
+  .prose-basalt p { margin: 0.7em 0; }
+  .prose-basalt a {
+    color: var(--accent, var(--color-lava));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-basalt img {
+    max-width: 100%;
+    border-radius: 0.75rem;
+    margin: 0.75em 0;
+  }
+  .prose-basalt ul,
+  .prose-basalt ol {
+    padding-left: 1.4em;
+    margin: 0.7em 0;
+  }
+  .prose-basalt ul { list-style: disc; }
+  .prose-basalt ol { list-style: decimal; }
+  .prose-basalt code {
+    background: var(--color-surface-2);
+    border-radius: 0.3rem;
+    padding: 0.1em 0.35em;
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+  }
+  .prose-basalt pre {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border-soft);
+    border-radius: 0.75rem;
+    padding: 0.9em 1em;
+    overflow-x: auto;
+    margin: 0.9em 0;
+  }
+  .prose-basalt pre code { background: transparent; padding: 0; }
+  .prose-basalt blockquote {
+    border-left: 3px solid var(--color-border);
+    padding-left: 1em;
+    margin: 0.9em 0;
+    color: var(--color-content-faint);
+  }
+  .prose-basalt hr {
+    border: 0;
+    border-top: 1px solid var(--color-border-soft);
+    margin: 1.4em 0;
+  }
+  .prose-basalt table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.9em 0;
+    font-size: 0.85em;
+  }
+  .prose-basalt th,
+  .prose-basalt td {
+    border: 1px solid var(--color-border-soft);
+    padding: 0.4em 0.7em;
+    text-align: left;
+  }
+  .prose-basalt iframe,
+  .prose-basalt video {
+    max-width: 100%;
+    border-radius: 0.75rem;
+  }
+  .prose-basalt h1:first-child,
+  .prose-basalt h2:first-child,
+  .prose-basalt p:first-child { margin-top: 0; }
+
   /* Themed thin scrollbars for the console + lists */
   ::-webkit-scrollbar {
     width: 10px;

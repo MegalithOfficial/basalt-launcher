@@ -17,6 +17,7 @@ fn kind_subdir(kind: &str) -> Result<&'static str> {
         "mods" => Ok("mods"),
         "resourcepacks" => Ok("resourcepacks"),
         "shaderpacks" => Ok("shaderpacks"),
+        "schematics" => Ok("schematics"),
         other => Err(Error::other(format!("unknown content kind {other}"))),
     }
 }
@@ -94,6 +95,10 @@ pub fn delete(paths: &Paths, instance_id: &str, kind: &str, file_name: &str) -> 
         std::fs::remove_file(disabled_path)?;
     }
     Ok(())
+}
+
+pub fn dir_for(paths: &Paths, instance_id: &str, kind: &str) -> Result<std::path::PathBuf> {
+    content_dir(paths, instance_id, kind)
 }
 
 pub fn add(paths: &Paths, instance_id: &str, kind: &str, sources: &[String]) -> Result<usize> {

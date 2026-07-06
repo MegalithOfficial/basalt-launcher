@@ -11,6 +11,7 @@ mod launch;
 mod loaders;
 mod meta;
 mod paths;
+mod search;
 mod state;
 
 use paths::Paths;
@@ -52,6 +53,9 @@ pub fn run() {
             commands::list_accounts,
             commands::set_active_account,
             commands::remove_account,
+            commands::search_content,
+            commands::get_project_details,
+            commands::install_content,
             commands::list_instance_content,
             commands::toggle_instance_content,
             commands::delete_instance_content,

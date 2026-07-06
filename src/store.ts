@@ -6,11 +6,13 @@ import { api } from "./lib/api";
 import { launchVersionOf } from "./lib/loader";
 import type {
   AccountView,
+  ContentKind,
   InstallState,
   Instance,
   LauncherSettings,
   LogLine,
   RunningInfo,
+  SearchProvider,
   VersionMedia,
   View,
 } from "./lib/types";
@@ -71,7 +73,9 @@ interface AppStore {
   activeRunningId: string | null;
   media: Record<string, VersionMedia | null>;
   detailInstanceId: string | null;
-  previousView: View | null;
+  viewStack: View[];
+  searchKind: ContentKind | null;
+  projectRef: { provider: SearchProvider; id: string } | null;
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
@@ -104,6 +108,8 @@ interface AppStore {
   loadMedia: (instanceId: string) => Promise<void>;
   selectInstance: (id: string) => void;
   openInstance: (id: string) => void;
+  openSearch: (kind: ContentKind) => void;
+  openProject: (provider: SearchProvider, id: string) => void;
   goBack: () => void;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
@@ -127,11 +133,35 @@ export const useStore = create<AppStore>((set) => ({
   media: {},
   selectedInstanceId: null,
   detailInstanceId: null,
-  previousView: null,
+  viewStack: [],
+  searchKind: null,
+  projectRef: null,
 
-  setView: (view) => set((s) => ({ view, previousView: s.view !== view ? s.view : s.previousView })),
+  setView: (view) =>
+    set((s) => ({
+      view,
+      viewStack: s.view !== view ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+    })),
 
-  goBack: () => set((s) => ({ view: s.previousView ?? "home", previousView: null })),
+  goBack: () =>
+    set((s) => ({
+      view: s.viewStack[s.viewStack.length - 1] ?? "home",
+      viewStack: s.viewStack.slice(0, -1),
+    })),
+
+  openSearch: (kind) =>
+    set((s) => ({
+      searchKind: kind,
+      view: "search",
+      viewStack: s.view !== "search" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+    })),
+
+  openProject: (provider, id) =>
+    set((s) => ({
+      projectRef: { provider, id },
+      view: "project",
+      viewStack: s.view !== "project" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+    })),
 
   init: async () => {
     if (!listenersBound) {
@@ -263,7 +293,7 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       activeRunningId: runningId,
       view: "console",
-      previousView: s.view !== "console" ? s.view : s.previousView,
+      viewStack: s.view !== "console" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     }));
     const backfill = await api.getLogs(runningId);
     set((s) => {
@@ -297,7 +327,7 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       activeRunningId: runningId,
       view: "console",
-      previousView: s.view !== "console" ? s.view : s.previousView,
+      viewStack: s.view !== "console" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
 
   selectInstance: (id) => set({ selectedInstanceId: id }),
@@ -306,7 +336,7 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       detailInstanceId: id,
       view: "instance",
-      previousView: s.view !== "instance" ? s.view : s.previousView,
+      viewStack: s.view !== "instance" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
 
   loadMedia: async (instanceId) => {

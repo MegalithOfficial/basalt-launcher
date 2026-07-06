@@ -5,6 +5,7 @@ export interface LauncherSettings {
   max_memory_mb: number;
   java_path: string | null;
   concurrent_downloads: number;
+  curseforge_api_key: string | null;
 }
 
 export interface Instance {
@@ -25,12 +26,35 @@ export interface Instance {
 
 export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
 
-export type ContentKind = "mods" | "resourcepacks" | "shaderpacks";
+export type ContentKind = "mods" | "resourcepacks" | "shaderpacks" | "schematics";
 
 export interface ContentItem {
   file_name: string;
   size: number;
   enabled: boolean;
+}
+
+export type SearchProvider = "modrinth" | "curseforge";
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  description: string;
+  icon_url: string | null;
+  downloads: number;
+  author: string;
+}
+
+export interface ProjectDetails {
+  id: string;
+  title: string;
+  description: string;
+  body: string;
+  body_format: "markdown" | "html";
+  icon_url: string | null;
+  downloads: number;
+  author: string;
+  gallery: string[];
 }
 
 export interface VersionEntry {
@@ -94,4 +118,12 @@ export interface LogLine {
   line: string;
 }
 
-export type View = "home" | "instances" | "accounts" | "settings" | "console" | "instance";
+export type View =
+  | "home"
+  | "instances"
+  | "accounts"
+  | "settings"
+  | "console"
+  | "instance"
+  | "search"
+  | "project";

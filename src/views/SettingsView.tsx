@@ -97,6 +97,18 @@ export function SettingsView() {
               onChange={(e) => set({ java_path: e.target.value || null })}
             />
           </Field>
+          <Field
+            label="CurseForge API key"
+            hint="Needed for CurseForge search, free at console.curseforge.com"
+          >
+            <input
+              type="password"
+              placeholder="not set"
+              className={`${inputCls} w-64`}
+              value={draft.curseforge_api_key ?? ""}
+              onChange={(e) => set({ curseforge_api_key: e.target.value || null })}
+            />
+          </Field>
         </div>
       </div>
     </div>

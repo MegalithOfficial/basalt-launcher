@@ -16,6 +16,7 @@ use crate::launch::{self, process::{LogLine, RunningInfo}};
 use crate::loaders;
 use crate::meta::manifest::{self, VersionEntry};
 use crate::meta::media::{self, VersionMedia};
+use crate::search;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -315,6 +316,53 @@ pub fn add_instance_content(
 ) -> Result<usize> {
     find_instance(&state, &instance_id)?;
     content::add(&state.paths, &instance_id, &kind, &sources)
+}
+
+#[tauri::command]
+pub async fn search_content(
+    state: State<'_, AppState>,
+    provider: String,
+    kind: String,
+    query: String,
+    game_version: String,
+    loader: Option<String>,
+) -> Result<Vec<search::SearchResult>> {
+    let provider = search::Provider::parse(&provider)?;
+    search::search(&state, provider, &kind, &query, &game_version, loader.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn get_project_details(
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+) -> Result<search::ProjectDetails> {
+    let provider = search::Provider::parse(&provider)?;
+    search::project_details(&state, provider, &project_id).await
+}
+
+#[tauri::command]
+pub async fn install_content(
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    instance_id: String,
+    kind: String,
+    game_version: String,
+    loader: Option<String>,
+) -> Result<String> {
+    find_instance(&state, &instance_id)?;
+    let provider = search::Provider::parse(&provider)?;
+    search::install(
+        &state,
+        provider,
+        &project_id,
+        &instance_id,
+        &kind,
+        &game_version,
+        loader.as_deref(),
+    )
+    .await
 }
 
 #[derive(Serialize)]
