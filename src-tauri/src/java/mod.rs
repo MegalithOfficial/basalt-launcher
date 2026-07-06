@@ -70,6 +70,24 @@ pub async fn detect(explicit: Option<&str>) -> Option<JavaInfo> {
     candidates(explicit).await.into_iter().next()
 }
 
+pub async fn list_all() -> Vec<JavaInfo> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for info in candidates(None).await {
+        let canonical = std::fs::canonicalize(&info.path)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| info.path.clone());
+        if seen.insert(canonical.clone()) {
+            result.push(JavaInfo {
+                path: canonical,
+                major: info.major,
+            });
+        }
+    }
+    result.sort_by(|a, b| b.major.cmp(&a.major));
+    result
+}
+
 pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<JavaInfo> {
     let found = candidates(explicit).await;
     found

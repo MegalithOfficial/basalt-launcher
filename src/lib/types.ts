@@ -130,6 +130,11 @@ export interface JavaInfo {
   major: number;
 }
 
+export interface AppInfo {
+  version: string;
+  data_dir: string;
+}
+
 export interface JavaStatus {
   required_major: number;
   found: JavaInfo | null;

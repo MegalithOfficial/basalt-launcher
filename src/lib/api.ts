@@ -2,12 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   AccountView,
+  AppInfo,
   Changelog,
   ContentItem,
   ContentSourceEntry,
   DeviceCodeInfo,
   InstalledFile,
   Instance,
+  JavaInfo,
   JavaStatus,
   LauncherSettings,
   LogLine,
@@ -21,6 +23,8 @@ import type {
 
 export const api = {
   getSettings: () => invoke<LauncherSettings>("get_settings"),
+  getAppInfo: () => invoke<AppInfo>("get_app_info"),
+  listJavas: () => invoke<JavaInfo[]>("list_javas"),
   updateSettings: (settings: LauncherSettings) =>
     invoke<void>("update_settings", { settings }),
   listInstances: () => invoke<Instance[]>("list_instances"),

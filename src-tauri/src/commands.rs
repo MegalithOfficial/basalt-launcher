@@ -24,6 +24,25 @@ pub fn get_settings(state: State<AppState>) -> Result<LauncherSettings> {
     state.db.load_settings()
 }
 
+#[derive(Serialize)]
+pub struct AppInfo {
+    pub version: String,
+    pub data_dir: String,
+}
+
+#[tauri::command]
+pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
+    Ok(AppInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        data_dir: state.paths.root.display().to_string(),
+    })
+}
+
+#[tauri::command]
+pub async fn list_javas() -> Result<Vec<java::JavaInfo>> {
+    Ok(java::list_all().await)
+}
+
 #[tauri::command]
 pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Result<()> {
     state.db.save_settings(&settings)
