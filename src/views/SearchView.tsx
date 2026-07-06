@@ -3,7 +3,6 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowLeft,
   Check,
-  ChevronRight,
   Download,
   FileUp,
   Loader2,
@@ -15,6 +14,7 @@ import {
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import type { SearchProvider, SearchResult } from "../lib/types";
+import { ContentResults, ResultViewToggle, useResultView } from "../components/ContentResults";
 import { DependencyPrompt } from "../components/DependencyPrompt";
 import { useStore } from "../store";
 
@@ -64,6 +64,7 @@ export function SearchView() {
     deps: SearchResult[];
   } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [resultView, setResultView] = useResultView("content-search-view");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -214,6 +215,7 @@ export function SearchView() {
             className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]"
           />
         </div>
+        <ResultViewToggle view={resultView} onChange={setResultView} />
       </div>
 
       {error && (
@@ -240,74 +242,50 @@ export function SearchView() {
             No results
           </div>
         ) : (
-          results.map((result) => {
-            const installedFile = sources?.[result.id]?.file_name;
-            const done = !!installedFile;
-            const busy = installingContent.includes(
-              `${instance.id}:${kind}:${result.id}`,
-            );
-            return (
-              <div
-                key={result.id}
-                onClick={() => openProject(provider, result.id)}
-                className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-surface-2"
-              >
-                {result.icon_url ? (
-                  <img
-                    src={result.icon_url}
-                    className="size-12 shrink-0 rounded-xl bg-surface-2 object-cover"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-surface-2 text-content-faint">
-                    <Package className="size-5" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="truncate text-sm font-semibold text-content">
-                      {result.title}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-content-faint">
-                      by {result.author} · {formatDownloads(result.downloads)} downloads
-                    </span>
-                  </div>
-                  <div className="truncate text-xs text-content-muted">{result.description}</div>
-                  {installedFile && (
-                    <div className="mt-0.5 truncate text-[11px] text-ok">
-                      Installed · {installedFile}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={(e) => install(result, e)}
-                  disabled={busy || done}
-                  title={installedFile}
-                  className={cn(
-                    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all",
-                    done
-                      ? "cursor-default bg-ok/15 text-ok"
-                      : "text-black shadow-md shadow-[var(--accent-glow)] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-70",
-                  )}
-                >
-                  {done ? (
-                    <>
-                      <Check className="size-3.5" />
-                      Installed
-                    </>
-                  ) : busy ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <>
-                      <Download className="size-3.5" />
-                      Install
-                    </>
-                  )}
-                </button>
-                <ChevronRight className="size-4 shrink-0 text-content-faint opacity-0 transition-opacity group-hover:opacity-100" />
-              </div>
-            );
-          })
+          <ContentResults
+            view={resultView}
+            items={results.map((result) => {
+              const installedFile = sources?.[result.id]?.file_name;
+              const done = !!installedFile;
+              const busy = installingContent.includes(`${instance.id}:${kind}:${result.id}`);
+              return {
+                key: result.id,
+                iconUrl: result.icon_url,
+                title: result.title,
+                meta: `by ${result.author} · ${formatDownloads(result.downloads)} downloads`,
+                description: result.description,
+                subline: installedFile ? `Installed · ${installedFile}` : undefined,
+                onOpen: () => openProject(provider, result.id),
+                action: (
+                  <button
+                    onClick={(e) => install(result, e)}
+                    disabled={busy || done}
+                    title={installedFile}
+                    className={cn(
+                      "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all",
+                      done
+                        ? "cursor-default bg-ok/15 text-ok"
+                        : "text-black shadow-md shadow-[var(--accent-glow)] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-70",
+                    )}
+                  >
+                    {done ? (
+                      <>
+                        <Check className="size-3.5" />
+                        Installed
+                      </>
+                    ) : busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Download className="size-3.5" />
+                        Install
+                      </>
+                    )}
+                  </button>
+                ),
+              };
+            })}
+          />
         )}
       </div>
 

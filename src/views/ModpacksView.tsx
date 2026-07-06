@@ -1,17 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Check,
-  ChevronRight,
-  Download,
-  Loader2,
-  Package,
-  Search,
-  TriangleAlert,
-} from "lucide-react";
+import { Check, Download, Loader2, Package, Search, TriangleAlert } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import type { SearchProvider, SearchResult } from "../lib/types";
+import { ContentResults, ResultViewToggle, useResultView } from "../components/ContentResults";
 import { formatDownloads } from "./SearchView";
 import { useStore } from "../store";
 
@@ -34,6 +27,7 @@ export function ModpacksView() {
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [resultView, setResultView] = useResultView("modpacks-view");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -119,6 +113,7 @@ export function ModpacksView() {
             className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]"
           />
         </div>
+        <ResultViewToggle view={resultView} onChange={setResultView} />
       </div>
 
       {error && (
@@ -145,45 +140,22 @@ export function ModpacksView() {
             No results
           </div>
         ) : (
-          results.map((pack) => {
-            const busy = installing === pack.id;
-            const installedInstance = instances.find(
-              (i) => i.pack_project_id === pack.id,
-            );
-            return (
-              <div
-                key={pack.id}
-                onClick={() => openProject(provider, pack.id, "modpacks")}
-                className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-surface-2"
-              >
-                {pack.icon_url ? (
-                  <img
-                    src={pack.icon_url}
-                    className="size-12 shrink-0 rounded-xl bg-surface-2 object-cover"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-surface-2 text-content-faint">
-                    <Package className="size-5" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="truncate text-sm font-semibold text-content">
-                      {pack.title}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-content-faint">
-                      by {pack.author} · {formatDownloads(pack.downloads)} downloads
-                    </span>
-                  </div>
-                  <div className="truncate text-xs text-content-muted">{pack.description}</div>
-                  {installedInstance && (
-                    <div className="mt-0.5 truncate text-[11px] text-ok">
-                      Installed as {installedInstance.name}
-                    </div>
-                  )}
-                </div>
-                {installedInstance ? (
+          <ContentResults
+            view={resultView}
+            items={results.map((pack) => {
+              const busy = installing === pack.id;
+              const installedInstance = instances.find((i) => i.pack_project_id === pack.id);
+              return {
+                key: pack.id,
+                iconUrl: pack.icon_url,
+                title: pack.title,
+                meta: `by ${pack.author} · ${formatDownloads(pack.downloads)} downloads`,
+                description: pack.description,
+                subline: installedInstance
+                  ? `Installed as ${installedInstance.name}`
+                  : undefined,
+                onOpen: () => openProject(provider, pack.id, "modpacks"),
+                action: installedInstance ? (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -209,11 +181,10 @@ export function ModpacksView() {
                       </>
                     )}
                   </button>
-                )}
-                <ChevronRight className="size-4 shrink-0 text-content-faint opacity-0 transition-opacity group-hover:opacity-100" />
-              </div>
-            );
-          })
+                ),
+              };
+            })}
+          />
         )}
       </div>
     </div>
