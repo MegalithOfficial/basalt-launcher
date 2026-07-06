@@ -68,6 +68,7 @@ pub struct ProjectDetails {
     pub links: Vec<ProjectLink>,
     pub published: Option<String>,
     pub updated: Option<String>,
+    pub website_url: Option<String>,
 }
 
 fn modrinth_project_type(kind: &str) -> Result<&'static str> {
@@ -150,7 +151,17 @@ struct ModrinthVersion {
     loaders: Vec<String>,
     #[serde(default)]
     changelog: Option<String>,
+    #[serde(default)]
+    dependencies: Vec<ModrinthDependency>,
     files: Vec<ModrinthFile>,
+}
+
+#[derive(Deserialize, Clone)]
+struct ModrinthDependency {
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    dependency_type: String,
 }
 
 #[derive(Deserialize)]
@@ -228,6 +239,16 @@ struct CurseforgeFile {
     file_length: Option<u64>,
     #[serde(rename = "gameVersions", default)]
     game_versions: Vec<String>,
+    #[serde(default)]
+    dependencies: Vec<CurseforgeFileDependency>,
+}
+
+#[derive(Deserialize, Clone)]
+struct CurseforgeFileDependency {
+    #[serde(rename = "modId")]
+    mod_id: u64,
+    #[serde(rename = "relationType", default)]
+    relation_type: u32,
 }
 
 #[derive(Deserialize)]
@@ -249,12 +270,57 @@ pub struct ProjectVersion {
     pub loaders: Vec<String>,
     pub compatible: bool,
     pub changelog: Option<String>,
+    pub dependencies: Vec<VersionDependency>,
+}
+
+fn modrinth_deps(deps: &[ModrinthDependency]) -> Vec<VersionDependency> {
+    deps.iter()
+        .filter_map(|d| {
+            d.project_id.clone().map(|project_id| VersionDependency {
+                project_id,
+                dependency_type: d.dependency_type.clone(),
+            })
+        })
+        .collect()
+}
+
+fn curseforge_deps(deps: &[CurseforgeFileDependency]) -> Vec<VersionDependency> {
+    deps.iter()
+        .filter_map(|d| {
+            curseforge_relation(d.relation_type).map(|t| VersionDependency {
+                project_id: d.mod_id.to_string(),
+                dependency_type: t.to_string(),
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Changelog {
     pub body: String,
     pub format: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VersionDependency {
+    pub project_id: String,
+    pub dependency_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstalledFile {
+    pub version_id: Option<String>,
+    pub file_name: String,
+}
+
+fn curseforge_relation(relation_type: u32) -> Option<&'static str> {
+    match relation_type {
+        1 => Some("embedded"),
+        2 => Some("optional"),
+        3 => Some("required"),
+        5 => Some("incompatible"),
+        _ => None,
+    }
 }
 
 #[derive(Deserialize)]
@@ -544,6 +610,7 @@ pub async fn project_details(
                 links,
                 published: project.published,
                 updated: project.updated,
+                website_url: Some(format!("https://modrinth.com/project/{project_id}")),
             })
         }
         Provider::Curseforge => {
@@ -593,6 +660,7 @@ pub async fn project_details(
                 .collect();
             loaders.sort();
             loaders.dedup();
+            let website_url = detail.links.as_ref().and_then(|l| l.website_url.clone());
             let mut links = Vec::new();
             if let Some(l) = &detail.links {
                 for (label, url) in [
@@ -634,6 +702,7 @@ pub async fn project_details(
                 links,
                 published: detail.date_created,
                 updated: detail.date_modified,
+                website_url,
             })
         }
     }
@@ -722,7 +791,6 @@ pub async fn project_versions(
                 .await?;
             Ok(versions
                 .into_iter()
-                .take(150)
                 .filter_map(|v| {
                     let file = v.files.iter().find(|f| f.primary).or_else(|| v.files.first())?;
                     let loader_ok = kind != "mods"
@@ -742,6 +810,7 @@ pub async fn project_versions(
                         loaders: v.loaders.clone(),
                         compatible,
                         changelog: v.changelog.clone().filter(|c| !c.trim().is_empty()),
+                        dependencies: modrinth_deps(&v.dependencies),
                     })
                 })
                 .collect())
@@ -791,7 +860,80 @@ pub async fn project_versions(
                             .collect(),
                         compatible,
                         changelog: None,
+                        dependencies: curseforge_deps(&f.dependencies),
                     }
+                })
+                .collect())
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ModrinthProjectListItem {
+    id: String,
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    icon_url: Option<String>,
+    #[serde(default)]
+    downloads: u64,
+}
+
+pub async fn resolve_projects(
+    state: &AppState,
+    provider: Provider,
+    ids: Vec<String>,
+) -> Result<Vec<SearchResult>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    match provider {
+        Provider::Modrinth => {
+            let projects: Vec<ModrinthProjectListItem> = state
+                .http
+                .get(format!("{MODRINTH}/projects"))
+                .query(&[("ids", serde_json::to_string(&ids)?)])
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            Ok(projects
+                .into_iter()
+                .map(|p| SearchResult {
+                    id: p.id,
+                    title: p.title,
+                    description: p.description,
+                    icon_url: p.icon_url,
+                    downloads: p.downloads,
+                    author: String::new(),
+                })
+                .collect())
+        }
+        Provider::Curseforge => {
+            let key = curseforge_key(state)?;
+            let mod_ids: Vec<u64> = ids.iter().filter_map(|i| i.parse().ok()).collect();
+            let response: CurseforgeSearch = state
+                .http
+                .post(format!("{CURSEFORGE}/mods"))
+                .header("x-api-key", key)
+                .json(&serde_json::json!({ "modIds": mod_ids }))
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            Ok(response
+                .data
+                .into_iter()
+                .map(|m| SearchResult {
+                    id: m.id.to_string(),
+                    title: m.name,
+                    description: m.summary,
+                    icon_url: m.logo.and_then(|l| l.thumbnail_url),
+                    downloads: m.download_count as u64,
+                    author: m.authors.first().map(|a| a.name.clone()).unwrap_or_default(),
                 })
                 .collect())
         }
@@ -867,7 +1009,7 @@ fn curseforge_pick_file(file: CurseforgeFile) -> Result<(String, String, Option<
     Ok((url, file.file_name, sha1, file.file_length))
 }
 
-pub async fn install(
+async fn install_single(
     state: &AppState,
     provider: Provider,
     project_id: &str,
@@ -878,10 +1020,10 @@ pub async fn install(
     version_id: Option<&str>,
     title: Option<&str>,
     icon_url: Option<&str>,
-) -> Result<String> {
+) -> Result<(String, Vec<VersionDependency>)> {
     let dest_dir = content::dir_for(&state.paths, instance_id, kind)?;
 
-    let (url, file_name, sha1, size, source_version) = match provider {
+    let (url, file_name, sha1, size, source_version, dependencies) = match provider {
         Provider::Modrinth => {
             let version: ModrinthVersion = match version_id {
                 Some(vid) => {
@@ -901,7 +1043,8 @@ pub async fn install(
                     .ok_or_else(|| Error::other("No compatible version found."))?,
             };
             let (url, file_name, sha1, size) = modrinth_pick_file(&version)?;
-            (url, file_name, sha1, size, version.id)
+            let deps = modrinth_deps(&version.dependencies);
+            (url, file_name, sha1, size, version.id, deps)
         }
         Provider::Curseforge => {
             let file = match version_id {
@@ -929,10 +1072,18 @@ pub async fn install(
                     })?,
             };
             let source_version = file.id.to_string();
+            let deps = curseforge_deps(&file.dependencies);
             let (url, file_name, sha1, size) = curseforge_pick_file(file)?;
-            (url, file_name, sha1, size, source_version)
+            (url, file_name, sha1, size, source_version, deps)
         }
     };
+
+    if let Some((_, old_file)) = state.db.installed_project_file(instance_id, kind, project_id)? {
+        if old_file != file_name {
+            let _ = content::delete(&state.paths, instance_id, kind, &old_file);
+            let _ = state.db.delete_content_source(instance_id, kind, &old_file);
+        }
+    }
 
     std::fs::create_dir_all(&dest_dir)?;
     download::download_one(
@@ -957,5 +1108,94 @@ pub async fn install(
         icon_url,
     );
 
-    Ok(file_name)
+    Ok((file_name, dependencies))
+}
+
+pub async fn install(
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    instance_id: &str,
+    kind: &str,
+    game_version: &str,
+    loader: Option<&str>,
+    version_id: Option<&str>,
+    title: Option<&str>,
+    icon_url: Option<&str>,
+) -> Result<Vec<String>> {
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    visited.insert(project_id.to_string());
+
+    let (file_name, dependencies) = install_single(
+        state, provider, project_id, instance_id, kind, game_version, loader, version_id,
+        title, icon_url,
+    )
+    .await?;
+    let mut installed_files = vec![file_name];
+
+    if kind == "mods" {
+        let mut queue: Vec<(String, u8)> = dependencies
+            .into_iter()
+            .filter(|d| d.dependency_type == "required")
+            .map(|d| (d.project_id, 1u8))
+            .collect();
+
+        while let Some((dep_id, depth)) = queue.pop() {
+            if depth > 3 || !visited.insert(dep_id.clone()) {
+                continue;
+            }
+            if state
+                .db
+                .installed_project_file(instance_id, kind, &dep_id)?
+                .is_some()
+            {
+                continue;
+            }
+            let info = resolve_projects(state, provider, vec![dep_id.clone()])
+                .await
+                .ok()
+                .and_then(|mut list| list.pop());
+            match Box::pin(install_single(
+                state,
+                provider,
+                &dep_id,
+                instance_id,
+                kind,
+                game_version,
+                loader,
+                None,
+                info.as_ref().map(|i| i.title.as_str()),
+                info.as_ref().and_then(|i| i.icon_url.as_deref()),
+            ))
+            .await
+            {
+                Ok((dep_file, dep_deps)) => {
+                    installed_files.push(dep_file);
+                    queue.extend(
+                        dep_deps
+                            .into_iter()
+                            .filter(|d| d.dependency_type == "required")
+                            .map(|d| (d.project_id, depth + 1)),
+                    );
+                }
+                Err(_) => continue,
+            }
+        }
+    }
+
+    Ok(installed_files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::curseforge_relation;
+
+    #[test]
+    fn relation_types_map() {
+        assert_eq!(curseforge_relation(3), Some("required"));
+        assert_eq!(curseforge_relation(2), Some("optional"));
+        assert_eq!(curseforge_relation(1), Some("embedded"));
+        assert_eq!(curseforge_relation(5), Some("incompatible"));
+        assert_eq!(curseforge_relation(4), None);
+    }
 }

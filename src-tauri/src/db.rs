@@ -306,6 +306,24 @@ impl Db {
         Ok(map)
     }
 
+    pub fn installed_project_file(
+        &self,
+        instance_id: &str,
+        kind: &str,
+        project_id: &str,
+    ) -> Result<Option<(Option<String>, String)>> {
+        let conn = self.0.lock().unwrap();
+        let result = conn
+            .query_row(
+                "SELECT version_id, file_name FROM content_sources
+                 WHERE instance_id = ?1 AND kind = ?2 AND project_id = ?3",
+                params![instance_id, kind, project_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        Ok(result)
+    }
+
     pub fn delete_content_source(
         &self,
         instance_id: &str,

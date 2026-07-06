@@ -388,6 +388,32 @@ pub async fn list_project_versions(
 }
 
 #[tauri::command]
+pub async fn resolve_projects(
+    state: State<'_, AppState>,
+    provider: String,
+    ids: Vec<String>,
+) -> Result<Vec<search::SearchResult>> {
+    let provider = search::Provider::parse(&provider)?;
+    search::resolve_projects(&state, provider, ids).await
+}
+
+#[tauri::command]
+pub fn get_installed_project_file(
+    state: State<AppState>,
+    instance_id: String,
+    kind: String,
+    project_id: String,
+) -> Result<Option<search::InstalledFile>> {
+    let result = state
+        .db
+        .installed_project_file(&instance_id, &kind, &project_id)?;
+    Ok(result.map(|(version_id, file_name)| search::InstalledFile {
+        version_id,
+        file_name,
+    }))
+}
+
+#[tauri::command]
 pub async fn get_version_changelog(
     state: State<'_, AppState>,
     provider: String,
@@ -410,7 +436,7 @@ pub async fn install_content(
     version_id: Option<String>,
     title: Option<String>,
     icon_url: Option<String>,
-) -> Result<String> {
+) -> Result<Vec<String>> {
     find_instance(&state, &instance_id)?;
     let provider = search::Provider::parse(&provider)?;
     search::install(
