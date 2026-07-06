@@ -342,10 +342,10 @@ pub async fn search(
     match provider {
         Provider::Modrinth => {
             let project_type = modrinth_project_type(kind)?;
-            let mut facets = vec![
-                vec![format!("project_type:{project_type}")],
-                vec![format!("versions:{game_version}")],
-            ];
+            let mut facets = vec![vec![format!("project_type:{project_type}")]];
+            if !game_version.is_empty() {
+                facets.push(vec![format!("versions:{game_version}")]);
+            }
             if kind == "mods" {
                 if let Some(loader) = loader {
                     facets.push(vec![format!("categories:{loader}")]);
@@ -389,11 +389,13 @@ pub async fn search(
                     ("gameId", CF_GAME_MINECRAFT.to_string()),
                     ("classId", class_id.to_string()),
                     ("searchFilter", query.to_string()),
-                    ("gameVersion", game_version.to_string()),
                     ("sortField", "2".to_string()),
                     ("sortOrder", "desc".to_string()),
                     ("pageSize", "24".to_string()),
                 ]);
+            if !game_version.is_empty() {
+                request = request.query(&[("gameVersion", game_version.to_string())]);
+            }
             if kind == "mods" {
                 if let Some(loader_type) = loader.and_then(curseforge_loader_type) {
                     request = request.query(&[("modLoaderType", loader_type.to_string())]);

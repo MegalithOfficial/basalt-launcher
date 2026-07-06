@@ -3,7 +3,6 @@ import {
   Boxes,
   LayoutGrid,
   List,
-  Package,
   Pencil,
   Plus,
   Trash2,
@@ -29,7 +28,6 @@ export function InstancesView() {
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
   const openInstance = useStore((s) => s.openInstance);
-  const openModpacks = useStore((s) => s.openModpacks);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
@@ -76,10 +74,6 @@ export function InstancesView() {
                 </button>
               ))}
             </div>
-            <Button variant="ghost" onClick={() => openModpacks()}>
-              <Package className="size-4" />
-              Modpacks
-            </Button>
             <Button onClick={() => setModalOpen(true)}>
               <Plus className="size-4" />
               New instance

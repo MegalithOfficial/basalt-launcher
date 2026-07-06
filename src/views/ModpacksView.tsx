@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft,
   ChevronDown,
   Download,
   Loader2,
@@ -22,7 +21,6 @@ const PROVIDERS: Array<{ id: SearchProvider; label: string }> = [
 ];
 
 export function ModpacksView() {
-  const goBack = useStore((s) => s.goBack);
   const setView = useStore((s) => s.setView);
   const installModpack = useStore((s) => s.installModpack);
   const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
@@ -96,20 +94,13 @@ export function ModpacksView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-3 border-b border-border-soft px-6 py-4">
-        <button
-          onClick={goBack}
-          aria-label="Back"
-          className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-surface-2 text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
-        >
-          <ArrowLeft className="size-4" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate font-display text-lg font-semibold text-content">Modpacks</h1>
-          <div className="truncate text-xs text-content-muted">
-            Installing a pack creates a ready-to-play instance.
-          </div>
-        </div>
+      <div className="border-b border-border-soft px-6 py-6">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-content">
+          Modpacks
+        </h1>
+        <p className="mt-1 text-sm text-content-muted">
+          Installing a pack creates a ready-to-play instance.
+        </p>
       </div>
 
       <div className="flex items-center gap-2 px-6 py-3">
