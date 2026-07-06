@@ -29,7 +29,12 @@ export interface Instance {
 
 export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
 
-export type ContentKind = "mods" | "resourcepacks" | "shaderpacks" | "schematics";
+export type ContentKind =
+  | "mods"
+  | "resourcepacks"
+  | "shaderpacks"
+  | "schematics"
+  | "modpacks";
 
 export interface ContentSource {
   provider: SearchProvider;

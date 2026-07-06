@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ChevronDown,
+  Check,
+  ChevronRight,
   Download,
   Loader2,
   Package,
@@ -10,8 +11,7 @@ import {
 
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
-import { Select } from "../components/Select";
-import type { ProjectVersion, SearchProvider, SearchResult } from "../lib/types";
+import type { SearchProvider, SearchResult } from "../lib/types";
 import { formatDownloads } from "./SearchView";
 import { useStore } from "../store";
 
@@ -21,8 +21,10 @@ const PROVIDERS: Array<{ id: SearchProvider; label: string }> = [
 ];
 
 export function ModpacksView() {
-  const setView = useStore((s) => s.setView);
   const installModpack = useStore((s) => s.installModpack);
+  const openProject = useStore((s) => s.openProject);
+  const openInstance = useStore((s) => s.openInstance);
+  const instances = useStore((s) => s.instances);
   const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
 
   const [provider, setProvider] = useState<SearchProvider>("modrinth");
@@ -30,10 +32,8 @@ export function ModpacksView() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [versions, setVersions] = useState<Record<string, ProjectVersion[] | "loading">>({});
-  const [pickedVersion, setPickedVersion] = useState<Record<string, string>>({});
   const [installing, setInstalling] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -54,39 +54,22 @@ export function ModpacksView() {
     return () => clearTimeout(debounceRef.current);
   }, [provider, query]);
 
-  const toggleExpand = (pack: SearchResult) => {
-    if (expandedId === pack.id) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(pack.id);
-    if (versions[pack.id]) return;
-    setVersions((prev) => ({ ...prev, [pack.id]: "loading" }));
-    api
-      .listProjectVersions(provider, pack.id, "modpacks", "", null)
-      .then((list) => {
-        setVersions((prev) => ({ ...prev, [pack.id]: list }));
-        const preferred = list.find((v) => v.channel === "release") ?? list[0];
-        if (preferred) {
-          setPickedVersion((prev) => ({ ...prev, [pack.id]: preferred.id }));
-        }
-      })
-      .catch((e) => {
-        setVersions((prev) => ({ ...prev, [pack.id]: [] }));
-        setError(String(e));
-      });
-  };
-
-  const install = async (pack: SearchResult) => {
-    const versionId = pickedVersion[pack.id];
-    if (!versionId) return;
+  const installLatest = async (pack: SearchResult, e: React.MouseEvent) => {
+    e.stopPropagation();
     setInstalling(pack.id);
     setError(null);
+    setNotice(null);
     try {
-      await installModpack(provider, pack.id, versionId);
-      setView("home");
-    } catch (e) {
-      setError(String(e));
+      const versions = await api.listProjectVersions(provider, pack.id, "modpacks", "", null);
+      const preferred = versions.find((v) => v.channel === "release") ?? versions[0];
+      if (!preferred) {
+        setError("This pack has no installable versions.");
+        return;
+      }
+      const instance = await installModpack(provider, pack.id, preferred.id);
+      setNotice(`Created instance ${instance.name}`);
+    } catch (err) {
+      setError(String(err));
     } finally {
       setInstalling(null);
     }
@@ -144,6 +127,11 @@ export function ModpacksView() {
           <span className="break-words">{error}</span>
         </div>
       )}
+      {notice && (
+        <div className="mx-6 mb-2 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-xs text-ok">
+          {notice}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {searching ? (
@@ -158,99 +146,71 @@ export function ModpacksView() {
           </div>
         ) : (
           results.map((pack) => {
-            const expanded = expandedId === pack.id;
-            const packVersions = versions[pack.id];
             const busy = installing === pack.id;
+            const installedInstance = instances.find(
+              (i) => i.pack_project_id === pack.id,
+            );
             return (
               <div
                 key={pack.id}
-                className={cn(
-                  "mb-1.5 rounded-xl border transition-colors",
-                  expanded ? "border-border bg-surface-2/60" : "border-transparent hover:bg-surface-2",
-                )}
+                onClick={() => openProject(provider, pack.id, "modpacks")}
+                className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-surface-2"
               >
-                <div
-                  onClick={() => toggleExpand(pack)}
-                  className="flex cursor-pointer items-center gap-3 px-3 py-3"
-                >
-                  {pack.icon_url ? (
-                    <img
-                      src={pack.icon_url}
-                      className="size-12 shrink-0 rounded-xl bg-surface-2 object-cover"
-                      draggable={false}
-                    />
-                  ) : (
-                    <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-surface-2 text-content-faint">
-                      <Package className="size-5" />
+                {pack.icon_url ? (
+                  <img
+                    src={pack.icon_url}
+                    className="size-12 shrink-0 rounded-xl bg-surface-2 object-cover"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-surface-2 text-content-faint">
+                    <Package className="size-5" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="truncate text-sm font-semibold text-content">
+                      {pack.title}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-content-faint">
+                      by {pack.author} · {formatDownloads(pack.downloads)} downloads
+                    </span>
+                  </div>
+                  <div className="truncate text-xs text-content-muted">{pack.description}</div>
+                  {installedInstance && (
+                    <div className="mt-0.5 truncate text-[11px] text-ok">
+                      Installed as {installedInstance.name}
                     </div>
                   )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="truncate text-sm font-semibold text-content">
-                        {pack.title}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-content-faint">
-                        by {pack.author} · {formatDownloads(pack.downloads)} downloads
-                      </span>
-                    </div>
-                    <div className="truncate text-xs text-content-muted">{pack.description}</div>
-                  </div>
-                  <ChevronDown
-                    className={cn(
-                      "size-4 shrink-0 text-content-faint transition-transform",
-                      expanded && "rotate-180",
-                    )}
-                  />
                 </div>
-
-                {expanded && (
-                  <div className="flex items-center gap-2 border-t border-border-soft px-3 py-3">
-                    {packVersions === "loading" || !packVersions ? (
-                      <div className="flex items-center gap-2 text-xs text-content-muted">
-                        <Loader2 className="size-3.5 animate-spin" />
-                        Loading versions
-                      </div>
-                    ) : packVersions.length === 0 ? (
-                      <div className="text-xs text-content-faint">No installable versions.</div>
+                {installedInstance ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openInstance(installedInstance.id);
+                    }}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-ok/15 px-3 text-xs font-semibold text-ok transition-colors hover:bg-ok/25"
+                  >
+                    <Check className="size-3.5" />
+                    Installed
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => installLatest(pack, e)}
+                    disabled={busy || installing !== null}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
+                  >
+                    {busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
                     ) : (
                       <>
-                        <div className="w-72">
-                          <Select
-                            value={
-                              packVersions.find((v) => v.id === pickedVersion[pack.id])?.name ??
-                              null
-                            }
-                            options={packVersions.slice(0, 60).map((v) => v.name)}
-                            onChange={(name) => {
-                              const picked = packVersions.find((v) => v.name === name);
-                              if (picked) {
-                                setPickedVersion((prev) => ({ ...prev, [pack.id]: picked.id }));
-                              }
-                            }}
-                            placeholder="Pick a version"
-                          />
-                        </div>
-                        <button
-                          onClick={() => install(pack)}
-                          disabled={busy || installing !== null || !pickedVersion[pack.id]}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
-                        >
-                          {busy ? (
-                            <>
-                              <Loader2 className="size-3.5 animate-spin" />
-                              Installing pack
-                            </>
-                          ) : (
-                            <>
-                              <Download className="size-3.5" />
-                              Install
-                            </>
-                          )}
-                        </button>
+                        <Download className="size-3.5" />
+                        Install
                       </>
                     )}
-                  </div>
+                  </button>
                 )}
+                <ChevronRight className="size-4 shrink-0 text-content-faint opacity-0 transition-opacity group-hover:opacity-100" />
               </div>
             );
           })

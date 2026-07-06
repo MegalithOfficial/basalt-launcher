@@ -214,6 +214,13 @@ export function ProjectView() {
   const instance = useStore((s) => s.instances.find((i) => i.id === s.detailInstanceId));
   const goBack = useStore((s) => s.goBack);
   const openProject = useStore((s) => s.openProject);
+  const openInstance = useStore((s) => s.openInstance);
+  const installModpackAction = useStore((s) => s.installModpack);
+  const packInstance = useStore((s) =>
+    s.searchKind === "modpacks" && s.projectRef
+      ? (s.instances.find((i) => i.pack_project_id === s.projectRef?.id) ?? null)
+      : null,
+  );
   const installingContent = useStore((s) => s.installingContent);
   const sourcesMap = useStore(
     (s) => s.contentSources[`${s.detailInstanceId}:${s.searchKind}`],
@@ -264,6 +271,7 @@ export function ProjectView() {
     setVisible(PAGE_SIZE);
     setResolvedProjects({});
     setNotice(null);
+    setCompatibleOnly(kind !== "modpacks");
     api
       .getProjectDetails(projectRef.provider, projectRef.id)
       .then((d) => live && setDetails(d))
@@ -277,10 +285,17 @@ export function ProjectView() {
   const loader = kind === "mods" ? (instance?.loader ?? null) : null;
 
   useEffect(() => {
-    if (tab !== "versions" || versions !== null || !projectRef || !instance || !kind) return;
+    if (tab !== "versions" || versions !== null || !projectRef || !kind) return;
+    if (!instance && kind !== "modpacks") return;
     let live = true;
     api
-      .listProjectVersions(projectRef.provider, projectRef.id, kind, instance.version_id, loader)
+      .listProjectVersions(
+        projectRef.provider,
+        projectRef.id,
+        kind,
+        instance?.version_id ?? "",
+        loader,
+      )
       .then((v) => live && setVersions(v))
       .catch((e) => {
         if (live) {
@@ -293,7 +308,9 @@ export function ProjectView() {
     };
   }, [tab, versions, projectRef?.id, instance?.id, kind, loader]);
 
-  if (!projectRef || !instance || !kind) {
+  const isPack = kind === "modpacks";
+
+  if (!projectRef || !kind || (!instance && !isPack)) {
     return (
       <div className="grid flex-1 place-items-center text-sm text-content-muted">
         No project selected.
@@ -301,12 +318,51 @@ export function ProjectView() {
     );
   }
 
-  const installedEntry = sourcesMap?.[projectRef.id] ?? null;
-  const busyProject = installingContent.includes(
-    `${instance.id}:${kind}:${projectRef.id}`,
-  );
+  const installedEntry = isPack
+    ? packInstance
+      ? { file_name: packInstance.name, version_id: packInstance.pack_version_id }
+      : null
+    : (sourcesMap?.[projectRef.id] ?? null);
+  const busyProject = isPack
+    ? installing !== null
+    : instance
+      ? installingContent.includes(`${instance.id}:${kind}:${projectRef.id}`)
+      : false;
+
+  const installPack = async (versionId: string | null) => {
+    setInstalling(versionId ?? "latest");
+    setError(null);
+    setNotice(null);
+    try {
+      let vid = versionId;
+      if (!vid) {
+        const list =
+          versions ??
+          (await api.listProjectVersions(
+            projectRef.provider,
+            projectRef.id,
+            "modpacks",
+            "",
+            null,
+          ));
+        const preferred = list.find((v) => v.channel === "release") ?? list[0];
+        if (!preferred) {
+          setError("This pack has no installable versions.");
+          return;
+        }
+        vid = preferred.id;
+      }
+      const created = await installModpackAction(projectRef.provider, projectRef.id, vid);
+      setNotice(`Created instance ${created.name}`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setInstalling(null);
+    }
+  };
 
   const doInstall = async (target: PendingInstall, withDependencies: boolean) => {
+    if (!instance) return;
     setInstalling(target.key);
     setError(null);
     setNotice(null);
@@ -338,6 +394,11 @@ export function ProjectView() {
   };
 
   const beginInstall = async (target: PendingInstall) => {
+    if (isPack) {
+      await installPack(target.versionId);
+      return;
+    }
+    if (!instance) return;
     setInstalling(target.key);
     setError(null);
     try {
@@ -486,12 +547,14 @@ export function ProjectView() {
 
         {installedEntry ? (
           <button
-            onClick={() => setTab("versions")}
+            onClick={() =>
+              isPack && packInstance ? openInstance(packInstance.id) : setTab("versions")
+            }
             title={installedEntry.file_name}
             className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-ok/15 px-5 text-sm font-semibold text-ok transition-colors hover:bg-ok/25"
           >
             <Check className="size-4" />
-            Installed
+            {isPack ? `Installed as ${packInstance?.name}` : "Installed"}
           </button>
         ) : (
           <button
@@ -678,27 +741,29 @@ export function ProjectView() {
                           ))}
                         </div>
                       </div>
-                      <div>
-                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-faint">
-                          Compatibility
+                      {!isPack && instance && (
+                        <div>
+                          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-faint">
+                            Compatibility
+                          </div>
+                          <button
+                            onClick={() => setCompatibleOnly((v) => !v)}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-[7px] text-xs font-medium transition-colors",
+                              compatibleOnly
+                                ? "border-ok/40 bg-ok/10 text-ok"
+                                : "border-border bg-surface-2 text-content-muted hover:text-content",
+                            )}
+                          >
+                            <Check className={cn("size-3.5", !compatibleOnly && "opacity-30")} />
+                            {instance.version_id}
+                            {loader && ` · ${loader}`}
+                          </button>
                         </div>
-                        <button
-                          onClick={() => setCompatibleOnly((v) => !v)}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-[7px] text-xs font-medium transition-colors",
-                            compatibleOnly
-                              ? "border-ok/40 bg-ok/10 text-ok"
-                              : "border-border bg-surface-2 text-content-muted hover:text-content",
-                          )}
-                        >
-                          <Check className={cn("size-3.5", !compatibleOnly && "opacity-30")} />
-                          {instance.version_id}
-                          {loader && ` · ${loader}`}
-                        </button>
-                      </div>
+                      )}
                       <div className="ml-auto self-end pb-1.5 text-xs text-content-faint">
-                        {shown.length} of {sorted.length} shown · {compatibleCount} compatible ·{" "}
-                        {versions.length} total
+                        {shown.length} of {sorted.length} shown
+                        {!isPack && ` · ${compatibleCount} compatible`} · {versions.length} total
                       </div>
                     </div>
 
@@ -720,7 +785,9 @@ export function ProjectView() {
                           const expanded = expandedId === v.id;
                           const changelog = changelogs[v.id];
                           const isInstalledRow = installedEntry?.version_id === v.id;
+                          const usable = isPack || v.compatible;
                           const isUpdate =
+                            !isPack &&
                             !isInstalledRow &&
                             installedDate !== null &&
                             v.compatible &&
@@ -732,15 +799,17 @@ export function ProjectView() {
                                 "rounded-xl border transition-colors",
                                 isInstalledRow
                                   ? "border-[var(--accent)] bg-[var(--accent-glow)]"
-                                  : v.compatible
-                                    ? "border-ok/35 bg-ok/[0.05]"
-                                    : "border-border-soft bg-surface-2/40",
+                                  : isPack
+                                    ? "border-border-soft bg-surface-2/40"
+                                    : v.compatible
+                                      ? "border-ok/35 bg-ok/[0.05]"
+                                      : "border-border-soft bg-surface-2/40",
                               )}
                             >
                               <div
                                 className={cn(
                                   "grid cursor-pointer grid-cols-[4.5rem_minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-4 py-2.5",
-                                  !v.compatible && !isInstalledRow && "opacity-60",
+                                  !usable && !isInstalledRow && "opacity-60",
                                 )}
                                 onClick={() => toggleExpand(v)}
                               >
@@ -775,7 +844,7 @@ export function ProjectView() {
                                         key={g}
                                         className={cn(
                                           "rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium",
-                                          g === instance.version_id
+                                          g === instance?.version_id
                                             ? "bg-ok/20 text-ok"
                                             : "text-content-faint",
                                         )}
@@ -817,11 +886,9 @@ export function ProjectView() {
                                       e.stopPropagation();
                                       install(v.id);
                                     }}
-                                    disabled={busy || done || installing !== null || !v.compatible}
+                                    disabled={busy || done || installing !== null || !usable}
                                     title={
-                                      v.compatible
-                                        ? undefined
-                                        : "Not compatible with this instance"
+                                      usable ? undefined : "Not compatible with this instance"
                                     }
                                     className={cn(
                                       "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all",
@@ -829,7 +896,7 @@ export function ProjectView() {
                                         ? "cursor-default bg-ok/15 text-ok"
                                         : isUpdate
                                           ? "bg-warn/15 text-warn hover:bg-warn/25 disabled:opacity-50"
-                                          : v.compatible
+                                          : usable
                                             ? "bg-ok/15 text-ok hover:bg-ok/25 disabled:opacity-50"
                                             : "border border-border bg-surface-3 text-content-faint",
                                     )}
@@ -868,7 +935,7 @@ export function ProjectView() {
                                           key={g}
                                           className={cn(
                                             "rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium",
-                                            g === instance.version_id
+                                            g === instance?.version_id
                                               ? "bg-ok/20 text-ok"
                                               : "text-content-muted",
                                           )}
