@@ -52,15 +52,15 @@ function App() {
   return (
     <div
       className={cn(
-        "flex h-full w-full flex-col overflow-hidden bg-base text-content",
+        "flex h-full w-full overflow-hidden bg-base text-content",
         !maximized && "rounded-xl border border-border-soft",
       )}
       style={accentVars(accent)}
     >
-      <TitleBar />
-      <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        <main className="flex min-w-0 flex-1 flex-col">
+      <Sidebar />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <TitleBar />
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!ready ? (
           <div className="grid flex-1 place-items-center text-sm text-content-muted">
             Loading…

@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Basalt Launcher",
-        "width": 1180,
-        "height": 760,
-        "minWidth": 960,
-        "minHeight": 660,
+        "width": 1460,
+        "height": 850,
+        "minWidth": 1080,
+        "minHeight": 700,
         "decorations": false,
         "transparent": true,
         "shadow": false

@@ -20,6 +20,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))?;
+                let _ = window.set_icon(icon);
+            }
             let paths = Paths::resolve(app.handle())?;
             paths.ensure_dirs()?;
             let settings = config::load_settings(&paths)?;
