@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Boxes, Download, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { Button, EmptyState, PageHeader } from "../components/ui";
@@ -11,8 +11,14 @@ export function InstancesView() {
   const installedIds = useStore((s) => s.installedIds);
   const installInstance = useStore((s) => s.installInstance);
   const deleteInstance = useStore((s) => s.deleteInstance);
+  const mediaMap = useStore((s) => s.media);
+  const loadMedia = useStore((s) => s.loadMedia);
 
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    instances.forEach((i) => loadMedia(i.version_id));
+  }, [instances, loadMedia]);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -53,9 +59,17 @@ export function InstancesView() {
                 key={it.id}
                 className="flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-3"
               >
-                <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-muted">
-                  <Boxes className="size-5" />
-                </div>
+                {mediaMap[it.version_id] ? (
+                  <img
+                    src={mediaMap[it.version_id]!.image_url}
+                    className="size-10 shrink-0 rounded-lg object-cover"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-muted">
+                    <Boxes className="size-5" />
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-display font-semibold text-content">{it.name}</div>
                   <div className="truncate text-xs text-content-muted">

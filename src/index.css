@@ -39,6 +39,13 @@
 }
 
 @layer base {
+  :root {
+    --accent: #ff6a2b;
+    --accent-bright: #ff8554;
+    --accent-deep: #d9480f;
+    --accent-glow: rgba(255, 106, 43, 0.28);
+  }
+
   html,
   body,
   #root {

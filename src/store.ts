@@ -9,6 +9,7 @@ import type {
   LauncherSettings,
   LogLine,
   RunningInfo,
+  VersionMedia,
   View,
 } from "./lib/types";
 
@@ -66,6 +67,7 @@ interface AppStore {
   running: Record<string, RunningInfo>;
   logs: Record<string, LogLine[]>;
   activeRunningId: string | null;
+  media: Record<string, VersionMedia | null>;
 
   setView: (view: View) => void;
   init: () => Promise<void>;
@@ -82,6 +84,7 @@ interface AppStore {
   killInstance: (runningId: string) => Promise<void>;
   closeRunning: (runningId: string) => Promise<void>;
   openConsole: (runningId: string) => void;
+  loadMedia: (versionId: string) => Promise<void>;
 }
 
 let listenersBound = false;
@@ -99,6 +102,7 @@ export const useStore = create<AppStore>((set) => ({
   running: {},
   logs: {},
   activeRunningId: null,
+  media: {},
 
   setView: (view) => set({ view }),
 
@@ -248,6 +252,17 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   openConsole: (runningId) => set({ activeRunningId: runningId, view: "console" }),
+
+  loadMedia: async (versionId) => {
+    if (versionId in useStore.getState().media) return;
+    set((s) => ({ media: { ...s.media, [versionId]: null } }));
+    try {
+      const media = await api.getVersionMedia(versionId);
+      set((s) => ({ media: { ...s.media, [versionId]: media } }));
+    } catch {
+      set((s) => ({ media: { ...s.media, [versionId]: null } }));
+    }
+  },
 
   refreshInstances: async () => {
     set({ instances: await api.listInstances() });

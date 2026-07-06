@@ -57,6 +57,12 @@ export interface DeviceCodeInfo {
   message: string;
 }
 
+export interface VersionMedia {
+  image_url: string;
+  short_text: string | null;
+  accent: string | null;
+}
+
 export interface RunningInfo {
   running_id: string;
   instance_id: string;

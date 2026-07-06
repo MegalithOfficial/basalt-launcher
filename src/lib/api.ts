@@ -9,6 +9,7 @@ import type {
   LogLine,
   RunningInfo,
   VersionEntry,
+  VersionMedia,
 } from "./types";
 
 export const api = {
@@ -23,6 +24,8 @@ export const api = {
   listVersions: (includeSnapshots = false) =>
     invoke<VersionEntry[]>("list_versions", { includeSnapshots }),
   listInstalledVersions: () => invoke<string[]>("list_installed_versions"),
+  getVersionMedia: (versionId: string) =>
+    invoke<VersionMedia | null>("get_version_media", { versionId }),
   installInstance: (instanceId: string) =>
     invoke<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>

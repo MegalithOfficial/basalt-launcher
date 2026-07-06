@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
-  Boxes,
-  Check,
-  Coffee,
   Download,
   Loader2,
   Play,
@@ -14,7 +11,8 @@ import {
 
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
-import type { JavaStatus } from "../lib/types";
+import { accentVars } from "../lib/accent";
+import type { Instance, JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { useStore } from "../store";
 
@@ -30,10 +28,83 @@ const gridStyle: React.CSSProperties = {
 const STAGE_LABEL: Record<string, string> = {
   metadata: "Reading metadata",
   "assets-index": "Fetching asset index",
-  downloading: "Downloading files",
+  downloading: "Downloading",
   natives: "Extracting natives",
   done: "Ready",
 };
+
+function GridFallback() {
+  return (
+    <div className="absolute inset-0">
+      <div className="absolute inset-0" style={gridStyle} />
+      <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-[var(--accent-glow)] blur-3xl transition-colors duration-500" />
+    </div>
+  );
+}
+
+function HeroArt({ media, id }: { media: VersionMedia | null; id: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setFailed(false), [media?.image_url]);
+
+  if (!media || failed) return <GridFallback />;
+
+  return (
+    <AnimatePresence mode="popLayout">
+      <motion.img
+        key={id + media.image_url}
+        src={media.image_url}
+        onError={() => setFailed(true)}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="absolute inset-0 h-full w-full object-cover"
+        draggable={false}
+      />
+    </AnimatePresence>
+  );
+}
+
+function ShelfTile({
+  instance,
+  media,
+  active,
+  onSelect,
+}: {
+  instance: Instance;
+  media: VersionMedia | null;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={cn(
+        "group relative h-24 w-40 shrink-0 overflow-hidden rounded-xl border text-left transition-all duration-300",
+        active
+          ? "border-transparent ring-2 ring-[var(--accent)] shadow-lg shadow-[var(--accent-glow)]"
+          : "border-border opacity-70 hover:opacity-100",
+      )}
+    >
+      {media ? (
+        <img
+          src={media.image_url}
+          className="absolute inset-0 h-full w-full object-cover"
+          draggable={false}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-surface-2" style={gridStyle} />
+      )}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-3 pb-2 pt-6">
+        <div className="truncate text-xs font-semibold text-white">{instance.name}</div>
+        <div className="truncate font-pixel text-[9px] text-white/60">
+          {instance.version_id}
+        </div>
+      </div>
+    </button>
+  );
+}
 
 export function HomeView() {
   const instances = useStore((s) => s.instances);
@@ -44,6 +115,8 @@ export function HomeView() {
   const openConsole = useStore((s) => s.openConsole);
   const running = useStore((s) => s.running);
   const account = useStore((s) => s.accounts.find((a) => a.active) ?? null);
+  const mediaMap = useStore((s) => s.media);
+  const loadMedia = useStore((s) => s.loadMedia);
   const setView = useStore((s) => s.setView);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,23 +126,28 @@ export function HomeView() {
 
   const selected = instances.find((i) => i.id === selectedId) ?? instances[0];
   const hasInstance = !!selected;
+  const media = selected ? (mediaMap[selected.version_id] ?? null) : null;
   const install = selected ? installs[selected.id] : undefined;
   const installing = !!install;
   const installed = selected ? installedIds.includes(selected.id) : false;
+
+  useEffect(() => {
+    instances.forEach((i) => loadMedia(i.version_id));
+  }, [instances, loadMedia]);
 
   useEffect(() => {
     if (!selected) {
       setJava(null);
       return;
     }
-    let active = true;
+    let live = true;
     setJava(null);
     api
       .getJavaStatus(selected.id)
-      .then((s) => active && setJava(s))
-      .catch(() => active && setJava(null));
+      .then((s) => live && setJava(s))
+      .catch(() => live && setJava(null));
     return () => {
-      active = false;
+      live = false;
     };
   }, [selected?.id]);
 
@@ -97,129 +175,100 @@ export function HomeView() {
   };
 
   let actionLabel = "INSTALL";
-  let actionIcon = <Download className="size-5" />;
+  let actionIcon = <Download className="size-4" />;
   if (!hasInstance) {
     actionLabel = "CREATE INSTANCE";
-    actionIcon = <Plus className="size-5" />;
+    actionIcon = <Plus className="size-4" />;
   } else if (installing) {
     actionLabel = `${STAGE_LABEL[install.stage] ?? install.stage}${
       install.stage === "downloading" ? ` ${percent}%` : ""
     }`;
-    actionIcon = <Loader2 className="size-5 animate-spin" />;
+    actionIcon = <Loader2 className="size-4 animate-spin" />;
   } else if (activeRun) {
-    actionLabel = "VIEW CONSOLE";
-    actionIcon = <Terminal className="size-5" />;
+    actionLabel = "CONSOLE";
+    actionIcon = <Terminal className="size-4" />;
   } else if (installed && !account) {
-    actionLabel = "SIGN IN TO PLAY";
-    actionIcon = <Play className="size-5 fill-black" />;
+    actionLabel = "SIGN IN";
+    actionIcon = <Play className="size-4 fill-black" />;
   } else if (installed) {
     actionLabel = "PLAY";
-    actionIcon = <Play className="size-5 fill-black" />;
+    actionIcon = <Play className="size-4 fill-black" />;
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-        className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface"
-      >
-        <div className="absolute inset-0" style={gridStyle} />
-        <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-lava/10 blur-3xl" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-base/70 to-transparent" />
-
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-4 p-5"
+      style={accentVars(media?.accent)}
+    >
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-border bg-surface">
         {hasInstance ? (
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center justify-between px-6 pb-3 pt-5">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-content-faint">
-                <Boxes className="size-3.5" />
-                Your instances
-              </div>
-              {java && (
-                <div
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium",
-                    java.ok
-                      ? "border-ok/30 bg-ok/10 text-ok"
-                      : "border-warn/30 bg-warn/10 text-warn",
-                  )}
-                >
-                  {java.ok ? <Coffee className="size-3" /> : <TriangleAlert className="size-3" />}
-                  Java {java.required_major}
-                  {java.found ? ` · found ${java.found.major}` : " · missing"}
-                </div>
-              )}
-            </div>
-
-            <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(180px,1fr))] content-start gap-3 overflow-y-auto px-6 pb-6">
-              {instances.map((it) => {
-                const active = it.id === selected.id;
-                const itInstall = installs[it.id];
-                const itPercent =
-                  itInstall && itInstall.total > 0
-                    ? Math.round((itInstall.completed / itInstall.total) * 100)
-                    : 0;
-                return (
-                  <button
-                    key={it.id}
-                    onClick={() => setSelectedId(it.id)}
-                    className={cn(
-                      "group relative overflow-hidden rounded-xl border p-4 text-left transition-all",
-                      active
-                        ? "border-lava/60 bg-lava/10 ring-1 ring-lava/40"
-                        : "border-border bg-base/40 backdrop-blur hover:border-border hover:bg-surface-2/60",
-                    )}
-                  >
-                    {active && !itInstall && (
-                      <span className="absolute right-3 top-3 grid size-5 place-items-center rounded-full bg-lava text-black">
-                        <Check className="size-3.5" />
-                      </span>
-                    )}
-                    <div className="grid size-9 place-items-center rounded-lg bg-surface-3 text-content-muted">
-                      <Boxes className="size-[18px]" />
-                    </div>
-                    <div className="mt-3 truncate font-display font-semibold text-content">
-                      {it.name}
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-content-muted">
-                      {it.version_id}
-                    </div>
-                    {itInstall && (
-                      <div className="mt-3">
-                        <div className="h-1 overflow-hidden rounded-full bg-surface-3">
-                          <div
-                            className="h-full rounded-full bg-lava transition-all"
-                            style={{ width: `${itPercent}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-
-              <button
-                onClick={() => setModalOpen(true)}
-                className="flex min-h-[116px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-transparent text-content-faint transition-colors hover:border-lava/50 hover:text-content-muted"
-              >
-                <Plus className="size-5" />
-                <span className="text-xs font-medium">New instance</span>
-              </button>
-            </div>
-          </div>
+          <HeroArt media={media} id={selected.id} />
         ) : (
-          <div className="relative flex min-h-0 flex-1 flex-col items-start justify-start p-8">
-            <h1 className="font-pixel text-4xl leading-tight text-content drop-shadow">
-              No instance yet
-            </h1>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-content-muted">
-              Create an instance to pick a Minecraft version and start playing. Mods and modpacks
-              come later.
-            </p>
+          <GridFallback />
+        )}
+
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+
+        {java && !java.ok && (
+          <div className="absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-black/60 px-3 py-1.5 text-xs font-medium text-warn backdrop-blur">
+            <TriangleAlert className="size-3.5" />
+            Java {java.required_major} needed
+            {java.found ? ` · found ${java.found.major}` : " · none found"}
           </div>
         )}
-      </motion.div>
+
+        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-6 p-8">
+          <div className="min-w-0">
+            {hasInstance ? (
+              <>
+                <h1 className="truncate font-display text-5xl font-bold tracking-tight text-white drop-shadow-lg">
+                  {selected.name}
+                </h1>
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/80 backdrop-blur">
+                    {selected.version_id}
+                  </span>
+                  <span className="rounded-md bg-black/50 px-2 py-1 font-pixel text-[10px] tracking-wider text-white/50 backdrop-blur">
+                    VANILLA
+                  </span>
+                </div>
+                {media?.short_text && (
+                  <p className="mt-3 max-w-xl truncate text-sm text-white/70">
+                    {media.short_text}
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <h1 className="font-display text-4xl font-bold tracking-tight text-content">
+                  No instance yet
+                </h1>
+                <p className="mt-2 max-w-md text-sm text-content-muted">
+                  Create an instance to pick a Minecraft version and start playing.
+                </p>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={onAction}
+            disabled={installing}
+            className="relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 font-pixel text-sm tracking-wider text-black shadow-xl shadow-[var(--accent-glow)] transition-all duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] active:scale-[0.98] disabled:active:scale-100"
+          >
+            {installing && install.stage === "downloading" && (
+              <span
+                className="absolute inset-y-0 left-0 bg-black/20 transition-all"
+                style={{ width: `${percent}%` }}
+              />
+            )}
+            <span className="relative flex items-center gap-2.5">
+              {actionIcon}
+              {actionLabel}
+            </span>
+          </button>
+        </div>
+      </div>
 
       {launchError && (
         <div className="flex shrink-0 items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
@@ -228,22 +277,24 @@ export function HomeView() {
         </div>
       )}
 
-      <button
-        onClick={onAction}
-        disabled={installing}
-        className="group relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl bg-gradient-to-b from-lava to-lava-deep font-pixel text-base tracking-wider text-black shadow-xl shadow-lava/25 transition-all hover:from-lava-bright hover:to-lava active:scale-[0.99] disabled:active:scale-100"
-      >
-        {installing && install.stage === "downloading" && (
-          <span
-            className="absolute inset-y-0 left-0 bg-black/15 transition-all"
-            style={{ width: `${percent}%` }}
+      <div className="flex shrink-0 items-center gap-3 overflow-x-auto pb-1">
+        {instances.map((it) => (
+          <ShelfTile
+            key={it.id}
+            instance={it}
+            media={mediaMap[it.version_id] ?? null}
+            active={selected?.id === it.id}
+            onSelect={() => setSelectedId(it.id)}
           />
-        )}
-        <span className="relative flex items-center gap-2.5">
-          {actionIcon}
-          {actionLabel}
-        </span>
-      </button>
+        ))}
+        <button
+          onClick={() => setModalOpen(true)}
+          className="flex h-24 w-40 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border text-content-faint transition-colors hover:border-[var(--accent)] hover:text-content-muted"
+        >
+          <Plus className="size-5" />
+          <span className="text-xs font-medium">New instance</span>
+        </button>
+      </div>
 
       <CreateInstanceModal
         open={modalOpen}
