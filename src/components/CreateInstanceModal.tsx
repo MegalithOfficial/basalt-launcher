@@ -5,6 +5,7 @@ import { Check, Loader2, Search, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { LOADERS } from "../lib/loader";
+import { Select } from "./Select";
 import type { LoaderKind, VersionEntry } from "../lib/types";
 import { useStore } from "../store";
 
@@ -193,17 +194,12 @@ export function CreateInstanceModal({
                       No {loader} builds for {selected}.
                     </div>
                   ) : (
-                    <select
-                      value={loaderVersion ?? ""}
-                      onChange={(e) => setLoaderVersion(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none focus:border-[var(--accent)]"
-                    >
-                      {loaderVersions.slice(0, 100).map((v) => (
-                        <option key={v} value={v}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
+                    <Select
+                      value={loaderVersion}
+                      options={loaderVersions.slice(0, 100)}
+                      onChange={setLoaderVersion}
+                      placeholder="Loader version"
+                    />
                   )}
                 </div>
               )}
