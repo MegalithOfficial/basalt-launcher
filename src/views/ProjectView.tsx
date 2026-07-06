@@ -566,78 +566,114 @@ export function ProjectView() {
                 const compatibleCount = versions.filter((v) => v.compatible).length;
                 const installedRow = versions.find((x) => x.id === installedFile?.version_id);
                 const installedDate = installedRow ? new Date(installedRow.date).getTime() : null;
+                const gvOptions: string[] = [];
+                const loaderOptions: string[] = [];
+                for (const v of versions) {
+                  for (const g of v.game_versions) {
+                    if (!gvOptions.includes(g)) gvOptions.push(g);
+                  }
+                  for (const l of v.loaders) {
+                    if (!loaderOptions.includes(l)) loaderOptions.push(l);
+                  }
+                }
                 return (
                   <>
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => setCompatibleOnly((v) => !v)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                          compatibleOnly
-                            ? "border-ok/40 bg-ok/10 text-ok"
-                            : "border-border bg-surface-2 text-content-muted hover:text-content",
-                        )}
-                      >
-                        <Check className={cn("size-3.5", !compatibleOnly && "opacity-30")} />
-                        Compatible only
-                      </button>
-                      <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
-                        {(["all", "release", "beta", "alpha"] as Channel[]).map((c) => (
-                          <button
-                            key={c}
-                            onClick={() => setChannel(c)}
-                            className={cn(
-                              "rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors",
-                              channel === c
-                                ? "bg-surface-3 text-content"
-                                : "text-content-faint hover:text-content-muted",
-                            )}
-                          >
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="w-36">
-                        <Select
-                          value={gvFilter === "all" ? "All game versions" : gvFilter}
-                          options={["All game versions", ...(details?.game_versions ?? [])]}
-                          onChange={(v) => setGvFilter(v === "All game versions" ? "all" : v)}
-                        />
-                      </div>
-                      {kind === "mods" && (details?.loaders.length ?? 0) > 0 && (
-                        <div className="w-32">
+                    <div className="mb-4 flex flex-wrap items-end gap-x-5 gap-y-3">
+                      <div>
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-faint">
+                          Game version
+                        </div>
+                        <div className="w-48">
                           <Select
-                            value={loaderFilter === "all" ? "All loaders" : loaderFilter}
-                            options={["All loaders", ...(details?.loaders ?? [])]}
-                            onChange={(v) => setLoaderFilter(v === "All loaders" ? "all" : v)}
+                            value={gvFilter === "all" ? "All game versions" : gvFilter}
+                            options={["All game versions", ...gvOptions]}
+                            onChange={(v) => setGvFilter(v === "All game versions" ? "all" : v)}
                           />
                         </div>
-                      )}
-                      <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
-                        {(
-                          [
-                            { id: "newest", label: "Newest" },
-                            { id: "downloads", label: "Popular" },
-                          ] as const
-                        ).map((s) => (
-                          <button
-                            key={s.id}
-                            onClick={() => setSortBy(s.id)}
-                            className={cn(
-                              "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                              sortBy === s.id
-                                ? "bg-surface-3 text-content"
-                                : "text-content-faint hover:text-content-muted",
-                            )}
-                          >
-                            {s.label}
-                          </button>
-                        ))}
                       </div>
-                      <span className="ml-auto text-xs text-content-faint">
+                      {kind === "mods" && loaderOptions.length > 1 && (
+                        <div>
+                          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-faint">
+                            Loader
+                          </div>
+                          <div className="w-40">
+                            <Select
+                              value={loaderFilter === "all" ? "All loaders" : loaderFilter}
+                              options={["All loaders", ...loaderOptions]}
+                              onChange={(v) => setLoaderFilter(v === "All loaders" ? "all" : v)}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-faint">
+                          Channel
+                        </div>
+                        <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
+                          {(["all", "release", "beta", "alpha"] as Channel[]).map((c) => (
+                            <button
+                              key={c}
+                              onClick={() => setChannel(c)}
+                              className={cn(
+                                "rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors",
+                                channel === c
+                                  ? "bg-surface-3 text-content"
+                                  : "text-content-faint hover:text-content-muted",
+                              )}
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-faint">
+                          Sort
+                        </div>
+                        <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
+                          {(
+                            [
+                              { id: "newest", label: "Newest" },
+                              { id: "downloads", label: "Popular" },
+                            ] as const
+                          ).map((s) => (
+                            <button
+                              key={s.id}
+                              onClick={() => setSortBy(s.id)}
+                              className={cn(
+                                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                                sortBy === s.id
+                                  ? "bg-surface-3 text-content"
+                                  : "text-content-faint hover:text-content-muted",
+                              )}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-faint">
+                          Compatibility
+                        </div>
+                        <button
+                          onClick={() => setCompatibleOnly((v) => !v)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-[7px] text-xs font-medium transition-colors",
+                            compatibleOnly
+                              ? "border-ok/40 bg-ok/10 text-ok"
+                              : "border-border bg-surface-2 text-content-muted hover:text-content",
+                          )}
+                        >
+                          <Check className={cn("size-3.5", !compatibleOnly && "opacity-30")} />
+                          {instance.version_id}
+                          {loader && ` · ${loader}`}
+                        </button>
+                      </div>
+                      <div className="ml-auto self-end pb-1.5 text-xs text-content-faint">
                         {shown.length} of {sorted.length} shown · {compatibleCount} compatible ·{" "}
                         {versions.length} total
-                      </span>
+                      </div>
                     </div>
 
                     {notice && (
