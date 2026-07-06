@@ -5,6 +5,7 @@ import { Check, Loader2, Search, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { LOADERS } from "../lib/loader";
+import { useEscape } from "../lib/useEscape";
 import { Select } from "./Select";
 import type { LoaderKind, VersionEntry } from "../lib/types";
 import { useStore } from "../store";
@@ -65,6 +66,8 @@ export function CreateInstanceModal({
     () => versions.filter((v) => v.id.toLowerCase().includes(query.toLowerCase())),
     [versions, query],
   );
+
+  useEscape(open, onClose);
 
   const createDisabled = !selected || busy || (loader !== null && !loaderVersion);
 

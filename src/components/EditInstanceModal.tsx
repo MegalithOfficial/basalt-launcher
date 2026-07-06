@@ -16,6 +16,7 @@ import { loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
+import { useEscape } from "../lib/useEscape";
 import { useStore } from "../store";
 
 const inputCls =
@@ -61,6 +62,8 @@ export function EditInstanceModal({
     setJavaPath(instance.java_path ?? "");
     setError(null);
   }, [instance?.id]);
+
+  useEscape(!!instance, onClose);
 
   if (!instance) return null;
   const media = mediaMap[instance.id] ?? null;

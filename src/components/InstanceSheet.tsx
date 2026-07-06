@@ -4,6 +4,7 @@ import { Check, Plus } from "lucide-react";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
+import { useEscape } from "../lib/useEscape";
 import { useStore } from "../store";
 
 const tileGrid: React.CSSProperties = {
@@ -26,6 +27,8 @@ export function InstanceSheet({
   const mediaMap = useStore((s) => s.media);
   const selectedId = useStore((s) => s.selectedInstanceId);
   const selectInstance = useStore((s) => s.selectInstance);
+
+  useEscape(open, onClose);
 
   return (
     <AnimatePresence>
