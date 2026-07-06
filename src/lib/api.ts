@@ -5,6 +5,7 @@ import type {
   Changelog,
   ContentItem,
   DeviceCodeInfo,
+  InstalledFile,
   Instance,
   JavaStatus,
   LauncherSettings,
@@ -49,6 +50,14 @@ export const api = {
     invoke<SearchResult[]>("search_content", { provider, kind, query, gameVersion, loader }),
   getVersionChangelog: (provider: string, projectId: string, versionId: string) =>
     invoke<Changelog>("get_version_changelog", { provider, projectId, versionId }),
+  resolveProjects: (provider: string, ids: string[]) =>
+    invoke<SearchResult[]>("resolve_projects", { provider, ids }),
+  getInstalledProjectFile: (instanceId: string, kind: string, projectId: string) =>
+    invoke<InstalledFile | null>("get_installed_project_file", {
+      instanceId,
+      kind,
+      projectId,
+    }),
   getProjectDetails: (provider: string, projectId: string) =>
     invoke<ProjectDetails>("get_project_details", { provider, projectId }),
   listProjectVersions: (
@@ -76,7 +85,7 @@ export const api = {
     title: string | null = null,
     iconUrl: string | null = null,
   ) =>
-    invoke<string>("install_content", {
+    invoke<string[]>("install_content", {
       provider,
       projectId,
       instanceId,

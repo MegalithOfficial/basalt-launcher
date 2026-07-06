@@ -67,6 +67,17 @@ export interface ProjectVersion {
   loaders: string[];
   compatible: boolean;
   changelog: string | null;
+  dependencies: VersionDependency[];
+}
+
+export interface VersionDependency {
+  project_id: string;
+  dependency_type: string;
+}
+
+export interface InstalledFile {
+  version_id: string | null;
+  file_name: string;
 }
 
 export interface Changelog {
@@ -98,6 +109,7 @@ export interface ProjectDetails {
   links: ProjectLink[];
   published: string | null;
   updated: string | null;
+  website_url: string | null;
 }
 
 export interface VersionEntry {
