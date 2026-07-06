@@ -9,6 +9,7 @@ import type {
   LauncherSettings,
   LogLine,
   ProjectDetails,
+  ProjectVersion,
   RunningInfo,
   SearchResult,
   VersionEntry,
@@ -47,6 +48,20 @@ export const api = {
     invoke<SearchResult[]>("search_content", { provider, kind, query, gameVersion, loader }),
   getProjectDetails: (provider: string, projectId: string) =>
     invoke<ProjectDetails>("get_project_details", { provider, projectId }),
+  listProjectVersions: (
+    provider: string,
+    projectId: string,
+    kind: string,
+    gameVersion: string,
+    loader: string | null,
+  ) =>
+    invoke<ProjectVersion[]>("list_project_versions", {
+      provider,
+      projectId,
+      kind,
+      gameVersion,
+      loader,
+    }),
   installContent: (
     provider: string,
     projectId: string,
@@ -54,6 +69,7 @@ export const api = {
     kind: string,
     gameVersion: string,
     loader: string | null,
+    versionId: string | null = null,
   ) =>
     invoke<string>("install_content", {
       provider,
@@ -62,6 +78,7 @@ export const api = {
       kind,
       gameVersion,
       loader,
+      versionId,
     }),
   updateInstance: (
     instanceId: string,

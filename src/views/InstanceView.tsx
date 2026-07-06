@@ -91,6 +91,10 @@ export function InstanceView() {
   }, [refresh]);
 
   useEffect(() => {
+    setTab(instance?.loader ? "mods" : "resourcepacks");
+  }, [instance?.id]);
+
+  useEffect(() => {
     if (!instance) return;
     let live = true;
     api
@@ -118,8 +122,11 @@ export function InstanceView() {
     );
   }
 
-  const allTabs = hasSchematicMod ? [...TABS, SCHEMATICS_TAB] : TABS;
-  const tabMeta = allTabs.find((t) => t.kind === tab) ?? TABS[0];
+  const baseTabs = instance.loader
+    ? TABS
+    : TABS.filter((t) => t.kind === "resourcepacks");
+  const allTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
+  const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
 
   const addContent = async () => {
     if (tab !== "schematics") {

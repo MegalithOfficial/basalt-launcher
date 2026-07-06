@@ -110,6 +110,18 @@ struct ModrinthHit {
 
 #[derive(Deserialize)]
 struct ModrinthVersion {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    version_number: String,
+    #[serde(default)]
+    version_type: String,
+    #[serde(default)]
+    date_published: String,
+    #[serde(default)]
+    downloads: u64,
     files: Vec<ModrinthFile>,
 }
 
@@ -168,14 +180,41 @@ struct CurseforgeFiles {
 
 #[derive(Deserialize)]
 struct CurseforgeFile {
+    #[serde(default)]
+    id: u64,
+    #[serde(rename = "displayName", default)]
+    display_name: String,
     #[serde(rename = "fileName")]
     file_name: String,
+    #[serde(rename = "fileDate", default)]
+    file_date: String,
+    #[serde(rename = "downloadCount", default)]
+    download_count: f64,
+    #[serde(rename = "releaseType", default)]
+    release_type: u32,
     #[serde(rename = "downloadUrl", default)]
     download_url: Option<String>,
     #[serde(default)]
     hashes: Vec<CurseforgeHash>,
     #[serde(rename = "fileLength", default)]
     file_length: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct CurseforgeFileResponse {
+    data: CurseforgeFile,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectVersion {
+    pub id: String,
+    pub name: String,
+    pub version_number: String,
+    pub channel: String,
+    pub date: String,
+    pub downloads: u64,
+    pub file_name: String,
+    pub size: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -422,6 +461,133 @@ pub async fn project_details(
     }
 }
 
+async fn modrinth_versions(
+    state: &AppState,
+    project_id: &str,
+    game_version: &str,
+    loader: Option<&str>,
+    kind: &str,
+) -> Result<Vec<ModrinthVersion>> {
+    let mut request = state
+        .http
+        .get(format!("{MODRINTH}/project/{project_id}/version"))
+        .query(&[("game_versions", format!("[\"{game_version}\"]"))]);
+    if kind == "mods" {
+        if let Some(loader) = loader {
+            request = request.query(&[("loaders", format!("[\"{loader}\"]"))]);
+        }
+    }
+    Ok(request.send().await?.error_for_status()?.json().await?)
+}
+
+async fn curseforge_files(
+    state: &AppState,
+    project_id: &str,
+    game_version: &str,
+    loader: Option<&str>,
+    kind: &str,
+) -> Result<Vec<CurseforgeFile>> {
+    let key = curseforge_key(state)?;
+    let mut request = state
+        .http
+        .get(format!("{CURSEFORGE}/mods/{project_id}/files"))
+        .header("x-api-key", key)
+        .query(&[
+            ("gameVersion", game_version.to_string()),
+            ("pageSize", "50".to_string()),
+        ]);
+    if kind == "mods" {
+        if let Some(loader_type) = loader.and_then(curseforge_loader_type) {
+            request = request.query(&[("modLoaderType", loader_type.to_string())]);
+        }
+    }
+    let response: CurseforgeFiles = request.send().await?.error_for_status()?.json().await?;
+    Ok(response.data)
+}
+
+fn curseforge_channel(release_type: u32) -> &'static str {
+    match release_type {
+        1 => "release",
+        2 => "beta",
+        3 => "alpha",
+        _ => "release",
+    }
+}
+
+pub async fn project_versions(
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    kind: &str,
+    game_version: &str,
+    loader: Option<&str>,
+) -> Result<Vec<ProjectVersion>> {
+    match provider {
+        Provider::Modrinth => {
+            let versions = modrinth_versions(state, project_id, game_version, loader, kind).await?;
+            Ok(versions
+                .into_iter()
+                .filter_map(|v| {
+                    let file = v.files.iter().find(|f| f.primary).or_else(|| v.files.first())?;
+                    Some(ProjectVersion {
+                        id: v.id.clone(),
+                        name: if v.name.is_empty() { v.version_number.clone() } else { v.name.clone() },
+                        version_number: v.version_number.clone(),
+                        channel: v.version_type.clone(),
+                        date: v.date_published.clone(),
+                        downloads: v.downloads,
+                        file_name: file.filename.clone(),
+                        size: file.size,
+                    })
+                })
+                .collect())
+        }
+        Provider::Curseforge => {
+            let files = curseforge_files(state, project_id, game_version, loader, kind).await?;
+            Ok(files
+                .into_iter()
+                .map(|f| ProjectVersion {
+                    id: f.id.to_string(),
+                    name: if f.display_name.is_empty() { f.file_name.clone() } else { f.display_name.clone() },
+                    version_number: f.file_name.clone(),
+                    channel: curseforge_channel(f.release_type).to_string(),
+                    date: f.file_date.clone(),
+                    downloads: f.download_count as u64,
+                    file_name: f.file_name.clone(),
+                    size: f.file_length,
+                })
+                .collect())
+        }
+    }
+}
+
+fn modrinth_pick_file(version: &ModrinthVersion) -> Result<(String, String, Option<String>, Option<u64>)> {
+    let file = version
+        .files
+        .iter()
+        .find(|f| f.primary)
+        .or_else(|| version.files.first())
+        .ok_or_else(|| Error::other("Version has no files."))?;
+    Ok((
+        file.url.clone(),
+        file.filename.clone(),
+        file.hashes.sha1.clone(),
+        file.size,
+    ))
+}
+
+fn curseforge_pick_file(file: CurseforgeFile) -> Result<(String, String, Option<String>, Option<u64>)> {
+    let sha1 = file
+        .hashes
+        .iter()
+        .find(|h| h.algo == 1)
+        .map(|h| h.value.clone());
+    let url = file.download_url.ok_or_else(|| {
+        Error::other("No downloadable file found. The author may have disabled third-party downloads.")
+    })?;
+    Ok((url, file.file_name, sha1, file.file_length))
+}
+
 pub async fn install(
     state: &AppState,
     provider: Provider,
@@ -430,85 +596,60 @@ pub async fn install(
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
+    version_id: Option<&str>,
 ) -> Result<String> {
     let dest_dir = content::dir_for(&state.paths, instance_id, kind)?;
 
     let (url, file_name, sha1, size) = match provider {
-        Provider::Modrinth => {
-            let mut request = state
-                .http
-                .get(format!("{MODRINTH}/project/{project_id}/version"))
-                .query(&[("game_versions", format!("[\"{game_version}\"]"))]);
-            if kind == "mods" {
-                if let Some(loader) = loader {
-                    request = request.query(&[("loaders", format!("[\"{loader}\"]"))]);
-                }
+        Provider::Modrinth => match version_id {
+            Some(vid) => {
+                let version: ModrinthVersion = state
+                    .http
+                    .get(format!("{MODRINTH}/version/{vid}"))
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json()
+                    .await?;
+                modrinth_pick_file(&version)?
             }
-            let versions: Vec<ModrinthVersion> = request
-                .send()
-                .await?
-                .error_for_status()?
-                .json()
-                .await?;
-            let version = versions
-                .into_iter()
-                .next()
-                .ok_or_else(|| Error::other("No compatible version found."))?;
-            let file = version
-                .files
-                .iter()
-                .find(|f| f.primary)
-                .or_else(|| version.files.first())
-                .ok_or_else(|| Error::other("Version has no files."))?;
-            (
-                file.url.clone(),
-                file.filename.clone(),
-                file.hashes.sha1.clone(),
-                file.size,
-            )
-        }
-        Provider::Curseforge => {
-            let key = curseforge_key(state)?;
-            let mut request = state
-                .http
-                .get(format!("{CURSEFORGE}/mods/{project_id}/files"))
-                .header("x-api-key", key)
-                .query(&[
-                    ("gameVersion", game_version.to_string()),
-                    ("pageSize", "20".to_string()),
-                ]);
-            if kind == "mods" {
-                if let Some(loader_type) = loader.and_then(curseforge_loader_type) {
-                    request = request.query(&[("modLoaderType", loader_type.to_string())]);
-                }
+            None => {
+                let versions =
+                    modrinth_versions(state, project_id, game_version, loader, kind).await?;
+                let version = versions
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| Error::other("No compatible version found."))?;
+                modrinth_pick_file(&version)?
             }
-            let response: CurseforgeFiles = request
-                .send()
-                .await?
-                .error_for_status()?
-                .json()
-                .await?;
-            let file = response
-                .data
-                .into_iter()
-                .find(|f| f.download_url.is_some())
-                .ok_or_else(|| {
-                    Error::other(
-                        "No downloadable file found. The author may have disabled third-party downloads.",
-                    )
-                })?;
-            let sha1 = file
-                .hashes
-                .iter()
-                .find(|h| h.algo == 1)
-                .map(|h| h.value.clone());
-            (
-                file.download_url.unwrap_or_default(),
-                file.file_name,
-                sha1,
-                file.file_length,
-            )
-        }
+        },
+        Provider::Curseforge => match version_id {
+            Some(fid) => {
+                let key = curseforge_key(state)?;
+                let response: CurseforgeFileResponse = state
+                    .http
+                    .get(format!("{CURSEFORGE}/mods/{project_id}/files/{fid}"))
+                    .header("x-api-key", key)
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json()
+                    .await?;
+                curseforge_pick_file(response.data)?
+            }
+            None => {
+                let files = curseforge_files(state, project_id, game_version, loader, kind).await?;
+                let file = files
+                    .into_iter()
+                    .find(|f| f.download_url.is_some())
+                    .ok_or_else(|| {
+                        Error::other(
+                            "No downloadable file found. The author may have disabled third-party downloads.",
+                        )
+                    })?;
+                curseforge_pick_file(file)?
+            }
+        },
     };
 
     std::fs::create_dir_all(&dest_dir)?;

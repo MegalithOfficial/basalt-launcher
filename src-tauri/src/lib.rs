@@ -55,6 +55,7 @@ pub fn run() {
             commands::remove_account,
             commands::search_content,
             commands::get_project_details,
+            commands::list_project_versions,
             commands::install_content,
             commands::list_instance_content,
             commands::toggle_instance_content,

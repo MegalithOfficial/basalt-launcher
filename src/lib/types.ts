@@ -45,6 +45,17 @@ export interface SearchResult {
   author: string;
 }
 
+export interface ProjectVersion {
+  id: string;
+  name: string;
+  version_number: string;
+  channel: string;
+  date: string;
+  downloads: number;
+  file_name: string;
+  size: number | null;
+}
+
 export interface ProjectDetails {
   id: string;
   title: string;

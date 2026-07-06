@@ -342,6 +342,27 @@ pub async fn get_project_details(
 }
 
 #[tauri::command]
+pub async fn list_project_versions(
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    kind: String,
+    game_version: String,
+    loader: Option<String>,
+) -> Result<Vec<search::ProjectVersion>> {
+    let provider = search::Provider::parse(&provider)?;
+    search::project_versions(
+        &state,
+        provider,
+        &project_id,
+        &kind,
+        &game_version,
+        loader.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn install_content(
     state: State<'_, AppState>,
     provider: String,
@@ -350,6 +371,7 @@ pub async fn install_content(
     kind: String,
     game_version: String,
     loader: Option<String>,
+    version_id: Option<String>,
 ) -> Result<String> {
     find_instance(&state, &instance_id)?;
     let provider = search::Provider::parse(&provider)?;
@@ -361,6 +383,7 @@ pub async fn install_content(
         &kind,
         &game_version,
         loader.as_deref(),
+        version_id.as_deref(),
     )
     .await
 }
