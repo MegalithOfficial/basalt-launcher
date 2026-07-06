@@ -43,4 +43,10 @@ pub struct Instance {
     pub loader_version: Option<String>,
     #[serde(default)]
     pub launch_version_id: Option<String>,
+    #[serde(default)]
+    pub pack_provider: Option<String>,
+    #[serde(default)]
+    pub pack_project_id: Option<String>,
+    #[serde(default)]
+    pub pack_version_id: Option<String>,
 }

@@ -10,6 +10,7 @@ mod java;
 mod launch;
 mod loaders;
 mod meta;
+mod modpack;
 mod paths;
 mod search;
 mod state;
@@ -62,6 +63,7 @@ pub fn run() {
             commands::resolve_projects,
             commands::get_installed_project_file,
             commands::install_content,
+            commands::install_modpack,
             commands::get_missing_dependencies,
             commands::list_content_sources,
             commands::list_instance_content,

@@ -1,0 +1,395 @@
+use std::collections::HashMap;
+use std::io::Read;
+use std::path::{Component, Path, PathBuf};
+
+use serde::Deserialize;
+use tauri::AppHandle;
+
+use crate::config::Instance;
+use crate::download::{self, DownloadSpec};
+use crate::error::{Error, Result};
+use crate::install;
+use crate::loaders;
+use crate::search::{self, Provider};
+use crate::state::AppState;
+
+const MODRINTH: &str = "https://api.modrinth.com/v2";
+
+#[derive(Deserialize)]
+struct MrIndex {
+    name: String,
+    #[serde(default)]
+    dependencies: HashMap<String, String>,
+    #[serde(default)]
+    files: Vec<MrFile>,
+}
+
+#[derive(Deserialize)]
+struct MrFile {
+    path: String,
+    #[serde(default)]
+    hashes: MrHashes,
+    #[serde(default)]
+    downloads: Vec<String>,
+    #[serde(rename = "fileSize", default)]
+    file_size: Option<u64>,
+    #[serde(default)]
+    env: Option<MrEnv>,
+}
+
+#[derive(Deserialize, Default)]
+struct MrHashes {
+    #[serde(default)]
+    sha1: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MrEnv {
+    #[serde(default)]
+    client: Option<String>,
+}
+
+fn loader_from_dependencies(deps: &HashMap<String, String>) -> Result<Option<(String, String)>> {
+    for (key, loader) in [
+        ("fabric-loader", "fabric"),
+        ("quilt-loader", "quilt"),
+        ("neoforge", "neoforge"),
+        ("forge", "forge"),
+    ] {
+        if let Some(version) = deps.get(key) {
+            return Ok(Some((loader.to_string(), version.clone())));
+        }
+    }
+    let known = ["minecraft", "fabric-loader", "quilt-loader", "neoforge", "forge"];
+    if let Some(unknown) = deps.keys().find(|k| !known.contains(&k.as_str())) {
+        return Err(Error::other(format!(
+            "This pack needs an unsupported loader: {unknown}"
+        )));
+    }
+    Ok(None)
+}
+
+fn sanitize_relative(path: &str) -> Result<PathBuf> {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return Err(Error::other(format!("unsafe path in pack: {path}")));
+    }
+    let mut out = PathBuf::new();
+    for component in p.components() {
+        match component {
+            Component::Normal(part) => out.push(part),
+            Component::CurDir => {}
+            _ => return Err(Error::other(format!("unsafe path in pack: {path}"))),
+        }
+    }
+    if out.as_os_str().is_empty() {
+        return Err(Error::other(format!("unsafe path in pack: {path}")));
+    }
+    Ok(out)
+}
+
+fn kind_for_path(path: &str) -> Option<&'static str> {
+    if path.starts_with("mods/") {
+        Some("mods")
+    } else if path.starts_with("resourcepacks/") {
+        Some("resourcepacks")
+    } else if path.starts_with("shaderpacks/") {
+        Some("shaderpacks")
+    } else {
+        None
+    }
+}
+
+fn extract_overrides(archive_path: &Path, dest: &Path) -> Result<()> {
+    let file = std::fs::File::open(archive_path)?;
+    let mut zip = zip::ZipArchive::new(file)
+        .map_err(|e| Error::other(format!("opening modpack archive: {e}")))?;
+
+    for prefix in ["overrides/", "client-overrides/"] {
+        for i in 0..zip.len() {
+            let mut entry = zip
+                .by_index(i)
+                .map_err(|e| Error::other(format!("reading modpack entry: {e}")))?;
+            let name = entry.name().to_string();
+            let Some(rest) = name.strip_prefix(prefix) else {
+                continue;
+            };
+            if rest.is_empty() || name.ends_with('/') {
+                continue;
+            }
+            let relative = sanitize_relative(rest)?;
+            let target = dest.join(relative);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut buffer = Vec::with_capacity(entry.size() as usize);
+            entry.read_to_end(&mut buffer)?;
+            std::fs::write(target, buffer)?;
+        }
+    }
+    Ok(())
+}
+
+fn read_index(archive_path: &Path) -> Result<MrIndex> {
+    let file = std::fs::File::open(archive_path)?;
+    let mut zip = zip::ZipArchive::new(file)
+        .map_err(|e| Error::other(format!("opening modpack archive: {e}")))?;
+    let mut entry = zip
+        .by_name("modrinth.index.json")
+        .map_err(|_| Error::other("Not a Modrinth pack: modrinth.index.json missing."))?;
+    let mut raw = String::new();
+    entry.read_to_string(&mut raw)?;
+    Ok(serde_json::from_str(&raw)?)
+}
+
+#[derive(Deserialize)]
+struct HashVersion {
+    project_id: String,
+    id: String,
+}
+
+async fn link_pack_files(
+    state: &AppState,
+    instance_id: &str,
+    files: &[(String, String)],
+) {
+    let hashes: Vec<String> = files.iter().map(|(_, sha1)| sha1.clone()).collect();
+    if hashes.is_empty() {
+        return;
+    }
+
+    let Ok(resp) = state
+        .http
+        .post(format!("{MODRINTH}/version_files"))
+        .json(&serde_json::json!({ "hashes": hashes, "algorithm": "sha1" }))
+        .send()
+        .await
+    else {
+        return;
+    };
+    let Ok(by_hash) = resp.json::<HashMap<String, HashVersion>>().await else {
+        return;
+    };
+
+    let project_ids: Vec<String> = {
+        let mut ids: Vec<String> = by_hash.values().map(|v| v.project_id.clone()).collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    };
+    let projects = search::resolve_projects(state, Provider::Modrinth, project_ids)
+        .await
+        .unwrap_or_default();
+    let project_info: HashMap<String, &search::SearchResult> =
+        projects.iter().map(|p| (p.id.clone(), p)).collect();
+
+    for (path, sha1) in files {
+        let Some(version) = by_hash.get(sha1) else { continue };
+        let Some(kind) = kind_for_path(path) else { continue };
+        let Some(file_name) = Path::new(path).file_name().and_then(|f| f.to_str()) else {
+            continue;
+        };
+        let info = project_info.get(&version.project_id);
+        let _ = state.db.record_content_source(
+            instance_id,
+            kind,
+            file_name,
+            "modrinth",
+            &version.project_id,
+            Some(version.id.as_str()),
+            info.map(|i| i.title.as_str()),
+            info.and_then(|i| i.icon_url.as_deref()),
+        );
+    }
+}
+
+pub async fn install_modpack(
+    app: &AppHandle,
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    version_id: &str,
+) -> Result<Instance> {
+    if !matches!(provider, Provider::Modrinth) {
+        return Err(Error::other(
+            "CurseForge modpacks are not supported yet. Use a Modrinth pack.",
+        ));
+    }
+
+    let target = search::fetch_install_target(
+        state,
+        provider,
+        project_id,
+        "modpacks",
+        "",
+        None,
+        Some(version_id),
+    )
+    .await?;
+
+    let cache_dir = state.paths.root.join("cache").join("modpacks");
+    let archive_path = cache_dir.join(&target.file_name);
+    download::download_one(
+        &state.http,
+        &DownloadSpec {
+            url: target.url.clone(),
+            dest: archive_path.clone(),
+            sha1: target.sha1.clone(),
+            size: target.size,
+        },
+    )
+    .await?;
+
+    let index = {
+        let path = archive_path.clone();
+        tokio::task::spawn_blocking(move || read_index(&path))
+            .await
+            .map_err(|e| Error::other(format!("modpack parse task failed: {e}")))??
+    };
+
+    let game_version = index
+        .dependencies
+        .get("minecraft")
+        .cloned()
+        .ok_or_else(|| Error::other("Pack index does not declare a Minecraft version."))?;
+    let loader = loader_from_dependencies(&index.dependencies)?;
+
+    let existing_names: Vec<String> = state
+        .db
+        .list_instances(&state.paths)?
+        .into_iter()
+        .map(|i| i.name)
+        .collect();
+    let mut name = index.name.clone();
+    let mut counter = 2;
+    while existing_names.contains(&name) {
+        name = format!("{} ({counter})", index.name);
+        counter += 1;
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let instance = Instance {
+        dir: state.paths.instance_dir(&id).display().to_string(),
+        id,
+        name,
+        version_id: game_version.clone(),
+        created_at: chrono::Utc::now(),
+        min_memory_mb: None,
+        max_memory_mb: None,
+        java_path: None,
+        last_played_at: None,
+        playtime_secs: 0,
+        loader: loader.as_ref().map(|(l, _)| l.clone()),
+        loader_version: loader.as_ref().map(|(_, v)| v.clone()),
+        launch_version_id: None,
+        pack_provider: Some(provider.as_str().to_string()),
+        pack_project_id: Some(project_id.to_string()),
+        pack_version_id: Some(target.source_version.clone()),
+    };
+    let instance_dir = state.paths.instance_dir(&instance.id);
+    std::fs::create_dir_all(&instance_dir)?;
+    state.db.insert_instance(&instance)?;
+
+    let launch_id = if instance.loader.is_some() {
+        let launch_id = loaders::install_loader(app, state, &instance).await?;
+        state.db.set_launch_version(&instance.id, &launch_id)?;
+        launch_id
+    } else {
+        instance.version_id.clone()
+    };
+    install::install_version(app, state, &instance.id, &launch_id).await?;
+
+    install::emit_stage(app, &instance.id, "modpack-files");
+    let mut specs = Vec::new();
+    let mut linkable: Vec<(String, String)> = Vec::new();
+    for file in &index.files {
+        if file
+            .env
+            .as_ref()
+            .and_then(|e| e.client.as_deref())
+            .is_some_and(|c| c == "unsupported")
+        {
+            continue;
+        }
+        let Some(url) = file.downloads.first() else {
+            continue;
+        };
+        let relative = sanitize_relative(&file.path)?;
+        specs.push(DownloadSpec {
+            url: url.clone(),
+            dest: instance_dir.join(relative),
+            sha1: file.hashes.sha1.clone(),
+            size: file.file_size,
+        });
+        if let Some(sha1) = &file.hashes.sha1 {
+            linkable.push((file.path.clone(), sha1.clone()));
+        }
+    }
+    let concurrency = state.db.load_settings()?.concurrent_downloads;
+    let emit_app = app.clone();
+    let emit_id = instance.id.clone();
+    download::download_many(&state.http, specs, concurrency, move |progress| {
+        let _ = tauri::Emitter::emit(
+            &emit_app,
+            "install:progress",
+            serde_json::json!({
+                "instance_id": emit_id,
+                "completed": progress.completed,
+                "total": progress.total,
+                "downloaded_bytes": progress.downloaded_bytes,
+                "total_bytes": progress.total_bytes,
+                "current": progress.current,
+            }),
+        );
+    })
+    .await?;
+
+    install::emit_stage(app, &instance.id, "modpack-overrides");
+    {
+        let archive = archive_path.clone();
+        let dest = instance_dir.clone();
+        tokio::task::spawn_blocking(move || extract_overrides(&archive, &dest))
+            .await
+            .map_err(|e| Error::other(format!("override extraction task failed: {e}")))??;
+    }
+
+    link_pack_files(state, &instance.id, &linkable).await;
+
+    install::emit_stage(app, &instance.id, "done");
+    state
+        .db
+        .list_instances(&state.paths)?
+        .into_iter()
+        .find(|i| i.id == instance.id)
+        .ok_or_else(|| Error::other("instance vanished after pack install"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{kind_for_path, loader_from_dependencies, sanitize_relative};
+    use std::collections::HashMap;
+
+    #[test]
+    fn rejects_unsafe_paths() {
+        assert!(sanitize_relative("mods/sodium.jar").is_ok());
+        assert!(sanitize_relative("config/deep/nested.toml").is_ok());
+        assert!(sanitize_relative("../escape.jar").is_err());
+        assert!(sanitize_relative("mods/../../escape.jar").is_err());
+        assert!(sanitize_relative("/etc/passwd").is_err());
+        assert!(sanitize_relative("").is_err());
+    }
+
+    #[test]
+    fn maps_loaders_and_kinds() {
+        let mut deps = HashMap::new();
+        deps.insert("minecraft".to_string(), "26.2".to_string());
+        deps.insert("fabric-loader".to_string(), "0.19.3".to_string());
+        assert_eq!(
+            loader_from_dependencies(&deps).unwrap(),
+            Some(("fabric".to_string(), "0.19.3".to_string()))
+        );
+        assert_eq!(kind_for_path("mods/a.jar"), Some("mods"));
+        assert_eq!(kind_for_path("shaderpacks/b.zip"), Some("shaderpacks"));
+        assert_eq!(kind_for_path("config/c.toml"), None);
+    }
+}

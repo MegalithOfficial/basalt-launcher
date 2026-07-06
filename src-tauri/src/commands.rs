@@ -82,6 +82,9 @@ pub fn create_instance(
         loader,
         loader_version,
         launch_version_id: None,
+        pack_provider: None,
+        pack_project_id: None,
+        pack_version_id: None,
     };
     std::fs::create_dir_all(state.paths.instance_dir(&instance.id))?;
     state.db.insert_instance(&instance)?;
@@ -512,6 +515,18 @@ pub async fn install_content(
         with_dependencies.unwrap_or(true),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn install_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    version_id: String,
+) -> Result<Instance> {
+    let provider = search::Provider::parse(&provider)?;
+    crate::modpack::install_modpack(&app, &state, provider, &project_id, &version_id).await
 }
 
 #[tauri::command]

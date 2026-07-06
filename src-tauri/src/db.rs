@@ -73,6 +73,14 @@ fn migrate(conn: &Connection) -> Result<()> {
             PRAGMA user_version = 3;",
         )?;
     }
+    if version < 4 {
+        conn.execute_batch(
+            "ALTER TABLE instances ADD COLUMN pack_provider TEXT;
+            ALTER TABLE instances ADD COLUMN pack_project_id TEXT;
+            ALTER TABLE instances ADD COLUMN pack_version_id TEXT;
+            PRAGMA user_version = 4;",
+        )?;
+    }
     Ok(())
 }
 
@@ -144,7 +152,7 @@ impl Db {
         let mut stmt = conn.prepare(
             "SELECT id, name, version_id, created_at, min_memory_mb, max_memory_mb,
                     java_path, last_played_at, playtime_secs, loader, loader_version,
-                    launch_version_id
+                    launch_version_id, pack_provider, pack_project_id, pack_version_id
              FROM instances ORDER BY created_at",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -166,6 +174,9 @@ impl Db {
                 loader: row.get(9)?,
                 loader_version: row.get(10)?,
                 launch_version_id: row.get(11)?,
+                pack_provider: row.get(12)?,
+                pack_project_id: row.get(13)?,
+                pack_version_id: row.get(14)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -177,8 +188,8 @@ impl Db {
             "INSERT OR REPLACE INTO instances
                 (id, name, version_id, created_at, min_memory_mb, max_memory_mb,
                  java_path, last_played_at, playtime_secs, loader, loader_version,
-                 launch_version_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 launch_version_id, pack_provider, pack_project_id, pack_version_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 instance.id,
                 instance.name,
@@ -192,6 +203,9 @@ impl Db {
                 instance.loader,
                 instance.loader_version,
                 instance.launch_version_id,
+                instance.pack_provider,
+                instance.pack_project_id,
+                instance.pack_version_id,
             ],
         )?;
         Ok(())

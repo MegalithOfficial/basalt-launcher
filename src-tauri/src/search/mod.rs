@@ -76,6 +76,7 @@ fn modrinth_project_type(kind: &str) -> Result<&'static str> {
         "mods" => Ok("mod"),
         "resourcepacks" => Ok("resourcepack"),
         "shaderpacks" => Ok("shader"),
+        "modpacks" => Ok("modpack"),
         other => Err(Error::other(format!("cannot search for {other}"))),
     }
 }
@@ -85,6 +86,7 @@ fn curseforge_class_id(kind: &str) -> Result<u32> {
         "mods" => Ok(6),
         "resourcepacks" => Ok(12),
         "shaderpacks" => Ok(6552),
+        "modpacks" => Ok(4471),
         other => Err(Error::other(format!("cannot search for {other}"))),
     }
 }
@@ -1009,16 +1011,17 @@ fn curseforge_pick_file(file: CurseforgeFile) -> Result<(String, String, Option<
     Ok((url, file.file_name, sha1, file.file_length))
 }
 
-struct InstallTarget {
-    url: String,
-    file_name: String,
-    sha1: Option<String>,
-    size: Option<u64>,
-    source_version: String,
-    dependencies: Vec<VersionDependency>,
+pub(crate) struct InstallTarget {
+    pub(crate) url: String,
+    pub(crate) file_name: String,
+    pub(crate) sha1: Option<String>,
+    pub(crate) size: Option<u64>,
+    pub(crate) source_version: String,
+    #[allow(dead_code)]
+    pub(crate) dependencies: Vec<VersionDependency>,
 }
 
-async fn fetch_install_target(
+pub(crate) async fn fetch_install_target(
     state: &AppState,
     provider: Provider,
     project_id: &str,
@@ -1190,6 +1193,9 @@ pub async fn install(
     icon_url: Option<&str>,
     with_dependencies: bool,
 ) -> Result<Vec<String>> {
+    if kind == "modpacks" {
+        return Err(Error::other("Modpacks install through install_modpack."));
+    }
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     visited.insert(project_id.to_string());
 
