@@ -388,6 +388,17 @@ pub async fn list_project_versions(
 }
 
 #[tauri::command]
+pub async fn get_version_changelog(
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    version_id: String,
+) -> Result<search::Changelog> {
+    let provider = search::Provider::parse(&provider)?;
+    search::version_changelog(&state, provider, &project_id, &version_id).await
+}
+
+#[tauri::command]
 pub async fn install_content(
     state: State<'_, AppState>,
     provider: String,

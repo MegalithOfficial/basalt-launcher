@@ -148,6 +148,8 @@ struct ModrinthVersion {
     game_versions: Vec<String>,
     #[serde(default)]
     loaders: Vec<String>,
+    #[serde(default)]
+    changelog: Option<String>,
     files: Vec<ModrinthFile>,
 }
 
@@ -244,7 +246,15 @@ pub struct ProjectVersion {
     pub file_name: String,
     pub size: Option<u64>,
     pub game_versions: Vec<String>,
+    pub loaders: Vec<String>,
     pub compatible: bool,
+    pub changelog: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Changelog {
+    pub body: String,
+    pub format: String,
 }
 
 #[derive(Deserialize)]
@@ -729,7 +739,9 @@ pub async fn project_versions(
                         file_name: file.filename.clone(),
                         size: file.size,
                         game_versions: v.game_versions.clone(),
+                        loaders: v.loaders.clone(),
                         compatible,
+                        changelog: v.changelog.clone().filter(|c| !c.trim().is_empty()),
                     })
                 })
                 .collect())
@@ -771,10 +783,59 @@ pub async fn project_versions(
                             .filter(|g| g.chars().next().is_some_and(|c| c.is_ascii_digit()))
                             .cloned()
                             .collect(),
+                        loaders: f
+                            .game_versions
+                            .iter()
+                            .filter(|g| g.chars().next().is_some_and(|c| c.is_ascii_alphabetic()))
+                            .map(|g| g.to_lowercase())
+                            .collect(),
                         compatible,
+                        changelog: None,
                     }
                 })
                 .collect())
+        }
+    }
+}
+
+pub async fn version_changelog(
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    version_id: &str,
+) -> Result<Changelog> {
+    match provider {
+        Provider::Modrinth => {
+            let version: ModrinthVersion = state
+                .http
+                .get(format!("{MODRINTH}/version/{version_id}"))
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            Ok(Changelog {
+                body: version.changelog.unwrap_or_default(),
+                format: "markdown".to_string(),
+            })
+        }
+        Provider::Curseforge => {
+            let key = curseforge_key(state)?;
+            let response: CurseforgeDescription = state
+                .http
+                .get(format!(
+                    "{CURSEFORGE}/mods/{project_id}/files/{version_id}/changelog"
+                ))
+                .header("x-api-key", key)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            Ok(Changelog {
+                body: response.data,
+                format: "html".to_string(),
+            })
         }
     }
 }

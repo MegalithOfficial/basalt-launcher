@@ -64,7 +64,14 @@ export interface ProjectVersion {
   file_name: string;
   size: number | null;
   game_versions: string[];
+  loaders: string[];
   compatible: boolean;
+  changelog: string | null;
+}
+
+export interface Changelog {
+  body: string;
+  format: "markdown" | "html";
 }
 
 export interface ProjectLink {

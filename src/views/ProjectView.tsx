@@ -8,6 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   Download,
   ExternalLink,
   Loader2,
@@ -19,9 +20,30 @@ import {
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { relativeTime } from "../lib/time";
-import type { ProjectDetails, ProjectVersion } from "../lib/types";
+import type { Changelog, ProjectDetails, ProjectVersion } from "../lib/types";
 import { formatDownloads } from "./SearchView";
 import { useStore } from "../store";
+
+type Channel = "all" | "release" | "beta" | "alpha";
+
+function ChangelogBody({ changelog }: { changelog: Changelog }) {
+  if (!changelog.body.trim()) {
+    return <div className="text-xs text-content-faint">No changelog provided.</div>;
+  }
+  if (changelog.format === "markdown") {
+    return (
+      <div className="prose-basalt text-xs">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{changelog.body}</ReactMarkdown>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="prose-basalt text-xs"
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(changelog.body) }}
+    />
+  );
+}
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -175,6 +197,10 @@ export function ProjectView() {
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const [channel, setChannel] = useState<Channel>("all");
+  const [compatibleOnly, setCompatibleOnly] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [changelogs, setChangelogs] = useState<Record<string, Changelog | "loading">>({});
 
   useEffect(() => {
     if (!projectRef) return;
@@ -185,6 +211,8 @@ export function ProjectView() {
     setInstalled(new Set());
     setTab("description");
     setError(null);
+    setExpandedId(null);
+    setChangelogs({});
     api
       .getProjectDetails(projectRef.provider, projectRef.id)
       .then((d) => live && setDetails(d))
@@ -243,6 +271,36 @@ export function ProjectView() {
       setError(String(e));
     } finally {
       setInstalling(null);
+    }
+  };
+
+  const toggleChangelog = async (v: ProjectVersion) => {
+    if (expandedId === v.id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(v.id);
+    if (changelogs[v.id]) return;
+    if (v.changelog) {
+      setChangelogs((prev) => ({
+        ...prev,
+        [v.id]: { body: v.changelog!, format: "markdown" },
+      }));
+      return;
+    }
+    setChangelogs((prev) => ({ ...prev, [v.id]: "loading" }));
+    try {
+      const changelog = await api.getVersionChangelog(
+        projectRef.provider,
+        projectRef.id,
+        v.id,
+      );
+      setChangelogs((prev) => ({ ...prev, [v.id]: changelog }));
+    } catch {
+      setChangelogs((prev) => ({
+        ...prev,
+        [v.id]: { body: "", format: "markdown" },
+      }));
     }
   };
 
@@ -378,108 +436,193 @@ export function ProjectView() {
             <InfoSidebar details={details} />
           </div>
         ) : tab === "versions" ? (
-          <div className="mx-auto max-w-3xl px-6 py-4">
+          <div className="mx-auto max-w-4xl px-6 py-4">
             {versions === null ? (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-content-muted">
                 <Loader2 className="size-4 animate-spin" />
                 Loading versions
               </div>
-            ) : versions.length === 0 ? (
-              <div className="py-12 text-center text-sm text-content-faint">
-                No versions for {instance.version_id}
-                {loader && ` on ${loader}`}.
-              </div>
             ) : (
-              <div className="flex flex-col gap-1.5">
-                <div className="mb-1 px-1 text-xs text-content-faint">
-                  <span className="mr-1.5 inline-block size-2 rounded-full bg-ok align-middle" />
-                  Compatible with {instance.name} ({instance.version_id}
-                  {loader && ` · ${loader}`})
-                </div>
-                {versions.map((v) => {
-                  const done = installed.has(v.id);
-                  const busy = installing === v.id;
-                  return (
-                    <div
-                      key={v.id}
-                      className={cn(
-                        "flex items-center gap-3 rounded-xl border px-4 py-2.5 transition-colors",
-                        v.compatible
-                          ? "border-ok/35 bg-ok/[0.06]"
-                          : "border-border-soft bg-surface-2/40 opacity-55",
-                      )}
-                    >
-                      <span
+              (() => {
+                const filtered = versions.filter(
+                  (v) =>
+                    (channel === "all" || v.channel === channel) &&
+                    (!compatibleOnly || v.compatible),
+                );
+                const compatibleCount = versions.filter((v) => v.compatible).length;
+                return (
+                  <>
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => setCompatibleOnly((v) => !v)}
                         className={cn(
-                          "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                          CHANNEL_STYLE[v.channel] ?? CHANNEL_STYLE.release,
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                          compatibleOnly
+                            ? "border-ok/40 bg-ok/10 text-ok"
+                            : "border-border bg-surface-2 text-content-muted hover:text-content",
                         )}
                       >
-                        {v.channel}
+                        <Check className={cn("size-3.5", !compatibleOnly && "opacity-30")} />
+                        Compatible with {instance.version_id}
+                        {loader && ` · ${loader}`}
+                      </button>
+                      <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
+                        {(["all", "release", "beta", "alpha"] as Channel[]).map((c) => (
+                          <button
+                            key={c}
+                            onClick={() => setChannel(c)}
+                            className={cn(
+                              "rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors",
+                              channel === c
+                                ? "bg-surface-3 text-content"
+                                : "text-content-faint hover:text-content-muted",
+                            )}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="ml-auto text-xs text-content-faint">
+                        {filtered.length} shown · {compatibleCount} compatible · {versions.length} total
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium text-content">
-                            {v.name}
-                          </span>
-                          {v.game_versions.slice(0, 4).map((g) => (
-                            <span
-                              key={g}
+                    </div>
+
+                    {filtered.length === 0 ? (
+                      <div className="py-12 text-center text-sm text-content-faint">
+                        Nothing matches these filters.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        {filtered.map((v) => {
+                          const done = installed.has(v.id);
+                          const busy = installing === v.id;
+                          const expanded = expandedId === v.id;
+                          const changelog = changelogs[v.id];
+                          return (
+                            <div
+                              key={v.id}
                               className={cn(
-                                "shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium",
-                                g === instance.version_id
-                                  ? "bg-ok/20 text-ok"
-                                  : "text-content-faint",
+                                "rounded-xl border transition-colors",
+                                v.compatible
+                                  ? "border-ok/35 bg-ok/[0.05]"
+                                  : "border-border-soft bg-surface-2/40",
                               )}
                             >
-                              {g}
-                            </span>
-                          ))}
-                          {v.game_versions.length > 4 && (
-                            <span className="shrink-0 text-[10px] text-content-faint">
-                              +{v.game_versions.length - 4}
-                            </span>
-                          )}
-                        </div>
-                        <div className="truncate text-[11px] text-content-faint">
-                          {v.file_name}
-                          {v.size != null && ` · ${formatSize(v.size)}`}
-                          {v.date &&
-                            ` · ${relativeTime(Math.floor(new Date(v.date).getTime() / 1000))}`}
-                          {` · ${formatDownloads(v.downloads)} downloads`}
-                        </div>
+                              <div
+                                className={cn(
+                                  "grid cursor-pointer grid-cols-[4.5rem_minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-4 py-2.5",
+                                  !v.compatible && "opacity-60",
+                                )}
+                                onClick={() => toggleChangelog(v)}
+                              >
+                                <span
+                                  className={cn(
+                                    "rounded px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wide",
+                                    CHANNEL_STYLE[v.channel] ?? CHANNEL_STYLE.release,
+                                  )}
+                                >
+                                  {v.channel}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-medium text-content">
+                                    {v.name}
+                                  </div>
+                                  <div className="mt-0.5 flex items-center gap-1.5">
+                                    {v.game_versions.slice(0, 3).map((g) => (
+                                      <span
+                                        key={g}
+                                        className={cn(
+                                          "rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium",
+                                          g === instance.version_id
+                                            ? "bg-ok/20 text-ok"
+                                            : "text-content-faint",
+                                        )}
+                                      >
+                                        {g}
+                                      </span>
+                                    ))}
+                                    {v.game_versions.length > 3 && (
+                                      <span className="text-[10px] text-content-faint">
+                                        +{v.game_versions.length - 3}
+                                      </span>
+                                    )}
+                                    {v.loaders.slice(0, 3).map((l) => (
+                                      <span
+                                        key={l}
+                                        className="rounded bg-[var(--accent-glow)] px-1.5 py-0.5 text-[10px] font-medium capitalize text-content-muted"
+                                      >
+                                        {l}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="hidden text-right text-[11px] leading-tight text-content-faint sm:block">
+                                  <div>{formatDownloads(v.downloads)} downloads</div>
+                                  <div>
+                                    {v.size != null && `${formatSize(v.size)} · `}
+                                    {v.date &&
+                                      relativeTime(Math.floor(new Date(v.date).getTime() / 1000))}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    install(v.id);
+                                  }}
+                                  disabled={busy || done || installing !== null || !v.compatible}
+                                  title={
+                                    v.compatible ? undefined : "Not compatible with this instance"
+                                  }
+                                  className={cn(
+                                    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all",
+                                    done
+                                      ? "cursor-default bg-ok/15 text-ok"
+                                      : v.compatible
+                                        ? "bg-ok/15 text-ok hover:bg-ok/25 disabled:opacity-50"
+                                        : "border border-border bg-surface-3 text-content-faint",
+                                  )}
+                                >
+                                  {done ? (
+                                    <>
+                                      <Check className="size-3.5" />
+                                      Added
+                                    </>
+                                  ) : busy ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Download className="size-3.5" />
+                                      Install
+                                    </>
+                                  )}
+                                </button>
+                                <ChevronDown
+                                  className={cn(
+                                    "size-4 shrink-0 text-content-faint transition-transform",
+                                    expanded && "rotate-180",
+                                  )}
+                                />
+                              </div>
+                              {expanded && (
+                                <div className="border-t border-border-soft px-4 py-3">
+                                  {changelog === "loading" || !changelog ? (
+                                    <div className="flex items-center gap-2 py-2 text-xs text-content-muted">
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                      Loading changelog
+                                    </div>
+                                  ) : (
+                                    <ChangelogBody changelog={changelog} />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                      <button
-                        onClick={() => install(v.id)}
-                        disabled={busy || done || installing !== null || !v.compatible}
-                        title={v.compatible ? undefined : "Not compatible with this instance"}
-                        className={cn(
-                          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all",
-                          done
-                            ? "cursor-default bg-ok/15 text-ok"
-                            : v.compatible
-                              ? "bg-ok/15 text-ok hover:bg-ok/25 disabled:opacity-50"
-                              : "border border-border bg-surface-3 text-content-faint",
-                        )}
-                      >
-                        {done ? (
-                          <>
-                            <Check className="size-3.5" />
-                            Added
-                          </>
-                        ) : busy ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <>
-                            <Download className="size-3.5" />
-                            Install
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                    )}
+                  </>
+                );
+              })()
             )}
           </div>
         ) : tab === "gallery" ? (

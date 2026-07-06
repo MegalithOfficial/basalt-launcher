@@ -56,6 +56,7 @@ pub fn run() {
             commands::search_content,
             commands::get_project_details,
             commands::list_project_versions,
+            commands::get_version_changelog,
             commands::install_content,
             commands::list_instance_content,
             commands::toggle_instance_content,

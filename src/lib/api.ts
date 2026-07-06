@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   AccountView,
+  Changelog,
   ContentItem,
   DeviceCodeInfo,
   Instance,
@@ -46,6 +47,8 @@ export const api = {
     loader: string | null,
   ) =>
     invoke<SearchResult[]>("search_content", { provider, kind, query, gameVersion, loader }),
+  getVersionChangelog: (provider: string, projectId: string, versionId: string) =>
+    invoke<Changelog>("get_version_changelog", { provider, projectId, versionId }),
   getProjectDetails: (provider: string, projectId: string) =>
     invoke<ProjectDetails>("get_project_details", { provider, projectId }),
   listProjectVersions: (
