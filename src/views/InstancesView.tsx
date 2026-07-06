@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { Boxes, Download, ImageOff, ImagePlus, Loader2, Plus, Trash2 } from "lucide-react";
+import { openPath } from "@tauri-apps/plugin-opener";
+import {
+  Boxes,
+  Download,
+  FolderOpen,
+  ImageOff,
+  ImagePlus,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 import { Button, EmptyState, PageHeader } from "../components/ui";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
@@ -101,6 +111,13 @@ export function InstancesView() {
                   </button>
                 )}
 
+                <button
+                  onClick={() => openPath(it.dir)}
+                  title="Open instance folder"
+                  className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                >
+                  <FolderOpen className="size-4" />
+                </button>
                 {mediaMap[it.id]?.local ? (
                   <button
                     onClick={() => clearBanner(it.id)}

@@ -174,6 +174,9 @@ export const useStore = create<AppStore>((set) => ({
       await listen<RunningInfo>("process:state", (e) => {
         const info = e.payload;
         set((s) => ({ running: { ...s.running, [info.running_id]: info } }));
+        if (info.state !== "running") {
+          void useStore.getState().refreshInstances();
+        }
       });
     }
 

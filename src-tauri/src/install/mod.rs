@@ -135,7 +135,7 @@ pub async fn install_version(
     specs.push(version.client_spec(&state.paths));
     specs.extend(asset_index.specs(&state.paths));
 
-    let concurrency = state.settings.lock().unwrap().concurrent_downloads;
+    let concurrency = state.db.load_settings()?.concurrent_downloads;
 
     emit_stage(app, instance_id, "downloading");
     let emit_app = app.clone();

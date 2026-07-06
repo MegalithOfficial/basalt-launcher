@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
+
+use crate::db::Db;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::oneshot;
@@ -85,6 +87,7 @@ where
 pub fn spawn_process(
     app: &AppHandle,
     registry: &Mutex<HashMap<String, RunningHandle>>,
+    db: Db,
     instance_id: &str,
     running_id: &str,
     started_at: i64,
@@ -141,6 +144,8 @@ pub fn spawn_process(
             guard.state = state.to_string();
             guard.exit_code = code;
         }
+        let ended_at = chrono::Utc::now().timestamp();
+        let _ = db.record_playtime(&sup_instance_id, ended_at - started_at, ended_at);
         let _ = sup_app.emit(
             "process:state",
             RunningInfo {

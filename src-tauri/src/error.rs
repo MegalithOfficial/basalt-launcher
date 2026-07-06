@@ -15,6 +15,9 @@ pub enum Error {
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("database error: {0}")]
+    Db(#[from] rusqlite::Error),
+
     #[error("tauri error: {0}")]
     Tauri(#[from] tauri::Error),
 

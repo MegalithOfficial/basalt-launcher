@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use tauri::AppHandle;
 
-use crate::auth::account::{self, Account};
+use crate::auth::account::Account;
 use crate::auth::microsoft;
 use crate::config::Instance;
 use crate::error::{Error, Result};
@@ -18,7 +18,7 @@ fn now() -> i64 {
 }
 
 async fn ensure_account(state: &AppState) -> Result<Account> {
-    let mut store = account::load(&state.paths)?;
+    let mut store = state.db.load_accounts()?;
     let account = store
         .active()
         .cloned()
@@ -38,7 +38,7 @@ async fn ensure_account(state: &AppState) -> Result<Account> {
         expires_at: now() + mc.expires_in,
     };
     store.upsert_active(updated.clone());
-    account::save(&state.paths, &store)?;
+    state.db.save_accounts(&store)?;
     Ok(updated)
 }
 
@@ -85,11 +85,8 @@ pub async fn launch_instance(
     let version: VersionJson = install::load_version_json(state, &instance.version_id).await?;
     let account = ensure_account(state).await?;
 
-    let (java_path, settings_java) = {
-        let settings = state.settings.lock().unwrap();
-        (instance.java_path.clone(), settings.java_path.clone())
-    };
-    let explicit = java_path.or(settings_java);
+    let settings = state.db.load_settings()?;
+    let explicit = instance.java_path.clone().or(settings.java_path.clone());
     let required = version.required_java_major();
     let java = java::find_for_major(required, explicit.as_deref())
         .await
@@ -119,13 +116,8 @@ pub async fn launch_instance(
     let game_dir = state.paths.instance_dir(&instance.id);
     std::fs::create_dir_all(&game_dir)?;
 
-    let (min_mb, max_mb) = {
-        let settings = state.settings.lock().unwrap();
-        (
-            instance.min_memory_mb.unwrap_or(settings.min_memory_mb),
-            instance.max_memory_mb.unwrap_or(settings.max_memory_mb),
-        )
-    };
+    let min_mb = instance.min_memory_mb.unwrap_or(settings.min_memory_mb);
+    let max_mb = instance.max_memory_mb.unwrap_or(settings.max_memory_mb);
 
     let mut subs: HashMap<&str, String> = HashMap::new();
     subs.insert("natives_directory", natives_dir.display().to_string());
@@ -174,6 +166,7 @@ pub async fn launch_instance(
     process::spawn_process(
         app,
         &state.running,
+        state.db.clone(),
         &instance.id,
         &running_id,
         now(),

@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
-use crate::paths::Paths;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub id: String,
@@ -23,23 +20,6 @@ pub struct AccountView {
     pub id: String,
     pub name: String,
     pub active: bool,
-}
-
-pub fn load(paths: &Paths) -> Result<AccountStore> {
-    match std::fs::read(paths.accounts_file()) {
-        Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AccountStore::default()),
-        Err(e) => Err(e.into()),
-    }
-}
-
-pub fn save(paths: &Paths, store: &AccountStore) -> Result<()> {
-    let bytes = serde_json::to_vec_pretty(store)?;
-    let path = paths.accounts_file();
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, &bytes)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
 }
 
 impl AccountStore {

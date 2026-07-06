@@ -15,6 +15,9 @@ export interface Instance {
   min_memory_mb: number | null;
   max_memory_mb: number | null;
   java_path: string | null;
+  last_played_at: number | null;
+  playtime_secs: number;
+  dir: string;
 }
 
 export interface VersionEntry {

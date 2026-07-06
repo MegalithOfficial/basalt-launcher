@@ -4,33 +4,31 @@ use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::auth::account::{self, Account, AccountView};
+use crate::auth::account::{Account, AccountView};
 use crate::auth::microsoft::{self, PollOutcome};
-use crate::config::{self, Instance, LauncherSettings};
+use crate::config::{Instance, LauncherSettings};
+use crate::db::Db;
 use crate::error::{Error, Result};
 use crate::install;
 use crate::java::{self, JavaStatus};
 use crate::launch::{self, process::{LogLine, RunningInfo}};
 use crate::meta::manifest::{self, VersionEntry};
 use crate::meta::media::{self, VersionMedia};
-use crate::paths::Paths;
 use crate::state::AppState;
 
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> Result<LauncherSettings> {
-    Ok(state.settings.lock().unwrap().clone())
+    state.db.load_settings()
 }
 
 #[tauri::command]
 pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Result<()> {
-    config::save_settings(&state.paths, &settings)?;
-    *state.settings.lock().unwrap() = settings;
-    Ok(())
+    state.db.save_settings(&settings)
 }
 
 #[tauri::command]
 pub fn list_instances(state: State<AppState>) -> Result<Vec<Instance>> {
-    config::load_instances(&state.paths)
+    state.db.list_instances(&state.paths)
 }
 
 #[tauri::command]
@@ -39,27 +37,27 @@ pub fn create_instance(
     name: String,
     version_id: String,
 ) -> Result<Instance> {
-    let mut instances = config::load_instances(&state.paths)?;
+    let id = uuid::Uuid::new_v4().to_string();
     let instance = Instance {
-        id: uuid::Uuid::new_v4().to_string(),
+        dir: state.paths.instance_dir(&id).display().to_string(),
+        id,
         name,
         version_id,
         created_at: chrono::Utc::now(),
         min_memory_mb: None,
         max_memory_mb: None,
         java_path: None,
+        last_played_at: None,
+        playtime_secs: 0,
     };
     std::fs::create_dir_all(state.paths.instance_dir(&instance.id))?;
-    instances.push(instance.clone());
-    config::save_instances(&state.paths, &instances)?;
+    state.db.insert_instance(&instance)?;
     Ok(instance)
 }
 
 #[tauri::command]
 pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
-    let mut instances = config::load_instances(&state.paths)?;
-    instances.retain(|i| i.id != instance_id);
-    config::save_instances(&state.paths, &instances)?;
+    state.db.delete_instance(&instance_id)?;
     let dir = state.paths.instance_dir(&instance_id);
     if dir.exists() {
         std::fs::remove_dir_all(dir)?;
@@ -163,7 +161,9 @@ pub async fn list_versions(
 }
 
 fn find_instance(state: &AppState, instance_id: &str) -> Result<Instance> {
-    config::load_instances(&state.paths)?
+    state
+        .db
+        .list_instances(&state.paths)?
         .into_iter()
         .find(|i| i.id == instance_id)
         .ok_or_else(|| Error::NotFound(format!("instance {instance_id}")))
@@ -191,7 +191,7 @@ pub async fn get_java_status(
     let explicit = instance
         .java_path
         .clone()
-        .or_else(|| state.settings.lock().unwrap().java_path.clone());
+        .or_else(|| state.db.load_settings().ok().and_then(|s| s.java_path));
     let found = java::find_for_major(required_major, explicit.as_deref()).await;
     let ok = found.as_ref().map_or(false, |j| j.major >= required_major);
 
@@ -211,7 +211,7 @@ pub struct DeviceCodeInfo {
 
 async fn run_auth_flow(
     http: reqwest::Client,
-    paths: Paths,
+    db: Db,
     device_code: String,
     interval: u64,
 ) -> Result<AccountView> {
@@ -237,9 +237,9 @@ async fn run_auth_flow(
         expires_at: chrono::Utc::now().timestamp() + mc.expires_in,
     };
 
-    let mut store = account::load(&paths)?;
+    let mut store = db.load_accounts()?;
     store.upsert_active(account);
-    account::save(&paths, &store)?;
+    db.save_accounts(&store)?;
 
     store
         .views()
@@ -258,12 +258,12 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
     };
 
     let http = state.http.clone();
-    let paths = state.paths.clone();
+    let db = state.db.clone();
     let device_code = device.device_code.clone();
     let interval = device.interval;
 
     tokio::spawn(async move {
-        match run_auth_flow(http, paths, device_code, interval).await {
+        match run_auth_flow(http, db, device_code, interval).await {
             Ok(view) => {
                 let _ = app.emit("auth:state", json!({ "status": "success", "account": view }));
             }
@@ -278,27 +278,27 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
 
 #[tauri::command]
 pub fn list_accounts(state: State<AppState>) -> Result<Vec<AccountView>> {
-    Ok(account::load(&state.paths)?.views())
+    Ok(state.db.load_accounts()?.views())
 }
 
 #[tauri::command]
 pub fn set_active_account(state: State<AppState>, account_id: String) -> Result<()> {
-    let mut store = account::load(&state.paths)?;
+    let mut store = state.db.load_accounts()?;
     if store.accounts.iter().any(|a| a.id == account_id) {
         store.active_id = Some(account_id);
-        account::save(&state.paths, &store)?;
+        state.db.save_accounts(&store)?;
     }
     Ok(())
 }
 
 #[tauri::command]
 pub fn remove_account(state: State<AppState>, account_id: String) -> Result<()> {
-    let mut store = account::load(&state.paths)?;
+    let mut store = state.db.load_accounts()?;
     store.accounts.retain(|a| a.id != account_id);
     if store.active_id.as_deref() == Some(account_id.as_str()) {
         store.active_id = store.accounts.first().map(|a| a.id.clone());
     }
-    account::save(&state.paths, &store)?;
+    state.db.save_accounts(&store)?;
     Ok(())
 }
 

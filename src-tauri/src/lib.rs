@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod config;
+mod db;
 mod download;
 mod error;
 mod install;
@@ -26,8 +27,8 @@ pub fn run() {
             }
             let paths = Paths::resolve(app.handle())?;
             paths.ensure_dirs()?;
-            let settings = config::load_settings(&paths)?;
-            app.manage(AppState::new(paths, settings));
+            let db = db::Db::open(&paths)?;
+            app.manage(AppState::new(paths, db));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

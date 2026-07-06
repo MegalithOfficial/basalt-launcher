@@ -12,6 +12,7 @@ import {
 
 import { api } from "../lib/api";
 import { mediaSrc } from "../lib/media";
+import { formatPlaytime, relativeTime } from "../lib/time";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { InstanceSheet } from "../components/InstanceSheet";
@@ -209,6 +210,13 @@ export function HomeView() {
                 {media?.short_text && (
                   <p className="mt-2.5 line-clamp-2 max-w-xl text-sm leading-relaxed text-white/70">
                     {media.short_text}
+                  </p>
+                )}
+                {selected.last_played_at && (
+                  <p className="mt-2 text-xs text-white/50">
+                    Last played {relativeTime(selected.last_played_at)}
+                    {formatPlaytime(selected.playtime_secs) &&
+                      ` · ${formatPlaytime(selected.playtime_secs)}`}
                   </p>
                 )}
               </>
