@@ -2,7 +2,61 @@ import { useEffect, useRef, useState } from "react";
 import { CircleStop, Terminal, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import type { LogLine } from "../lib/types";
 import { useStore } from "../store";
+
+const PREFIX_RE = /^(\[\d{2}:\d{2}:\d{2}\]) (\[[^\]]+\]:?)\s?(.*)$/;
+
+function levelOf(log: LogLine): "error" | "warn" | "debug" | "info" {
+  const line = log.line;
+  if (/\/(ERROR|FATAL)\]/.test(line)) return "error";
+  if (/\/WARN\]/.test(line)) return "warn";
+  if (/\/(DEBUG|TRACE)\]/.test(line)) return "debug";
+  if (/^\s+at |^Caused by:|Exception|^\tat /.test(line)) return "error";
+  if (log.stream === "stderr") return "warn";
+  return "info";
+}
+
+const LEVEL_CLASS: Record<ReturnType<typeof levelOf>, string> = {
+  error: "text-danger",
+  warn: "text-warn",
+  debug: "text-content-faint",
+  info: "text-content-muted",
+};
+
+function ConsoleLine({ log }: { log: LogLine }) {
+  const level = levelOf(log);
+  const match = log.line.match(PREFIX_RE);
+
+  if (!match) {
+    return (
+      <div className={cn("whitespace-pre-wrap break-all", LEVEL_CLASS[level])}>
+        {log.line}
+      </div>
+    );
+  }
+
+  const [, time, tag, body] = match;
+  return (
+    <div className="whitespace-pre-wrap break-all">
+      <span className="text-content-faint/70">{time} </span>
+      <span
+        className={cn(
+          level === "error"
+            ? "text-danger/80"
+            : level === "warn"
+              ? "text-warn/80"
+              : "text-content-faint",
+        )}
+      >
+        {tag}{" "}
+      </span>
+      <span className={cn(level === "info" ? "text-content" : LEVEL_CLASS[level])}>
+        {body}
+      </span>
+    </div>
+  );
+}
 
 function useUptime(startedAt: number, live: boolean) {
   const [now, setNow] = useState(() => Date.now());
@@ -128,17 +182,7 @@ export function ConsoleView() {
         {logs.length === 0 ? (
           <div className="py-10 text-center text-content-faint">Waiting for output…</div>
         ) : (
-          logs.map((log, i) => (
-            <div
-              key={i}
-              className={cn(
-                "whitespace-pre-wrap break-all",
-                log.stream === "stderr" ? "text-danger/90" : "text-content-muted",
-              )}
-            >
-              {log.line}
-            </div>
-          ))
+          logs.map((log, i) => <ConsoleLine key={i} log={log} />)
         )}
       </div>
     </div>
