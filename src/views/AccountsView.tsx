@@ -14,6 +14,7 @@ import {
 
 import { cn } from "../lib/cn";
 import { Button, EmptyState, PageHeader } from "../components/ui";
+import { PlayerHead } from "../components/Avatar";
 import { useStore } from "../store";
 
 function DeviceCodeCard() {
@@ -132,9 +133,7 @@ export function AccountsView() {
                   acc.active ? "border-lava/40 bg-lava/5" : "border-border bg-surface-2",
                 )}
               >
-                <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-muted">
-                  <UserCircle2 className="size-5" />
-                </div>
+                <PlayerHead uuid={acc.id} name={acc.name} size={40} className="shrink-0 rounded-lg" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-display font-semibold text-content">
                     {acc.name}

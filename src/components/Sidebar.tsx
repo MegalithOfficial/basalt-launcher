@@ -3,6 +3,7 @@ import { Boxes, Play, ScrollText, Settings, UserCircle2 } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import type { View } from "../lib/types";
+import { PlayerHead } from "./Avatar";
 import { useStore } from "../store";
 
 const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
@@ -103,16 +104,7 @@ export function Sidebar() {
           onClick={() => setView("accounts")}
         >
           {activeAccount ? (
-            <span
-              className={cn(
-                "grid size-7 place-items-center rounded-full text-[11px] font-bold",
-                view === "accounts"
-                  ? "bg-black/25 text-black"
-                  : "bg-surface-3 text-content group-hover:bg-border",
-              )}
-            >
-              {activeAccount.name.slice(0, 1).toUpperCase()}
-            </span>
+            <PlayerHead uuid={activeAccount.id} name={activeAccount.name} size={28} />
           ) : (
             <UserCircle2 className="size-[19px]" />
           )}
