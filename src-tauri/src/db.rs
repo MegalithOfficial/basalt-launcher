@@ -204,14 +204,28 @@ impl Db {
         min_memory_mb: Option<u32>,
         max_memory_mb: Option<u32>,
         java_path: Option<String>,
+        loader: Option<String>,
+        loader_version: Option<String>,
+        reset_launch_version: bool,
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
-        conn.execute(
-            "UPDATE instances
-             SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5
-             WHERE id = ?1",
-            params![instance_id, name, min_memory_mb, max_memory_mb, java_path],
-        )?;
+        if reset_launch_version {
+            conn.execute(
+                "UPDATE instances
+                 SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
+                     loader = ?6, loader_version = ?7, launch_version_id = NULL
+                 WHERE id = ?1",
+                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version],
+            )?;
+        } else {
+            conn.execute(
+                "UPDATE instances
+                 SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
+                     loader = ?6, loader_version = ?7
+                 WHERE id = ?1",
+                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version],
+            )?;
+        }
         Ok(())
     }
 

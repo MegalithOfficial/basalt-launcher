@@ -3,7 +3,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 
 import { api } from "./lib/api";
-import { launchVersionOf } from "./lib/loader";
+import { isInstanceInstalled } from "./lib/loader";
 import type {
   AccountView,
   ContentKind,
@@ -93,6 +93,8 @@ interface AppStore {
     minMemoryMb: number | null,
     maxMemoryMb: number | null,
     javaPath: string | null,
+    loader: string | null,
+    loaderVersion: string | null,
   ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
   installInstance: (id: string) => Promise<void>;
@@ -240,7 +242,7 @@ export const useStore = create<AppStore>((set) => ({
         api.listInstalledVersions(),
       ]);
       const installedIds = instances
-        .filter((i) => installedVersions.includes(launchVersionOf(i)))
+        .filter((i) => isInstanceInstalled(i, installedVersions))
         .map((i) => i.id);
       set((s) => ({
         settings,
@@ -378,18 +380,33 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       instances: [...s.instances, instance],
       selectedInstanceId: instance.id,
-      installedIds: installedVersions.includes(launchVersionOf(instance))
+      installedIds: isInstanceInstalled(instance, installedVersions)
         ? [...s.installedIds, instance.id]
         : s.installedIds,
     }));
     return instance;
   },
 
-  updateInstance: async (id, name, minMemoryMb, maxMemoryMb, javaPath) => {
-    const updated = await api.updateInstance(id, name, minMemoryMb, maxMemoryMb, javaPath);
-    set((s) => ({
-      instances: s.instances.map((i) => (i.id === id ? updated : i)),
-    }));
+  updateInstance: async (id, name, minMemoryMb, maxMemoryMb, javaPath, loader, loaderVersion) => {
+    const updated = await api.updateInstance(
+      id,
+      name,
+      minMemoryMb,
+      maxMemoryMb,
+      javaPath,
+      loader,
+      loaderVersion,
+    );
+    const installedVersions = await api.listInstalledVersions();
+    set((s) => {
+      const instances = s.instances.map((i) => (i.id === id ? updated : i));
+      return {
+        instances,
+        installedIds: instances
+          .filter((i) => isInstanceInstalled(i, installedVersions))
+          .map((i) => i.id),
+      };
+    });
   },
 
   deleteInstance: async (id) => {

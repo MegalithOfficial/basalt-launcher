@@ -12,6 +12,15 @@ export function loaderLabel(instance: Instance): string {
   return LOADERS.find((l) => l.id === instance.loader)?.label ?? instance.loader;
 }
 
-export function launchVersionOf(instance: Instance): string {
-  return instance.launch_version_id ?? instance.version_id;
+export function isInstanceInstalled(
+  instance: Instance,
+  installedVersions: string[],
+): boolean {
+  if (instance.loader) {
+    return (
+      !!instance.launch_version_id &&
+      installedVersions.includes(instance.launch_version_id)
+    );
+  }
+  return installedVersions.includes(instance.version_id);
 }

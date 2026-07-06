@@ -87,14 +87,32 @@ pub fn update_instance(
     min_memory_mb: Option<u32>,
     max_memory_mb: Option<u32>,
     java_path: Option<String>,
+    loader: Option<String>,
+    loader_version: Option<String>,
 ) -> Result<Instance> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err(Error::other("Instance name cannot be empty."));
     }
-    state
-        .db
-        .update_instance_settings(&instance_id, &name, min_memory_mb, max_memory_mb, java_path)?;
+    if let Some(loader) = loader.as_deref() {
+        loaders::Loader::parse(loader)?;
+        if loader_version.is_none() {
+            return Err(Error::other("loader version is required"));
+        }
+    }
+    let existing = find_instance(&state, &instance_id)?;
+    let loader_changed =
+        existing.loader != loader || existing.loader_version != loader_version;
+    state.db.update_instance_settings(
+        &instance_id,
+        &name,
+        min_memory_mb,
+        max_memory_mb,
+        java_path,
+        loader,
+        loader_version,
+        loader_changed,
+    )?;
     find_instance(&state, &instance_id)
 }
 

@@ -12,12 +12,50 @@ import {
   X,
 } from "lucide-react";
 
-import { loaderLabel } from "../lib/loader";
+import { api } from "../lib/api";
+import { LOADERS, loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
 import { useEscape } from "../lib/useEscape";
+import { Select } from "./Select";
 import { useStore } from "../store";
+
+const VANILLA = "vanilla";
+
+function loaderWarning(
+  oldLoader: string | null,
+  oldVersion: string | null,
+  newLoader: string | null,
+  newVersion: string | null,
+): { tone: "info" | "warn" | "danger"; message: string } | null {
+  if (oldLoader === newLoader && oldVersion === newVersion) return null;
+  if (!oldLoader && newLoader) {
+    return {
+      tone: "info",
+      message:
+        "The loader will be set up on the next install. Press Install after saving to download it.",
+    };
+  }
+  if (oldLoader && !newLoader) {
+    return {
+      tone: "danger",
+      message:
+        "Switching to Vanilla means your installed mods will stop working. They stay in the mods folder but will not load.",
+    };
+  }
+  if (oldLoader && newLoader && oldLoader !== newLoader) {
+    return {
+      tone: "danger",
+      message: `Mods built for ${oldLoader} will not work on ${newLoader}. You will need to replace them with ${newLoader} builds.`,
+    };
+  }
+  return {
+    tone: "warn",
+    message:
+      "Changing the loader version may require mod updates. Some mods pin a specific loader version.",
+  };
+}
 
 const inputCls =
   "w-full rounded-lg border border-border bg-base px-3 py-2.5 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]";
@@ -51,6 +89,10 @@ export function EditInstanceModal({
   const [minMem, setMinMem] = useState("");
   const [maxMem, setMaxMem] = useState("");
   const [javaPath, setJavaPath] = useState("");
+  const [loader, setLoader] = useState<string>(VANILLA);
+  const [loaderVersion, setLoaderVersion] = useState<string | null>(null);
+  const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
+  const [loaderLoading, setLoaderLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,8 +102,33 @@ export function EditInstanceModal({
     setMinMem(instance.min_memory_mb?.toString() ?? "");
     setMaxMem(instance.max_memory_mb?.toString() ?? "");
     setJavaPath(instance.java_path ?? "");
+    setLoader(instance.loader ?? VANILLA);
+    setLoaderVersion(instance.loader_version ?? null);
     setError(null);
   }, [instance?.id]);
+
+  useEffect(() => {
+    if (!instance || loader === VANILLA) {
+      setLoaderVersions([]);
+      return;
+    }
+    let live = true;
+    setLoaderLoading(true);
+    api
+      .listLoaderVersions(loader, instance.version_id)
+      .then((list) => {
+        if (!live) return;
+        setLoaderVersions(list);
+        setLoaderVersion((current) =>
+          current && list.includes(current) ? current : (list[0] ?? null),
+        );
+      })
+      .catch(() => live && setLoaderVersions([]))
+      .finally(() => live && setLoaderLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [loader, instance?.id]);
 
   useEscape(!!instance, onClose);
 
@@ -75,6 +142,15 @@ export function EditInstanceModal({
     return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
   };
 
+  const newLoader = loader === VANILLA ? null : loader;
+  const newLoaderVersion = loader === VANILLA ? null : loaderVersion;
+  const warning = loaderWarning(
+    instance.loader,
+    instance.loader_version,
+    newLoader,
+    newLoaderVersion,
+  );
+
   const save = async () => {
     setBusy(true);
     setError(null);
@@ -85,6 +161,8 @@ export function EditInstanceModal({
         parseMem(minMem),
         parseMem(maxMem),
         javaPath.trim() || null,
+        newLoader,
+        newLoaderVersion,
       );
       onClose();
     } catch (e) {
@@ -215,6 +293,57 @@ export function EditInstanceModal({
                 className={inputCls}
               />
             </Field>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Loader">
+                <Select
+                  value={loader === VANILLA ? "Vanilla" : (LOADERS.find((l) => l.id === loader)?.label ?? loader)}
+                  options={["Vanilla", ...LOADERS.map((l) => l.label)]}
+                  onChange={(label) => {
+                    const picked = LOADERS.find((l) => l.label === label);
+                    setLoader(picked?.id ?? VANILLA);
+                    if (!picked) setLoaderVersion(null);
+                  }}
+                />
+              </Field>
+              <Field label="Loader version">
+                {loader === VANILLA ? (
+                  <div className="rounded-lg border border-border-soft bg-surface-2 px-3 py-2 text-sm text-content-faint">
+                    Not applicable
+                  </div>
+                ) : loaderLoading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border-soft bg-surface-2 px-3 py-2 text-sm text-content-muted">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Loading
+                  </div>
+                ) : loaderVersions.length === 0 ? (
+                  <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
+                    No builds for {instance.version_id}
+                  </div>
+                ) : (
+                  <Select
+                    value={loaderVersion}
+                    options={loaderVersions.slice(0, 100)}
+                    onChange={setLoaderVersion}
+                    placeholder="Pick a version"
+                  />
+                )}
+              </Field>
+            </div>
+
+            {warning && (
+              <div
+                className={
+                  warning.tone === "danger"
+                    ? "rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+                    : warning.tone === "warn"
+                      ? "rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
+                      : "rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-content-muted"
+                }
+              >
+                {warning.message}
+              </div>
+            )}
 
             <button
               onClick={() => openPath(instance.dir)}

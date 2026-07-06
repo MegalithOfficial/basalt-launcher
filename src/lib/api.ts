@@ -90,6 +90,8 @@ export const api = {
     minMemoryMb: number | null,
     maxMemoryMb: number | null,
     javaPath: string | null,
+    loader: string | null,
+    loaderVersion: string | null,
   ) =>
     invoke<Instance>("update_instance", {
       instanceId,
@@ -97,6 +99,8 @@ export const api = {
       minMemoryMb,
       maxMemoryMb,
       javaPath,
+      loader,
+      loaderVersion,
     }),
   deleteInstance: (instanceId: string) =>
     invoke<void>("delete_instance", { instanceId }),
