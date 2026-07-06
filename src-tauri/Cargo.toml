@@ -30,4 +30,5 @@ zip = "2"
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v3", "v4", "serde"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 

@@ -12,6 +12,7 @@ use crate::install;
 use crate::java::{self, JavaStatus};
 use crate::launch::{self, process::{LogLine, RunningInfo}};
 use crate::meta::manifest::{self, VersionEntry};
+use crate::meta::media::{self, VersionMedia};
 use crate::paths::Paths;
 use crate::state::AppState;
 
@@ -64,6 +65,36 @@ pub fn delete_instance(state: State<AppState>, instance_id: String) -> Result<()
         std::fs::remove_dir_all(dir)?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_version_media(
+    state: State<'_, AppState>,
+    version_id: String,
+) -> Result<Option<VersionMedia>> {
+    if let Some(cached) = state.media_cache.lock().unwrap().get(&version_id) {
+        return Ok(cached.clone());
+    }
+
+    let notes = {
+        let cached = state.patch_notes.lock().unwrap().clone();
+        match cached {
+            Some(notes) => notes,
+            None => {
+                let notes = media::fetch_notes(&state.http, &state.paths).await?;
+                *state.patch_notes.lock().unwrap() = Some(notes.clone());
+                notes
+            }
+        }
+    };
+
+    let result = media::media_for(&state.http, &state.paths, &notes, &version_id).await;
+    state
+        .media_cache
+        .lock()
+        .unwrap()
+        .insert(version_id, result.clone());
+    Ok(result)
 }
 
 #[tauri::command]
