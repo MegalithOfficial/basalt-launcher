@@ -109,7 +109,7 @@ interface AppStore {
   selectInstance: (id: string) => void;
   openInstance: (id: string) => void;
   openSearch: (kind: ContentKind) => void;
-  openProject: (provider: SearchProvider, id: string) => void;
+  openProject: (provider: SearchProvider, id: string, kind?: ContentKind) => void;
   goBack: () => void;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
@@ -156,9 +156,10 @@ export const useStore = create<AppStore>((set) => ({
       viewStack: s.view !== "search" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
 
-  openProject: (provider, id) =>
+  openProject: (provider, id, kind) =>
     set((s) => ({
       projectRef: { provider, id },
+      searchKind: kind ?? s.searchKind,
       view: "project",
       viewStack: s.view !== "project" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),

@@ -28,10 +28,19 @@ export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
 
 export type ContentKind = "mods" | "resourcepacks" | "shaderpacks" | "schematics";
 
+export interface ContentSource {
+  provider: SearchProvider;
+  project_id: string;
+  version_id: string | null;
+  title: string | null;
+  icon_url: string | null;
+}
+
 export interface ContentItem {
   file_name: string;
   size: number;
   enabled: boolean;
+  source: ContentSource | null;
 }
 
 export type SearchProvider = "modrinth" | "curseforge";

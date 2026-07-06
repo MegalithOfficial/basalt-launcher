@@ -52,8 +52,8 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
     >
       <span
         className={cn(
-          "absolute top-0.5 size-4 rounded-full bg-white shadow transition-transform duration-300",
-          on ? "translate-x-[18px]" : "translate-x-0.5",
+          "absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform duration-300",
+          on ? "translate-x-4" : "translate-x-0",
         )}
       />
     </button>
@@ -66,6 +66,7 @@ export function InstanceView() {
   const media = useStore((s) => (detailId ? (s.media[detailId] ?? null) : null));
   const setView = useStore((s) => s.setView);
   const openSearch = useStore((s) => s.openSearch);
+  const openProject = useStore((s) => s.openProject);
 
   const [tab, setTab] = useState<ContentKind>("mods");
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -273,14 +274,36 @@ export function InstanceView() {
                   !item.enabled && "opacity-55",
                 )}
               >
-                <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
-                  <FileBox className="size-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-content">
-                    {item.file_name}
+                {item.source?.icon_url ? (
+                  <img
+                    src={item.source.icon_url}
+                    className="size-8 shrink-0 rounded-lg bg-surface-3 object-cover"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+                    <FileBox className="size-4" />
                   </div>
-                  <div className="text-[11px] text-content-faint">
+                )}
+                <div
+                  className={cn("min-w-0 flex-1", item.source && "cursor-pointer")}
+                  onClick={() =>
+                    item.source &&
+                    openProject(item.source.provider, item.source.project_id, tab)
+                  }
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium text-content">
+                      {item.source?.title ?? item.file_name}
+                    </span>
+                    {item.source && (
+                      <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
+                        {item.source.provider}
+                      </span>
+                    )}
+                  </div>
+                  <div className="truncate text-[11px] text-content-faint">
+                    {item.source?.title ? `${item.file_name} · ` : ""}
                     {formatSize(item.size)}
                     {!item.enabled && " · disabled"}
                   </div>

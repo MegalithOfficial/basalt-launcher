@@ -70,6 +70,8 @@ export const api = {
     gameVersion: string,
     loader: string | null,
     versionId: string | null = null,
+    title: string | null = null,
+    iconUrl: string | null = null,
   ) =>
     invoke<string>("install_content", {
       provider,
@@ -79,6 +81,8 @@ export const api = {
       gameVersion,
       loader,
       versionId,
+      title,
+      iconUrl,
     }),
   updateInstance: (
     instanceId: string,

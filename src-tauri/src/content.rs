@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::db::ContentSource;
 use crate::error::{Error, Result};
 use crate::paths::Paths;
 
@@ -10,6 +11,7 @@ pub struct ContentItem {
     pub file_name: String,
     pub size: u64,
     pub enabled: bool,
+    pub source: Option<ContentSource>,
 }
 
 fn kind_subdir(kind: &str) -> Result<&'static str> {
@@ -61,6 +63,7 @@ pub fn list(paths: &Paths, instance_id: &str, kind: &str) -> Result<Vec<ContentI
             file_name,
             size: meta.len(),
             enabled,
+            source: None,
         });
     }
     items.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));

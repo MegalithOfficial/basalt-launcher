@@ -89,7 +89,17 @@ export function SearchView() {
     setInstalling(result.id);
     setError(null);
     try {
-      await api.installContent(provider, result.id, instance.id, kind, instance.version_id, loader);
+      await api.installContent(
+        provider,
+        result.id,
+        instance.id,
+        kind,
+        instance.version_id,
+        loader,
+        null,
+        result.title,
+        result.icon_url,
+      );
       setInstalled((prev) => new Set(prev).add(result.id));
     } catch (err) {
       setError(String(err));

@@ -16,6 +16,13 @@ pub enum Provider {
 }
 
 impl Provider {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Provider::Modrinth => "modrinth",
+            Provider::Curseforge => "curseforge",
+        }
+    }
+
     pub fn parse(value: &str) -> Result<Self> {
         match value {
             "modrinth" => Ok(Provider::Modrinth),
@@ -808,59 +815,62 @@ pub async fn install(
     game_version: &str,
     loader: Option<&str>,
     version_id: Option<&str>,
+    title: Option<&str>,
+    icon_url: Option<&str>,
 ) -> Result<String> {
     let dest_dir = content::dir_for(&state.paths, instance_id, kind)?;
 
-    let (url, file_name, sha1, size) = match provider {
-        Provider::Modrinth => match version_id {
-            Some(vid) => {
-                let version: ModrinthVersion = state
-                    .http
-                    .get(format!("{MODRINTH}/version/{vid}"))
-                    .send()
+    let (url, file_name, sha1, size, source_version) = match provider {
+        Provider::Modrinth => {
+            let version: ModrinthVersion = match version_id {
+                Some(vid) => {
+                    state
+                        .http
+                        .get(format!("{MODRINTH}/version/{vid}"))
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json()
+                        .await?
+                }
+                None => modrinth_versions(state, project_id, game_version, loader, kind)
                     .await?
-                    .error_for_status()?
-                    .json()
-                    .await?;
-                modrinth_pick_file(&version)?
-            }
-            None => {
-                let versions =
-                    modrinth_versions(state, project_id, game_version, loader, kind).await?;
-                let version = versions
                     .into_iter()
                     .next()
-                    .ok_or_else(|| Error::other("No compatible version found."))?;
-                modrinth_pick_file(&version)?
-            }
-        },
-        Provider::Curseforge => match version_id {
-            Some(fid) => {
-                let key = curseforge_key(state)?;
-                let response: CurseforgeFileResponse = state
-                    .http
-                    .get(format!("{CURSEFORGE}/mods/{project_id}/files/{fid}"))
-                    .header("x-api-key", key)
-                    .send()
+                    .ok_or_else(|| Error::other("No compatible version found."))?,
+            };
+            let (url, file_name, sha1, size) = modrinth_pick_file(&version)?;
+            (url, file_name, sha1, size, version.id)
+        }
+        Provider::Curseforge => {
+            let file = match version_id {
+                Some(fid) => {
+                    let key = curseforge_key(state)?;
+                    let response: CurseforgeFileResponse = state
+                        .http
+                        .get(format!("{CURSEFORGE}/mods/{project_id}/files/{fid}"))
+                        .header("x-api-key", key)
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json()
+                        .await?;
+                    response.data
+                }
+                None => curseforge_files(state, project_id, game_version, loader, kind)
                     .await?
-                    .error_for_status()?
-                    .json()
-                    .await?;
-                curseforge_pick_file(response.data)?
-            }
-            None => {
-                let files = curseforge_files(state, project_id, game_version, loader, kind).await?;
-                let file = files
                     .into_iter()
                     .find(|f| f.download_url.is_some())
                     .ok_or_else(|| {
                         Error::other(
                             "No downloadable file found. The author may have disabled third-party downloads.",
                         )
-                    })?;
-                curseforge_pick_file(file)?
-            }
-        },
+                    })?,
+            };
+            let source_version = file.id.to_string();
+            let (url, file_name, sha1, size) = curseforge_pick_file(file)?;
+            (url, file_name, sha1, size, source_version)
+        }
     };
 
     std::fs::create_dir_all(&dest_dir)?;
@@ -874,5 +884,17 @@ pub async fn install(
         },
     )
     .await?;
+
+    let _ = state.db.record_content_source(
+        instance_id,
+        kind,
+        &file_name,
+        provider.as_str(),
+        project_id,
+        Some(&source_version).filter(|v| !v.is_empty()).map(|v| v.as_str()),
+        title,
+        icon_url,
+    );
+
     Ok(file_name)
 }

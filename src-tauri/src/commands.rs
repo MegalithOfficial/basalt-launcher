@@ -107,6 +107,7 @@ pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) ->
     }
     media::clear_custom_banner(&state.paths, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
+    state.db.delete_instance_content_sources(&instance_id)?;
     Ok(())
 }
 
@@ -284,7 +285,12 @@ pub fn list_instance_content(
     kind: String,
 ) -> Result<Vec<ContentItem>> {
     find_instance(&state, &instance_id)?;
-    content::list(&state.paths, &instance_id, &kind)
+    let mut items = content::list(&state.paths, &instance_id, &kind)?;
+    let mut sources = state.db.content_sources(&instance_id, &kind)?;
+    for item in &mut items {
+        item.source = sources.remove(&item.file_name);
+    }
+    Ok(items)
 }
 
 #[tauri::command]
@@ -304,7 +310,8 @@ pub fn delete_instance_content(
     kind: String,
     file_name: String,
 ) -> Result<()> {
-    content::delete(&state.paths, &instance_id, &kind, &file_name)
+    content::delete(&state.paths, &instance_id, &kind, &file_name)?;
+    state.db.delete_content_source(&instance_id, &kind, &file_name)
 }
 
 #[tauri::command]
@@ -372,6 +379,8 @@ pub async fn install_content(
     game_version: String,
     loader: Option<String>,
     version_id: Option<String>,
+    title: Option<String>,
+    icon_url: Option<String>,
 ) -> Result<String> {
     find_instance(&state, &instance_id)?;
     let provider = search::Provider::parse(&provider)?;
@@ -384,6 +393,8 @@ pub async fn install_content(
         &game_version,
         loader.as_deref(),
         version_id.as_deref(),
+        title.as_deref(),
+        icon_url.as_deref(),
     )
     .await
 }

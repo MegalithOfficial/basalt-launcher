@@ -235,6 +235,8 @@ export function ProjectView() {
         instance.version_id,
         loader,
         versionId,
+        details?.title ?? null,
+        details?.icon_url ?? null,
       );
       setInstalled((prev) => new Set(prev).add(key));
     } catch (e) {

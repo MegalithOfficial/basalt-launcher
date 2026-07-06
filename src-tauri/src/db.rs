@@ -10,6 +10,15 @@ use crate::paths::Paths;
 #[derive(Clone)]
 pub struct Db(Arc<Mutex<Connection>>);
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContentSource {
+    pub provider: String,
+    pub project_id: String,
+    pub version_id: Option<String>,
+    pub title: Option<String>,
+    pub icon_url: Option<String>,
+}
+
 fn migrate(conn: &Connection) -> Result<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if version < 1 {
@@ -46,6 +55,22 @@ fn migrate(conn: &Connection) -> Result<()> {
             ALTER TABLE instances ADD COLUMN loader_version TEXT;
             ALTER TABLE instances ADD COLUMN launch_version_id TEXT;
             PRAGMA user_version = 2;",
+        )?;
+    }
+    if version < 3 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS content_sources(
+                instance_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                version_id TEXT,
+                title TEXT,
+                icon_url TEXT,
+                PRIMARY KEY (instance_id, kind, file_name)
+            );
+            PRAGMA user_version = 3;",
         )?;
     }
     Ok(())
@@ -212,6 +237,81 @@ impl Db {
              SET playtime_secs = playtime_secs + ?2, last_played_at = ?3
              WHERE id = ?1",
             params![instance_id, played_secs.max(0), ended_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn record_content_source(
+        &self,
+        instance_id: &str,
+        kind: &str,
+        file_name: &str,
+        provider: &str,
+        project_id: &str,
+        version_id: Option<&str>,
+        title: Option<&str>,
+        icon_url: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO content_sources
+                (instance_id, kind, file_name, provider, project_id, version_id, title, icon_url)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![instance_id, kind, file_name, provider, project_id, version_id, title, icon_url],
+        )?;
+        Ok(())
+    }
+
+    pub fn content_sources(
+        &self,
+        instance_id: &str,
+        kind: &str,
+    ) -> Result<std::collections::HashMap<String, ContentSource>> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT file_name, provider, project_id, version_id, title, icon_url
+             FROM content_sources WHERE instance_id = ?1 AND kind = ?2",
+        )?;
+        let rows = stmt.query_map(params![instance_id, kind], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                ContentSource {
+                    provider: row.get(1)?,
+                    project_id: row.get(2)?,
+                    version_id: row.get(3)?,
+                    title: row.get(4)?,
+                    icon_url: row.get(5)?,
+                },
+            ))
+        })?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (file_name, source) = row?;
+            map.insert(file_name, source);
+        }
+        Ok(map)
+    }
+
+    pub fn delete_content_source(
+        &self,
+        instance_id: &str,
+        kind: &str,
+        file_name: &str,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "DELETE FROM content_sources
+             WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+            params![instance_id, kind, file_name],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_instance_content_sources(&self, instance_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "DELETE FROM content_sources WHERE instance_id = ?1",
+            params![instance_id],
         )?;
         Ok(())
     }
