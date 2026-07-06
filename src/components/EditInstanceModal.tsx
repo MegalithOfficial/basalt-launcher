@@ -16,12 +16,14 @@ import { api } from "../lib/api";
 import { LOADERS, loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
-import type { Instance } from "../lib/types";
+import type { Instance, JavaInfo } from "../lib/types";
 import { useEscape } from "../lib/useEscape";
 import { Select } from "./Select";
 import { useStore } from "../store";
 
 const VANILLA = "vanilla";
+const JAVA_AUTO = "Auto-detect";
+const JAVA_CUSTOM = "Custom path";
 
 function loaderWarning(
   oldLoader: string | null,
@@ -95,6 +97,8 @@ export function EditInstanceModal({
   const [loaderLoading, setLoaderLoading] = useState(false);
   const [gameVersion, setGameVersion] = useState("");
   const [gameVersions, setGameVersions] = useState<string[]>([]);
+  const [javas, setJavas] = useState<JavaInfo[]>([]);
+  const [javaCustom, setJavaCustom] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,10 +108,16 @@ export function EditInstanceModal({
     setMinMem(instance.min_memory_mb?.toString() ?? "");
     setMaxMem(instance.max_memory_mb?.toString() ?? "");
     setJavaPath(instance.java_path ?? "");
+    setJavaCustom(false);
     setLoader(instance.loader ?? VANILLA);
     setLoaderVersion(instance.loader_version ?? null);
     setGameVersion(instance.version_id);
     setError(null);
+  }, [instance?.id]);
+
+  useEffect(() => {
+    if (!instance) return;
+    api.listJavas().then(setJavas).catch(() => {});
   }, [instance?.id]);
 
   useEffect(() => {
@@ -313,14 +323,51 @@ export function EditInstanceModal({
               </Field>
             </div>
 
-            <Field label="Java path" hint="empty = auto-detect">
-              <input
-                value={javaPath}
-                onChange={(e) => setJavaPath(e.target.value)}
-                placeholder="/usr/lib/jvm/java-25-openjdk/bin/java"
-                className={inputCls}
+            <Field label="Java runtime" hint={`${javas.length} detected`}>
+              <Select
+                value={
+                  javaCustom
+                    ? JAVA_CUSTOM
+                    : !javaPath
+                      ? JAVA_AUTO
+                      : (javas.find((j) => j.path === javaPath)
+                          ? `Java ${javas.find((j) => j.path === javaPath)!.major} · ${javaPath}`
+                          : JAVA_CUSTOM)
+                }
+                options={[
+                  JAVA_AUTO,
+                  ...javas.map((j) => `Java ${j.major} · ${j.path}`),
+                  JAVA_CUSTOM,
+                ]}
+                onChange={(choice) => {
+                  if (choice === JAVA_AUTO) {
+                    setJavaCustom(false);
+                    setJavaPath("");
+                    return;
+                  }
+                  if (choice === JAVA_CUSTOM) {
+                    setJavaCustom(true);
+                    return;
+                  }
+                  const picked = javas.find((j) => `Java ${j.major} · ${j.path}` === choice);
+                  if (picked) {
+                    setJavaCustom(false);
+                    setJavaPath(picked.path);
+                  }
+                }}
               />
             </Field>
+
+            {(javaCustom || (!!javaPath && !javas.some((j) => j.path === javaPath))) && (
+              <Field label="Custom java path" hint="path to a java executable">
+                <input
+                  value={javaPath}
+                  onChange={(e) => setJavaPath(e.target.value)}
+                  placeholder="/path/to/bin/java"
+                  className={inputCls}
+                />
+              </Field>
+            )}
 
             <Field label="Game version" hint="changing requires a reinstall">
               <Select

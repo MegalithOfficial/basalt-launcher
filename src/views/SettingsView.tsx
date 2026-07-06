@@ -112,7 +112,7 @@ export function SettingsView() {
   };
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title="Settings"
         subtitle="Defaults for every instance. Changes save automatically."
@@ -129,7 +129,7 @@ export function SettingsView() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="mx-auto flex max-w-2xl flex-col gap-7">
           <Section
             title="Game defaults"
