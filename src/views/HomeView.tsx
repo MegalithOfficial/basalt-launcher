@@ -17,7 +17,6 @@ import { loaderLabel } from "../lib/loader";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
-import { EditInstanceModal } from "../components/EditInstanceModal";
 import { InstanceSheet } from "../components/InstanceSheet";
 import { useStore } from "../store";
 
@@ -84,6 +83,7 @@ export function HomeView() {
   const installInstance = useStore((s) => s.installInstance);
   const launchInstance = useStore((s) => s.launchInstance);
   const openConsole = useStore((s) => s.openConsole);
+  const openInstance = useStore((s) => s.openInstance);
   const running = useStore((s) => s.running);
   const account = useStore((s) => s.accounts.find((a) => a.active) ?? null);
   const mediaMap = useStore((s) => s.media);
@@ -94,7 +94,6 @@ export function HomeView() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
   const [java, setJava] = useState<JavaStatus | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
@@ -190,8 +189,8 @@ export function HomeView() {
           )}
           {hasInstance && (
             <button
-              onClick={() => setEditOpen(true)}
-              aria-label="Edit instance"
+              onClick={() => openInstance(selected.id)}
+              aria-label="Manage instance"
               className="grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
             >
               <Pencil className="size-4" />
@@ -285,11 +284,6 @@ export function HomeView() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={(id) => selectInstance(id)}
-      />
-
-      <EditInstanceModal
-        instance={editOpen && selected ? selected : null}
-        onClose={() => setEditOpen(false)}
       />
     </div>
   );
