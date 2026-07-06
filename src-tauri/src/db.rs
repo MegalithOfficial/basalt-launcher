@@ -10,24 +10,25 @@ use crate::paths::Paths;
 #[derive(Clone)]
 pub struct Db(Arc<Mutex<Connection>>);
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ContentSource {
-    pub provider: String,
-    pub project_id: String,
-    pub version_id: Option<String>,
-    pub title: Option<String>,
-    pub icon_url: Option<String>,
-}
+#[cfg(test)]
+mod tests {
+    use super::{column_exists, migrate};
+    use rusqlite::Connection;
 
-fn migrate(conn: &Connection) -> Result<()> {
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if version < 1 {
+    #[test]
+    fn migrate_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        migrate(&conn).unwrap();
+        assert!(column_exists(&conn, "instances", "pack_provider").unwrap());
+        assert!(column_exists(&conn, "instances", "loader").unwrap());
+    }
+
+    #[test]
+    fn migrate_heals_partial_state() {
+        let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS settings(
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS instances(
+            "CREATE TABLE instances(
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 version_id TEXT NOT NULL,
@@ -38,49 +39,111 @@ fn migrate(conn: &Connection) -> Result<()> {
                 last_played_at INTEGER,
                 playtime_secs INTEGER NOT NULL DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS accounts(
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                mc_access_token TEXT NOT NULL,
-                refresh_token TEXT NOT NULL,
-                expires_at INTEGER NOT NULL,
-                is_active INTEGER NOT NULL DEFAULT 0
-            );
-            PRAGMA user_version = 1;",
-        )?;
-    }
-    if version < 2 {
-        conn.execute_batch(
-            "ALTER TABLE instances ADD COLUMN loader TEXT;
+            ALTER TABLE instances ADD COLUMN loader TEXT;
             ALTER TABLE instances ADD COLUMN loader_version TEXT;
             ALTER TABLE instances ADD COLUMN launch_version_id TEXT;
-            PRAGMA user_version = 2;",
-        )?;
-    }
-    if version < 3 {
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS content_sources(
-                instance_id TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-                provider TEXT NOT NULL,
-                project_id TEXT NOT NULL,
-                version_id TEXT,
-                title TEXT,
-                icon_url TEXT,
-                PRIMARY KEY (instance_id, kind, file_name)
-            );
-            PRAGMA user_version = 3;",
-        )?;
-    }
-    if version < 4 {
-        conn.execute_batch(
-            "ALTER TABLE instances ADD COLUMN pack_provider TEXT;
+            ALTER TABLE instances ADD COLUMN pack_provider TEXT;
             ALTER TABLE instances ADD COLUMN pack_project_id TEXT;
             ALTER TABLE instances ADD COLUMN pack_version_id TEXT;
-            PRAGMA user_version = 4;",
+            PRAGMA user_version = 3;",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, super::SCHEMA_VERSION);
+        assert!(column_exists(&conn, "instances", "pack_version_id").unwrap());
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContentSource {
+    pub provider: String,
+    pub project_id: String,
+    pub version_id: Option<String>,
+    pub title: Option<String>,
+    pub icon_url: Option<String>,
+}
+
+const SCHEMA_VERSION: i64 = 4;
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for name in names {
+        if name? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    declaration: &str,
+) -> Result<()> {
+    if !column_exists(conn, table, column)? {
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {declaration}"),
+            [],
         )?;
     }
+    Ok(())
+}
+
+fn migrate(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS settings(
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS instances(
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            version_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            min_memory_mb INTEGER,
+            max_memory_mb INTEGER,
+            java_path TEXT,
+            last_played_at INTEGER,
+            playtime_secs INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS accounts(
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            mc_access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS content_sources(
+            instance_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            version_id TEXT,
+            title TEXT,
+            icon_url TEXT,
+            PRIMARY KEY (instance_id, kind, file_name)
+        );",
+    )?;
+
+    for (column, declaration) in [
+        ("loader", "TEXT"),
+        ("loader_version", "TEXT"),
+        ("launch_version_id", "TEXT"),
+        ("pack_provider", "TEXT"),
+        ("pack_project_id", "TEXT"),
+        ("pack_version_id", "TEXT"),
+    ] {
+        add_column_if_missing(conn, "instances", column, declaration)?;
+    }
+
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
 
