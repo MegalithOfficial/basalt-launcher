@@ -4,10 +4,12 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import DOMPurify from "dompurify";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   Check,
   Download,
+  ExternalLink,
   Loader2,
   Package,
   TriangleAlert,
@@ -43,6 +45,121 @@ function formatSize(bytes: number | null): string {
   if (bytes == null) return "";
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function environmentLabel(clientSide: string | null, serverSide: string | null): string | null {
+  if (!clientSide && !serverSide) return null;
+  if (clientSide === "required" && serverSide === "unsupported") return "Client-side";
+  if (serverSide === "required" && clientSide === "unsupported") return "Server-side";
+  return "Client and server";
+}
+
+function SideCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border-soft bg-surface-2/60 p-4">
+      <div className="mb-2.5 text-sm font-semibold text-content">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function Chip({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "accent" }) {
+  return (
+    <span
+      className={cn(
+        "rounded-md px-2 py-0.5 text-[11px] font-medium",
+        tone === "accent"
+          ? "bg-[var(--accent-glow)] text-content"
+          : "bg-surface-3 text-content-muted",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function InfoSidebar({ details }: { details: ProjectDetails }) {
+  const environment = environmentLabel(details.client_side, details.server_side);
+  const versions = details.game_versions.slice(0, 14);
+  const more = details.game_versions.length - versions.length;
+
+  return (
+    <aside className="flex w-64 shrink-0 flex-col gap-3">
+      {(versions.length > 0 || details.loaders.length > 0) && (
+        <SideCard title="Compatibility">
+          {versions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {versions.map((v) => (
+                <Chip key={v}>{v}</Chip>
+              ))}
+              {more > 0 && <Chip>+{more}</Chip>}
+            </div>
+          )}
+          {details.loaders.length > 0 && (
+            <>
+              <div className="mb-1.5 mt-3 text-xs text-content-faint">Platforms</div>
+              <div className="flex flex-wrap gap-1.5">
+                {details.loaders.map((l) => (
+                  <Chip key={l} tone="accent">
+                    {l}
+                  </Chip>
+                ))}
+              </div>
+            </>
+          )}
+          {environment && (
+            <>
+              <div className="mb-1.5 mt-3 text-xs text-content-faint">Environment</div>
+              <Chip>{environment}</Chip>
+            </>
+          )}
+        </SideCard>
+      )}
+
+      {details.links.length > 0 && (
+        <SideCard title="Links">
+          <div className="flex flex-col gap-1">
+            {details.links.map((link) => (
+              <button
+                key={link.url}
+                onClick={() => openUrl(link.url)}
+                className="flex items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+              >
+                {link.label}
+                <ExternalLink className="size-3 text-content-faint" />
+              </button>
+            ))}
+          </div>
+        </SideCard>
+      )}
+
+      {details.categories.length > 0 && (
+        <SideCard title="Tags">
+          <div className="flex flex-wrap gap-1.5">
+            {details.categories.map((c) => (
+              <Chip key={c}>{c}</Chip>
+            ))}
+          </div>
+        </SideCard>
+      )}
+
+      <SideCard title="Details">
+        <div className="flex flex-col gap-1.5 text-xs text-content-muted">
+          {details.license && <div>Licensed {details.license}</div>}
+          {details.published && (
+            <div>
+              Published {relativeTime(Math.floor(new Date(details.published).getTime() / 1000))}
+            </div>
+          )}
+          {details.updated && (
+            <div>
+              Updated {relativeTime(Math.floor(new Date(details.updated).getTime() / 1000))}
+            </div>
+          )}
+        </div>
+      </SideCard>
+    </aside>
+  );
 }
 
 export function ProjectView() {
@@ -238,22 +355,25 @@ export function ProjectView() {
             Loading project
           </div>
         ) : tab === "description" && details ? (
-          <div className="mx-auto max-w-3xl px-6 py-6">
-            {details.body_format === "markdown" ? (
-              <div className="prose-basalt">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
-                >
-                  {details.body}
-                </ReactMarkdown>
-              </div>
-            ) : (
-              <div
-                className="prose-basalt"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(details.body) }}
-              />
-            )}
+          <div className="mx-auto flex max-w-5xl items-start gap-6 px-6 py-6">
+            <div className="min-w-0 flex-1">
+              {details.body_format === "markdown" ? (
+                <div className="prose-basalt">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
+                  >
+                    {details.body}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <div
+                  className="prose-basalt"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(details.body) }}
+                />
+              )}
+            </div>
+            <InfoSidebar details={details} />
           </div>
         ) : tab === "versions" ? (
           <div className="mx-auto max-w-3xl px-6 py-4">
@@ -269,13 +389,23 @@ export function ProjectView() {
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
+                <div className="mb-1 px-1 text-xs text-content-faint">
+                  <span className="mr-1.5 inline-block size-2 rounded-full bg-ok align-middle" />
+                  Compatible with {instance.name} ({instance.version_id}
+                  {loader && ` · ${loader}`})
+                </div>
                 {versions.map((v) => {
                   const done = installed.has(v.id);
                   const busy = installing === v.id;
                   return (
                     <div
                       key={v.id}
-                      className="flex items-center gap-3 rounded-xl border border-border-soft bg-surface-2/70 px-4 py-2.5"
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl border px-4 py-2.5 transition-colors",
+                        v.compatible
+                          ? "border-ok/35 bg-ok/[0.06]"
+                          : "border-border-soft bg-surface-2/40 opacity-55",
+                      )}
                     >
                       <span
                         className={cn(
@@ -286,7 +416,29 @@ export function ProjectView() {
                         {v.channel}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-content">{v.name}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-content">
+                            {v.name}
+                          </span>
+                          {v.game_versions.slice(0, 4).map((g) => (
+                            <span
+                              key={g}
+                              className={cn(
+                                "shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium",
+                                g === instance.version_id
+                                  ? "bg-ok/20 text-ok"
+                                  : "text-content-faint",
+                              )}
+                            >
+                              {g}
+                            </span>
+                          ))}
+                          {v.game_versions.length > 4 && (
+                            <span className="shrink-0 text-[10px] text-content-faint">
+                              +{v.game_versions.length - 4}
+                            </span>
+                          )}
+                        </div>
                         <div className="truncate text-[11px] text-content-faint">
                           {v.file_name}
                           {v.size != null && ` · ${formatSize(v.size)}`}
@@ -297,12 +449,15 @@ export function ProjectView() {
                       </div>
                       <button
                         onClick={() => install(v.id)}
-                        disabled={busy || done || installing !== null}
+                        disabled={busy || done || installing !== null || !v.compatible}
+                        title={v.compatible ? undefined : "Not compatible with this instance"}
                         className={cn(
                           "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all",
                           done
                             ? "cursor-default bg-ok/15 text-ok"
-                            : "border border-border bg-surface-3 text-content hover:bg-border disabled:opacity-50",
+                            : v.compatible
+                              ? "bg-ok/15 text-ok hover:bg-ok/25 disabled:opacity-50"
+                              : "border border-border bg-surface-3 text-content-faint",
                         )}
                       >
                         {done ? (

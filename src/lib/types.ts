@@ -54,6 +54,13 @@ export interface ProjectVersion {
   downloads: number;
   file_name: string;
   size: number | null;
+  game_versions: string[];
+  compatible: boolean;
+}
+
+export interface ProjectLink {
+  label: string;
+  url: string;
 }
 
 export interface ProjectDetails {
@@ -66,6 +73,15 @@ export interface ProjectDetails {
   downloads: number;
   author: string;
   gallery: string[];
+  game_versions: string[];
+  loaders: string[];
+  client_side: string | null;
+  server_side: string | null;
+  categories: string[];
+  license: string | null;
+  links: ProjectLink[];
+  published: string | null;
+  updated: string | null;
 }
 
 export interface VersionEntry {

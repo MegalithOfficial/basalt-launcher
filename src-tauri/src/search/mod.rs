@@ -36,6 +36,12 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ProjectLink {
+    pub label: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ProjectDetails {
     pub id: String,
     pub title: String,
@@ -46,6 +52,15 @@ pub struct ProjectDetails {
     pub downloads: u64,
     pub author: String,
     pub gallery: Vec<String>,
+    pub game_versions: Vec<String>,
+    pub loaders: Vec<String>,
+    pub client_side: Option<String>,
+    pub server_side: Option<String>,
+    pub categories: Vec<String>,
+    pub license: Option<String>,
+    pub links: Vec<ProjectLink>,
+    pub published: Option<String>,
+    pub updated: Option<String>,
 }
 
 fn modrinth_project_type(kind: &str) -> Result<&'static str> {
@@ -122,6 +137,10 @@ struct ModrinthVersion {
     date_published: String,
     #[serde(default)]
     downloads: u64,
+    #[serde(default)]
+    game_versions: Vec<String>,
+    #[serde(default)]
+    loaders: Vec<String>,
     files: Vec<ModrinthFile>,
 }
 
@@ -198,6 +217,8 @@ struct CurseforgeFile {
     hashes: Vec<CurseforgeHash>,
     #[serde(rename = "fileLength", default)]
     file_length: Option<u64>,
+    #[serde(rename = "gameVersions", default)]
+    game_versions: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -215,6 +236,8 @@ pub struct ProjectVersion {
     pub downloads: u64,
     pub file_name: String,
     pub size: Option<u64>,
+    pub game_versions: Vec<String>,
+    pub compatible: bool,
 }
 
 #[derive(Deserialize)]
@@ -326,6 +349,36 @@ struct ModrinthProject {
     downloads: u64,
     #[serde(default)]
     gallery: Vec<ModrinthGalleryItem>,
+    #[serde(default)]
+    game_versions: Vec<String>,
+    #[serde(default)]
+    loaders: Vec<String>,
+    #[serde(default)]
+    client_side: Option<String>,
+    #[serde(default)]
+    server_side: Option<String>,
+    #[serde(default)]
+    categories: Vec<String>,
+    #[serde(default)]
+    license: Option<ModrinthLicense>,
+    #[serde(default)]
+    source_url: Option<String>,
+    #[serde(default)]
+    issues_url: Option<String>,
+    #[serde(default)]
+    wiki_url: Option<String>,
+    #[serde(default)]
+    discord_url: Option<String>,
+    #[serde(default)]
+    published: Option<String>,
+    #[serde(default)]
+    updated: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ModrinthLicense {
+    #[serde(default)]
+    id: String,
 }
 
 #[derive(Deserialize)]
@@ -361,6 +414,41 @@ struct CurseforgeModDetail {
     authors: Vec<CurseforgeAuthor>,
     #[serde(default)]
     screenshots: Vec<CurseforgeScreenshot>,
+    #[serde(default)]
+    links: Option<CurseforgeLinks>,
+    #[serde(default)]
+    categories: Vec<CurseforgeCategory>,
+    #[serde(rename = "latestFilesIndexes", default)]
+    latest_files_indexes: Vec<CurseforgeFileIndex>,
+    #[serde(rename = "dateCreated", default)]
+    date_created: Option<String>,
+    #[serde(rename = "dateModified", default)]
+    date_modified: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CurseforgeLinks {
+    #[serde(rename = "websiteUrl", default)]
+    website_url: Option<String>,
+    #[serde(rename = "wikiUrl", default)]
+    wiki_url: Option<String>,
+    #[serde(rename = "issuesUrl", default)]
+    issues_url: Option<String>,
+    #[serde(rename = "sourceUrl", default)]
+    source_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CurseforgeCategory {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct CurseforgeFileIndex {
+    #[serde(rename = "gameVersion", default)]
+    game_version: String,
+    #[serde(rename = "modLoader", default)]
+    mod_loader: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -404,6 +492,22 @@ pub async fn project_details(
                     .unwrap_or_default(),
                 Err(_) => String::new(),
             };
+            let mut links = Vec::new();
+            for (label, url) in [
+                ("Report issues", &project.issues_url),
+                ("View source", &project.source_url),
+                ("Visit wiki", &project.wiki_url),
+                ("Join Discord", &project.discord_url),
+            ] {
+                if let Some(url) = url {
+                    if !url.is_empty() {
+                        links.push(ProjectLink {
+                            label: label.to_string(),
+                            url: url.clone(),
+                        });
+                    }
+                }
+            }
             Ok(ProjectDetails {
                 id: project_id.to_string(),
                 title: project.title,
@@ -414,6 +518,15 @@ pub async fn project_details(
                 downloads: project.downloads,
                 author,
                 gallery: project.gallery.into_iter().map(|g| g.url).collect(),
+                game_versions: project.game_versions,
+                loaders: project.loaders,
+                client_side: project.client_side,
+                server_side: project.server_side,
+                categories: project.categories,
+                license: project.license.map(|l| l.id).filter(|id| !id.is_empty()),
+                links,
+                published: project.published,
+                updated: project.updated,
             })
         }
         Provider::Curseforge => {
@@ -442,6 +555,45 @@ pub async fn project_details(
                 Err(_) => String::new(),
             };
             let detail = detail.data;
+            let mut game_versions: Vec<String> = detail
+                .latest_files_indexes
+                .iter()
+                .map(|i| i.game_version.clone())
+                .collect();
+            game_versions.dedup();
+            game_versions.truncate(24);
+            let mut loaders: Vec<String> = detail
+                .latest_files_indexes
+                .iter()
+                .filter_map(|i| i.mod_loader)
+                .filter_map(|l| match l {
+                    1 => Some("forge".to_string()),
+                    4 => Some("fabric".to_string()),
+                    5 => Some("quilt".to_string()),
+                    6 => Some("neoforge".to_string()),
+                    _ => None,
+                })
+                .collect();
+            loaders.sort();
+            loaders.dedup();
+            let mut links = Vec::new();
+            if let Some(l) = &detail.links {
+                for (label, url) in [
+                    ("Report issues", &l.issues_url),
+                    ("View source", &l.source_url),
+                    ("Visit wiki", &l.wiki_url),
+                    ("Website", &l.website_url),
+                ] {
+                    if let Some(url) = url {
+                        if !url.is_empty() {
+                            links.push(ProjectLink {
+                                label: label.to_string(),
+                                url: url.clone(),
+                            });
+                        }
+                    }
+                }
+            }
             Ok(ProjectDetails {
                 id: project_id.to_string(),
                 title: detail.name,
@@ -456,6 +608,15 @@ pub async fn project_details(
                     .into_iter()
                     .filter_map(|s| s.url)
                     .collect(),
+                game_versions,
+                loaders,
+                client_side: None,
+                server_side: None,
+                categories: detail.categories.into_iter().map(|c| c.name).collect(),
+                license: None,
+                links,
+                published: detail.date_created,
+                updated: detail.date_modified,
             })
         }
     }
@@ -514,6 +675,16 @@ fn curseforge_channel(release_type: u32) -> &'static str {
     }
 }
 
+fn curseforge_loader_name(loader: &str) -> &'static str {
+    match loader {
+        "forge" => "Forge",
+        "fabric" => "Fabric",
+        "quilt" => "Quilt",
+        "neoforge" => "NeoForge",
+        _ => "",
+    }
+}
+
 pub async fn project_versions(
     state: &AppState,
     provider: Provider,
@@ -524,11 +695,23 @@ pub async fn project_versions(
 ) -> Result<Vec<ProjectVersion>> {
     match provider {
         Provider::Modrinth => {
-            let versions = modrinth_versions(state, project_id, game_version, loader, kind).await?;
+            let versions: Vec<ModrinthVersion> = state
+                .http
+                .get(format!("{MODRINTH}/project/{project_id}/version"))
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
             Ok(versions
                 .into_iter()
+                .take(150)
                 .filter_map(|v| {
                     let file = v.files.iter().find(|f| f.primary).or_else(|| v.files.first())?;
+                    let loader_ok = kind != "mods"
+                        || loader.map_or(true, |l| v.loaders.iter().any(|x| x == l));
+                    let compatible =
+                        v.game_versions.iter().any(|g| g == game_version) && loader_ok;
                     Some(ProjectVersion {
                         id: v.id.clone(),
                         name: if v.name.is_empty() { v.version_number.clone() } else { v.name.clone() },
@@ -538,23 +721,51 @@ pub async fn project_versions(
                         downloads: v.downloads,
                         file_name: file.filename.clone(),
                         size: file.size,
+                        game_versions: v.game_versions.clone(),
+                        compatible,
                     })
                 })
                 .collect())
         }
         Provider::Curseforge => {
-            let files = curseforge_files(state, project_id, game_version, loader, kind).await?;
-            Ok(files
+            let key = curseforge_key(state)?;
+            let response: CurseforgeFiles = state
+                .http
+                .get(format!("{CURSEFORGE}/mods/{project_id}/files"))
+                .header("x-api-key", key)
+                .query(&[("pageSize", "50".to_string())])
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            let loader_name = loader.map(curseforge_loader_name).unwrap_or("");
+            Ok(response
+                .data
                 .into_iter()
-                .map(|f| ProjectVersion {
-                    id: f.id.to_string(),
-                    name: if f.display_name.is_empty() { f.file_name.clone() } else { f.display_name.clone() },
-                    version_number: f.file_name.clone(),
-                    channel: curseforge_channel(f.release_type).to_string(),
-                    date: f.file_date.clone(),
-                    downloads: f.download_count as u64,
-                    file_name: f.file_name.clone(),
-                    size: f.file_length,
+                .map(|f| {
+                    let loader_ok = kind != "mods"
+                        || loader_name.is_empty()
+                        || f.game_versions.iter().any(|g| g == loader_name);
+                    let compatible =
+                        f.game_versions.iter().any(|g| g == game_version) && loader_ok;
+                    ProjectVersion {
+                        id: f.id.to_string(),
+                        name: if f.display_name.is_empty() { f.file_name.clone() } else { f.display_name.clone() },
+                        version_number: f.file_name.clone(),
+                        channel: curseforge_channel(f.release_type).to_string(),
+                        date: f.file_date.clone(),
+                        downloads: f.download_count as u64,
+                        file_name: f.file_name.clone(),
+                        size: f.file_length,
+                        game_versions: f
+                            .game_versions
+                            .iter()
+                            .filter(|g| g.chars().next().is_some_and(|c| c.is_ascii_digit()))
+                            .cloned()
+                            .collect(),
+                        compatible,
+                    }
                 })
                 .collect())
         }
