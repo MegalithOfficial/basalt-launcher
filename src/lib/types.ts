@@ -36,6 +36,10 @@ export interface ContentSource {
   icon_url: string | null;
 }
 
+export interface ContentSourceEntry extends ContentSource {
+  file_name: string;
+}
+
 export interface ContentItem {
   file_name: string;
   size: number;

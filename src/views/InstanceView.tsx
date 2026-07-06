@@ -67,6 +67,7 @@ export function InstanceView() {
   const setView = useStore((s) => s.setView);
   const openSearch = useStore((s) => s.openSearch);
   const openProject = useStore((s) => s.openProject);
+  const refreshContentSources = useStore((s) => s.refreshContentSources);
 
   const [tab, setTab] = useState<ContentKind>("mods");
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -80,12 +81,13 @@ export function InstanceView() {
     setLoading(true);
     try {
       setItems(await api.listInstanceContent(instance.id, tab));
+      void refreshContentSources(instance.id, tab);
     } catch {
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [instance?.id, tab]);
+  }, [instance?.id, tab, refreshContentSources]);
 
   useEffect(() => {
     void refresh();

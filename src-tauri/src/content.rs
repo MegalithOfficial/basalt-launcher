@@ -12,7 +12,7 @@ pub struct ContentItem {
     pub size: u64,
     pub enabled: bool,
     pub source: Option<ContentSource>,
-}
+} 
 
 fn kind_subdir(kind: &str) -> Result<&'static str> {
     match kind {

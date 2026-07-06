@@ -1009,20 +1009,24 @@ fn curseforge_pick_file(file: CurseforgeFile) -> Result<(String, String, Option<
     Ok((url, file.file_name, sha1, file.file_length))
 }
 
-async fn install_single(
+struct InstallTarget {
+    url: String,
+    file_name: String,
+    sha1: Option<String>,
+    size: Option<u64>,
+    source_version: String,
+    dependencies: Vec<VersionDependency>,
+}
+
+async fn fetch_install_target(
     state: &AppState,
     provider: Provider,
     project_id: &str,
-    instance_id: &str,
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
     version_id: Option<&str>,
-    title: Option<&str>,
-    icon_url: Option<&str>,
-) -> Result<(String, Vec<VersionDependency>)> {
-    let dest_dir = content::dir_for(&state.paths, instance_id, kind)?;
-
+) -> Result<InstallTarget> {
     let (url, file_name, sha1, size, source_version, dependencies) = match provider {
         Provider::Modrinth => {
             let version: ModrinthVersion = match version_id {
@@ -1078,8 +1082,68 @@ async fn install_single(
         }
     };
 
+    Ok(InstallTarget {
+        url,
+        file_name,
+        sha1,
+        size,
+        source_version,
+        dependencies,
+    })
+}
+
+pub async fn missing_dependencies(
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    instance_id: &str,
+    kind: &str,
+    game_version: &str,
+    loader: Option<&str>,
+    version_id: Option<&str>,
+) -> Result<Vec<SearchResult>> {
+    if kind != "mods" {
+        return Ok(Vec::new());
+    }
+    let target =
+        fetch_install_target(state, provider, project_id, kind, game_version, loader, version_id)
+            .await?;
+    let mut ids = Vec::new();
+    for dep in target
+        .dependencies
+        .iter()
+        .filter(|d| d.dependency_type == "required")
+    {
+        if state
+            .db
+            .installed_project_file(instance_id, kind, &dep.project_id)?
+            .is_none()
+        {
+            ids.push(dep.project_id.clone());
+        }
+    }
+    resolve_projects(state, provider, ids).await
+}
+
+async fn install_single(
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    instance_id: &str,
+    kind: &str,
+    game_version: &str,
+    loader: Option<&str>,
+    version_id: Option<&str>,
+    title: Option<&str>,
+    icon_url: Option<&str>,
+) -> Result<(String, Vec<VersionDependency>)> {
+    let dest_dir = content::dir_for(&state.paths, instance_id, kind)?;
+    let target =
+        fetch_install_target(state, provider, project_id, kind, game_version, loader, version_id)
+            .await?;
+
     if let Some((_, old_file)) = state.db.installed_project_file(instance_id, kind, project_id)? {
-        if old_file != file_name {
+        if old_file != target.file_name {
             let _ = content::delete(&state.paths, instance_id, kind, &old_file);
             let _ = state.db.delete_content_source(instance_id, kind, &old_file);
         }
@@ -1089,10 +1153,10 @@ async fn install_single(
     download::download_one(
         &state.http,
         &DownloadSpec {
-            url,
-            dest: dest_dir.join(&file_name),
-            sha1,
-            size,
+            url: target.url,
+            dest: dest_dir.join(&target.file_name),
+            sha1: target.sha1,
+            size: target.size,
         },
     )
     .await?;
@@ -1100,15 +1164,17 @@ async fn install_single(
     let _ = state.db.record_content_source(
         instance_id,
         kind,
-        &file_name,
+        &target.file_name,
         provider.as_str(),
         project_id,
-        Some(&source_version).filter(|v| !v.is_empty()).map(|v| v.as_str()),
+        Some(&target.source_version)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.as_str()),
         title,
         icon_url,
     );
 
-    Ok((file_name, dependencies))
+    Ok((target.file_name, target.dependencies))
 }
 
 pub async fn install(
@@ -1122,6 +1188,7 @@ pub async fn install(
     version_id: Option<&str>,
     title: Option<&str>,
     icon_url: Option<&str>,
+    with_dependencies: bool,
 ) -> Result<Vec<String>> {
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     visited.insert(project_id.to_string());
@@ -1133,7 +1200,7 @@ pub async fn install(
     .await?;
     let mut installed_files = vec![file_name];
 
-    if kind == "mods" {
+    if kind == "mods" && with_dependencies {
         let mut queue: Vec<(String, u8)> = dependencies
             .into_iter()
             .filter(|d| d.dependency_type == "required")

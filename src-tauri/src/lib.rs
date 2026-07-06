@@ -60,6 +60,8 @@ pub fn run() {
             commands::resolve_projects,
             commands::get_installed_project_file,
             commands::install_content,
+            commands::get_missing_dependencies,
+            commands::list_content_sources,
             commands::list_instance_content,
             commands::toggle_instance_content,
             commands::delete_instance_content,

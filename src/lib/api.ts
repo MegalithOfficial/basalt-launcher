@@ -4,6 +4,7 @@ import type {
   AccountView,
   Changelog,
   ContentItem,
+  ContentSourceEntry,
   DeviceCodeInfo,
   InstalledFile,
   Instance,
@@ -32,6 +33,8 @@ export const api = {
     invoke<Instance>("create_instance", { name, versionId, loader, loaderVersion }),
   listLoaderVersions: (loader: string, gameVersion: string) =>
     invoke<string[]>("list_loader_versions", { loader, gameVersion }),
+  listContentSources: (instanceId: string, kind: string) =>
+    invoke<ContentSourceEntry[]>("list_content_sources", { instanceId, kind }),
   listInstanceContent: (instanceId: string, kind: string) =>
     invoke<ContentItem[]>("list_instance_content", { instanceId, kind }),
   toggleInstanceContent: (instanceId: string, kind: string, fileName: string) =>
@@ -84,6 +87,7 @@ export const api = {
     versionId: string | null = null,
     title: string | null = null,
     iconUrl: string | null = null,
+    withDependencies = true,
   ) =>
     invoke<string[]>("install_content", {
       provider,
@@ -95,6 +99,25 @@ export const api = {
       versionId,
       title,
       iconUrl,
+      withDependencies,
+    }),
+  getMissingDependencies: (
+    provider: string,
+    projectId: string,
+    instanceId: string,
+    kind: string,
+    gameVersion: string,
+    loader: string | null,
+    versionId: string | null = null,
+  ) =>
+    invoke<SearchResult[]>("get_missing_dependencies", {
+      provider,
+      projectId,
+      instanceId,
+      kind,
+      gameVersion,
+      loader,
+      versionId,
     }),
   updateInstance: (
     instanceId: string,

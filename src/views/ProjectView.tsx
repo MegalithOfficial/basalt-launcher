@@ -22,14 +22,22 @@ import { api } from "../lib/api";
 import { relativeTime } from "../lib/time";
 import type {
   Changelog,
-  InstalledFile,
   ProjectDetails,
   ProjectVersion,
   SearchResult,
 } from "../lib/types";
+import { DependencyPrompt } from "../components/DependencyPrompt";
 import { Select } from "../components/Select";
 import { formatDownloads } from "./SearchView";
 import { useStore } from "../store";
+
+interface PendingInstall {
+  key: string;
+  projectId: string;
+  versionId: string | null;
+  title: string | null;
+  iconUrl: string | null;
+}
 
 const PAGE_SIZE = 50;
 
@@ -206,6 +214,12 @@ export function ProjectView() {
   const instance = useStore((s) => s.instances.find((i) => i.id === s.detailInstanceId));
   const goBack = useStore((s) => s.goBack);
   const openProject = useStore((s) => s.openProject);
+  const installingContent = useStore((s) => s.installingContent);
+  const sourcesMap = useStore(
+    (s) => s.contentSources[`${s.detailInstanceId}:${s.searchKind}`],
+  );
+  const refreshContentSources = useStore((s) => s.refreshContentSources);
+  const installContentShared = useStore((s) => s.installContent);
 
   const [tab, setTab] = useState<Tab>("description");
   const [details, setDetails] = useState<ProjectDetails | null>(null);
@@ -222,9 +236,16 @@ export function ProjectView() {
   const [loaderFilter, setLoaderFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"newest" | "downloads">("newest");
   const [visible, setVisible] = useState(PAGE_SIZE);
-  const [installedFile, setInstalledFile] = useState<InstalledFile | null>(null);
   const [resolvedProjects, setResolvedProjects] = useState<Record<string, SearchResult | null>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState<{
+    target: PendingInstall;
+    deps: SearchResult[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (instance && kind) void refreshContentSources(instance.id, kind);
+  }, [instance?.id, kind, refreshContentSources]);
 
   useEffect(() => {
     if (!projectRef) return;
@@ -253,18 +274,6 @@ export function ProjectView() {
     };
   }, [projectRef?.provider, projectRef?.id]);
 
-  useEffect(() => {
-    if (!projectRef || !instance || !kind) return;
-    let live = true;
-    api
-      .getInstalledProjectFile(instance.id, kind, projectRef.id)
-      .then((f) => live && setInstalledFile(f))
-      .catch(() => live && setInstalledFile(null));
-    return () => {
-      live = false;
-    };
-  }, [projectRef?.id, instance?.id, kind]);
-
   const loader = kind === "mods" ? (instance?.loader ?? null) : null;
 
   useEffect(() => {
@@ -292,37 +301,35 @@ export function ProjectView() {
     );
   }
 
-  const refreshInstalled = () => {
-    api
-      .getInstalledProjectFile(instance.id, kind, projectRef.id)
-      .then(setInstalledFile)
-      .catch(() => {});
-  };
+  const installedEntry = sourcesMap?.[projectRef.id] ?? null;
+  const busyProject = installingContent.includes(
+    `${instance.id}:${kind}:${projectRef.id}`,
+  );
 
-  const install = async (versionId: string | null) => {
-    const key = versionId ?? "latest";
-    setInstalling(key);
+  const doInstall = async (target: PendingInstall, withDependencies: boolean) => {
+    setInstalling(target.key);
     setError(null);
     setNotice(null);
+    setPending(null);
     try {
-      const files = await api.installContent(
-        projectRef.provider,
-        projectRef.id,
-        instance.id,
+      const files = await installContentShared({
+        provider: projectRef.provider,
+        projectId: target.projectId,
+        instanceId: instance.id,
         kind,
-        instance.version_id,
+        gameVersion: instance.version_id,
         loader,
-        versionId,
-        details?.title ?? null,
-        details?.icon_url ?? null,
-      );
-      setInstalled((prev) => new Set(prev).add(key));
+        versionId: target.versionId,
+        title: target.title,
+        iconUrl: target.iconUrl,
+        withDependencies,
+      });
+      setInstalled((prev) => new Set(prev).add(target.key));
       setNotice(
         files.length > 1
           ? `Installed ${files[0]} and ${files.length - 1} ${files.length === 2 ? "dependency" : "dependencies"} (${files.slice(1).join(", ")})`
           : `Installed ${files[0]}`,
       );
-      refreshInstalled();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -330,29 +337,47 @@ export function ProjectView() {
     }
   };
 
-  const installDependency = async (dep: SearchResult) => {
-    setInstalling(`dep:${dep.id}`);
+  const beginInstall = async (target: PendingInstall) => {
+    setInstalling(target.key);
     setError(null);
     try {
-      const files = await api.installContent(
+      const missing = await api.getMissingDependencies(
         projectRef.provider,
-        dep.id,
+        target.projectId,
         instance.id,
         kind,
         instance.version_id,
         loader,
-        null,
-        dep.title,
-        dep.icon_url,
+        target.versionId,
       );
-      setInstalled((prev) => new Set(prev).add(`dep:${dep.id}`));
-      setNotice(`Installed ${files.join(", ")}`);
-    } catch (e) {
-      setError(String(e));
-    } finally {
+      if (missing.length > 0) {
+        setInstalling(null);
+        setPending({ target, deps: missing });
+        return;
+      }
+    } catch {
       setInstalling(null);
     }
+    await doInstall(target, true);
   };
+
+  const install = (versionId: string | null) =>
+    beginInstall({
+      key: versionId ?? "latest",
+      projectId: projectRef.id,
+      versionId,
+      title: details?.title ?? null,
+      iconUrl: details?.icon_url ?? null,
+    });
+
+  const installDependency = (dep: SearchResult) =>
+    beginInstall({
+      key: `dep:${dep.id}`,
+      projectId: dep.id,
+      versionId: null,
+      title: dep.title,
+      iconUrl: dep.icon_url,
+    });
 
   const toggleExpand = async (v: ProjectVersion) => {
     if (expandedId === v.id) {
@@ -459,30 +484,31 @@ export function ProjectView() {
           </div>
         </div>
 
-        <button
-          onClick={() => install(null)}
-          disabled={installing !== null || installed.has("latest") || loading}
-          className={cn(
-            "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all",
-            installed.has("latest")
-              ? "cursor-default bg-ok/15 text-ok"
-              : "text-black shadow-lg shadow-[var(--accent-glow)] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60",
-          )}
-        >
-          {installed.has("latest") ? (
-            <>
-              <Check className="size-4" />
-              Added to {instance.name}
-            </>
-          ) : installing === "latest" ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <>
-              <Download className="size-4" />
-              Install latest
-            </>
-          )}
-        </button>
+        {installedEntry ? (
+          <button
+            onClick={() => setTab("versions")}
+            title={installedEntry.file_name}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-ok/15 px-5 text-sm font-semibold text-ok transition-colors hover:bg-ok/25"
+          >
+            <Check className="size-4" />
+            Installed
+          </button>
+        ) : (
+          <button
+            onClick={() => install(null)}
+            disabled={installing !== null || busyProject || loading}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-5 text-sm font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
+          >
+            {installing === "latest" || busyProject ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <>
+                <Download className="size-4" />
+                Install
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-border-soft px-6">
@@ -564,7 +590,7 @@ export function ProjectView() {
                     : filtered;
                 const shown = sorted.slice(0, visible);
                 const compatibleCount = versions.filter((v) => v.compatible).length;
-                const installedRow = versions.find((x) => x.id === installedFile?.version_id);
+                const installedRow = versions.find((x) => x.id === installedEntry?.version_id);
                 const installedDate = installedRow ? new Date(installedRow.date).getTime() : null;
                 const gvOptions: string[] = [];
                 const loaderOptions: string[] = [];
@@ -693,7 +719,7 @@ export function ProjectView() {
                           const busy = installing === v.id;
                           const expanded = expandedId === v.id;
                           const changelog = changelogs[v.id];
-                          const isInstalledRow = installedFile?.version_id === v.id;
+                          const isInstalledRow = installedEntry?.version_id === v.id;
                           const isUpdate =
                             !isInstalledRow &&
                             installedDate !== null &&
@@ -996,6 +1022,18 @@ export function ProjectView() {
           </div>
         ) : null}
       </div>
+
+      <DependencyPrompt
+        prompt={
+          pending
+            ? { title: pending.target.title ?? "This mod", deps: pending.deps }
+            : null
+        }
+        busy={installing !== null}
+        onInstallAll={() => pending && doInstall(pending.target, true)}
+        onSkip={() => pending && doInstall(pending.target, false)}
+        onCancel={() => setPending(null)}
+      />
     </div>
   );
 }

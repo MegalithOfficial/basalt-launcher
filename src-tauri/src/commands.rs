@@ -305,6 +305,36 @@ pub async fn get_java_status(
     })
 }
 
+#[derive(Serialize)]
+pub struct ContentSourceEntry {
+    pub file_name: String,
+    pub provider: String,
+    pub project_id: String,
+    pub version_id: Option<String>,
+    pub title: Option<String>,
+    pub icon_url: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_content_sources(
+    state: State<AppState>,
+    instance_id: String,
+    kind: String,
+) -> Result<Vec<ContentSourceEntry>> {
+    let sources = state.db.content_sources(&instance_id, &kind)?;
+    Ok(sources
+        .into_iter()
+        .map(|(file_name, s)| ContentSourceEntry {
+            file_name,
+            provider: s.provider,
+            project_id: s.project_id,
+            version_id: s.version_id,
+            title: s.title,
+            icon_url: s.icon_url,
+        })
+        .collect())
+}
+
 #[tauri::command]
 pub fn list_instance_content(
     state: State<AppState>,
@@ -445,6 +475,7 @@ pub async fn install_content(
     version_id: Option<String>,
     title: Option<String>,
     icon_url: Option<String>,
+    with_dependencies: Option<bool>,
 ) -> Result<Vec<String>> {
     find_instance(&state, &instance_id)?;
     let provider = search::Provider::parse(&provider)?;
@@ -459,6 +490,33 @@ pub async fn install_content(
         version_id.as_deref(),
         title.as_deref(),
         icon_url.as_deref(),
+        with_dependencies.unwrap_or(true),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_missing_dependencies(
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    instance_id: String,
+    kind: String,
+    game_version: String,
+    loader: Option<String>,
+    version_id: Option<String>,
+) -> Result<Vec<search::SearchResult>> {
+    find_instance(&state, &instance_id)?;
+    let provider = search::Provider::parse(&provider)?;
+    search::missing_dependencies(
+        &state,
+        provider,
+        &project_id,
+        &instance_id,
+        &kind,
+        &game_version,
+        loader.as_deref(),
+        version_id.as_deref(),
     )
     .await
 }

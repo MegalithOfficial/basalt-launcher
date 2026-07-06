@@ -76,6 +76,8 @@ interface AppStore {
   viewStack: View[];
   searchKind: ContentKind | null;
   projectRef: { provider: SearchProvider; id: string } | null;
+  contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
+  installingContent: string[];
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
@@ -114,6 +116,19 @@ interface AppStore {
   openSearch: (kind: ContentKind) => void;
   openProject: (provider: SearchProvider, id: string, kind?: ContentKind) => void;
   goBack: () => void;
+  refreshContentSources: (instanceId: string, kind: string) => Promise<void>;
+  installContent: (params: {
+    provider: SearchProvider;
+    projectId: string;
+    instanceId: string;
+    kind: string;
+    gameVersion: string;
+    loader: string | null;
+    versionId?: string | null;
+    title?: string | null;
+    iconUrl?: string | null;
+    withDependencies?: boolean;
+  }) => Promise<string[]>;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
 }
@@ -139,6 +154,8 @@ export const useStore = create<AppStore>((set) => ({
   viewStack: [],
   searchKind: null,
   projectRef: null,
+  contentSources: {},
+  installingContent: [],
 
   setView: (view) =>
     set((s) => ({
@@ -158,6 +175,46 @@ export const useStore = create<AppStore>((set) => ({
       view: "search",
       viewStack: s.view !== "search" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
+
+  refreshContentSources: async (instanceId, kind) => {
+    try {
+      const entries = await api.listContentSources(instanceId, kind);
+      const map: Record<string, { file_name: string; version_id: string | null }> = {};
+      entries.forEach((e) => {
+        map[e.project_id] = { file_name: e.file_name, version_id: e.version_id };
+      });
+      set((s) => ({
+        contentSources: { ...s.contentSources, [`${instanceId}:${kind}`]: map },
+      }));
+    } catch {
+      return;
+    }
+  },
+
+  installContent: async (params) => {
+    const key = `${params.instanceId}:${params.kind}:${params.projectId}`;
+    set((s) => ({ installingContent: [...s.installingContent, key] }));
+    try {
+      const files = await api.installContent(
+        params.provider,
+        params.projectId,
+        params.instanceId,
+        params.kind,
+        params.gameVersion,
+        params.loader,
+        params.versionId ?? null,
+        params.title ?? null,
+        params.iconUrl ?? null,
+        params.withDependencies ?? true,
+      );
+      await useStore.getState().refreshContentSources(params.instanceId, params.kind);
+      return files;
+    } finally {
+      set((s) => ({
+        installingContent: s.installingContent.filter((k) => k !== key),
+      }));
+    }
+  },
 
   openProject: (provider, id, kind) =>
     set((s) => ({

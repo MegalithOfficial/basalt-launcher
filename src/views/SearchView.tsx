@@ -15,6 +15,7 @@ import {
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import type { SearchProvider, SearchResult } from "../lib/types";
+import { DependencyPrompt } from "../components/DependencyPrompt";
 import { useStore } from "../store";
 
 const PROVIDERS: Array<{ id: SearchProvider; label: string }> = [
@@ -51,9 +52,23 @@ export function SearchView() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [installing, setInstalling] = useState<string | null>(null);
-  const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const installingContent = useStore((s) => s.installingContent);
+  const sources = useStore(
+    (s) => s.contentSources[`${s.detailInstanceId}:${s.searchKind}`],
+  );
+  const refreshContentSources = useStore((s) => s.refreshContentSources);
+  const installContent = useStore((s) => s.installContent);
+
+  const [pending, setPending] = useState<{
+    result: SearchResult;
+    deps: SearchResult[];
+  } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (instance && kind) void refreshContentSources(instance.id, kind);
+  }, [instance?.id, kind, refreshContentSources]);
 
   const loader = kind === "mods" ? (instance?.loader ?? null) : null;
 
@@ -84,28 +99,52 @@ export function SearchView() {
     );
   }
 
+  const doInstall = async (result: SearchResult, withDependencies: boolean) => {
+    setError(null);
+    setNotice(null);
+    setPending(null);
+    try {
+      const files = await installContent({
+        provider,
+        projectId: result.id,
+        instanceId: instance.id,
+        kind,
+        gameVersion: instance.version_id,
+        loader,
+        title: result.title,
+        iconUrl: result.icon_url,
+        withDependencies,
+      });
+      setNotice(
+        files.length > 1
+          ? `Added ${files[0]} and ${files.length - 1} ${files.length === 2 ? "dependency" : "dependencies"} (${files.slice(1).join(", ")})`
+          : `Added ${files[0]}`,
+      );
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   const install = async (result: SearchResult, e: React.MouseEvent) => {
     e.stopPropagation();
-    setInstalling(result.id);
     setError(null);
     try {
-      await api.installContent(
+      const missing = await api.getMissingDependencies(
         provider,
         result.id,
         instance.id,
         kind,
         instance.version_id,
         loader,
-        null,
-        result.title,
-        result.icon_url,
       );
-      setInstalled((prev) => new Set(prev).add(result.id));
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setInstalling(null);
+      if (missing.length > 0) {
+        setPending({ result, deps: missing });
+        return;
+      }
+    } catch {
+      void 0;
     }
+    await doInstall(result, true);
   };
 
   const addFromFile = async () => {
@@ -183,6 +222,11 @@ export function SearchView() {
           <span className="break-words">{error}</span>
         </div>
       )}
+      {notice && (
+        <div className="mx-6 mb-2 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-xs text-ok">
+          {notice}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {searching ? (
@@ -197,8 +241,11 @@ export function SearchView() {
           </div>
         ) : (
           results.map((result) => {
-            const done = installed.has(result.id);
-            const busy = installing === result.id;
+            const installedFile = sources?.[result.id]?.file_name;
+            const done = !!installedFile;
+            const busy = installingContent.includes(
+              `${instance.id}:${kind}:${result.id}`,
+            );
             return (
               <div
                 key={result.id}
@@ -226,10 +273,16 @@ export function SearchView() {
                     </span>
                   </div>
                   <div className="truncate text-xs text-content-muted">{result.description}</div>
+                  {installedFile && (
+                    <div className="mt-0.5 truncate text-[11px] text-ok">
+                      Installed · {installedFile}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={(e) => install(result, e)}
                   disabled={busy || done}
+                  title={installedFile}
                   className={cn(
                     "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all",
                     done
@@ -240,7 +293,7 @@ export function SearchView() {
                   {done ? (
                     <>
                       <Check className="size-3.5" />
-                      Added
+                      Installed
                     </>
                   ) : busy ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -257,6 +310,14 @@ export function SearchView() {
           })
         )}
       </div>
+
+      <DependencyPrompt
+        prompt={pending ? { title: pending.result.title, deps: pending.deps } : null}
+        busy={installingContent.length > 0}
+        onInstallAll={() => pending && doInstall(pending.result, true)}
+        onSkip={() => pending && doInstall(pending.result, false)}
+        onCancel={() => setPending(null)}
+      />
     </div>
   );
 }
