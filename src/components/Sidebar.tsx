@@ -11,14 +11,6 @@ const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-function Tooltip({ label }: { label: string }) {
-  return (
-    <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium text-content opacity-0 shadow-xl shadow-black/40 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 -translate-x-1">
-      {label}
-    </span>
-  );
-}
-
 function RailButton({
   label,
   active,
@@ -51,7 +43,6 @@ function RailButton({
         />
       )}
       <span className="relative z-10">{children}</span>
-      {!disabled && <Tooltip label={label} />}
     </button>
   );
 }
@@ -74,7 +65,6 @@ export function Sidebar() {
         className="group relative grid size-10 place-items-center rounded-xl bg-gradient-to-br from-lava-bright to-lava shadow-lg shadow-lava/25 transition-transform hover:scale-105 active:scale-95"
       >
         <span className="font-pixel text-[15px] leading-none text-black">B</span>
-        <Tooltip label="Basalt Launcher" />
       </button>
 
       <nav className="mt-6 flex flex-col gap-1.5">
