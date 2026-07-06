@@ -40,6 +40,14 @@ fn migrate(conn: &Connection) -> Result<()> {
             PRAGMA user_version = 1;",
         )?;
     }
+    if version < 2 {
+        conn.execute_batch(
+            "ALTER TABLE instances ADD COLUMN loader TEXT;
+            ALTER TABLE instances ADD COLUMN loader_version TEXT;
+            ALTER TABLE instances ADD COLUMN launch_version_id TEXT;
+            PRAGMA user_version = 2;",
+        )?;
+    }
     Ok(())
 }
 
@@ -110,7 +118,8 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, version_id, created_at, min_memory_mb, max_memory_mb,
-                    java_path, last_played_at, playtime_secs
+                    java_path, last_played_at, playtime_secs, loader, loader_version,
+                    launch_version_id
              FROM instances ORDER BY created_at",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -129,6 +138,9 @@ impl Db {
                 java_path: row.get(6)?,
                 last_played_at: row.get(7)?,
                 playtime_secs: row.get(8)?,
+                loader: row.get(9)?,
+                loader_version: row.get(10)?,
+                launch_version_id: row.get(11)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -139,8 +151,9 @@ impl Db {
         conn.execute(
             "INSERT OR REPLACE INTO instances
                 (id, name, version_id, created_at, min_memory_mb, max_memory_mb,
-                 java_path, last_played_at, playtime_secs)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 java_path, last_played_at, playtime_secs, loader, loader_version,
+                 launch_version_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 instance.id,
                 instance.name,
@@ -151,6 +164,9 @@ impl Db {
                 instance.java_path,
                 instance.last_played_at,
                 instance.playtime_secs,
+                instance.loader,
+                instance.loader_version,
+                instance.launch_version_id,
             ],
         )?;
         Ok(())
@@ -177,6 +193,15 @@ impl Db {
     pub fn delete_instance(&self, instance_id: &str) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute("DELETE FROM instances WHERE id = ?1", params![instance_id])?;
+        Ok(())
+    }
+
+    pub fn set_launch_version(&self, instance_id: &str, launch_version_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE instances SET launch_version_id = ?2 WHERE id = ?1",
+            params![instance_id, launch_version_id],
+        )?;
         Ok(())
     }
 

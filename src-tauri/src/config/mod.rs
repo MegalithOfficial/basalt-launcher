@@ -35,4 +35,10 @@ pub struct Instance {
     pub playtime_secs: i64,
     #[serde(default)]
     pub dir: String,
+    #[serde(default)]
+    pub loader: Option<String>,
+    #[serde(default)]
+    pub loader_version: Option<String>,
+    #[serde(default)]
+    pub launch_version_id: Option<String>,
 }

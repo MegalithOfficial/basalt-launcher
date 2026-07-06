@@ -7,6 +7,7 @@ mod error;
 mod install;
 mod java;
 mod launch;
+mod loaders;
 mod meta;
 mod paths;
 mod state;
@@ -39,6 +40,7 @@ pub fn run() {
             commands::update_instance,
             commands::delete_instance,
             commands::list_versions,
+            commands::list_loader_versions,
             commands::list_installed_versions,
             commands::get_instance_media,
             commands::set_instance_banner,

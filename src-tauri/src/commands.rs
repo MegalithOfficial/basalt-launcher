@@ -12,6 +12,7 @@ use crate::error::{Error, Result};
 use crate::install;
 use crate::java::{self, JavaStatus};
 use crate::launch::{self, process::{LogLine, RunningInfo}};
+use crate::loaders;
 use crate::meta::manifest::{self, VersionEntry};
 use crate::meta::media::{self, VersionMedia};
 use crate::state::AppState;
@@ -36,7 +37,15 @@ pub fn create_instance(
     state: State<AppState>,
     name: String,
     version_id: String,
+    loader: Option<String>,
+    loader_version: Option<String>,
 ) -> Result<Instance> {
+    if let Some(loader) = loader.as_deref() {
+        loaders::Loader::parse(loader)?;
+        if loader_version.is_none() {
+            return Err(Error::other("loader version is required"));
+        }
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let instance = Instance {
         dir: state.paths.instance_dir(&id).display().to_string(),
@@ -49,10 +58,23 @@ pub fn create_instance(
         java_path: None,
         last_played_at: None,
         playtime_secs: 0,
+        loader,
+        loader_version,
+        launch_version_id: None,
     };
     std::fs::create_dir_all(state.paths.instance_dir(&instance.id))?;
     state.db.insert_instance(&instance)?;
     Ok(instance)
+}
+
+#[tauri::command]
+pub async fn list_loader_versions(
+    state: State<'_, AppState>,
+    loader: String,
+    game_version: String,
+) -> Result<Vec<String>> {
+    let loader = loaders::Loader::parse(&loader)?;
+    loaders::list_loader_versions(&state.http, loader, &game_version).await
 }
 
 #[tauri::command]
@@ -148,6 +170,29 @@ pub async fn clear_instance_banner(
     Ok(())
 }
 
+fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {
+    if state.paths.version_jar(id).is_file() {
+        return true;
+    }
+    if depth == 0 {
+        return false;
+    }
+    let Ok(bytes) = std::fs::read(state.paths.version_json(id)) else {
+        return false;
+    };
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return false;
+    };
+    let next = json
+        .get("jar")
+        .or_else(|| json.get("inheritsFrom"))
+        .and_then(|v| v.as_str());
+    match next {
+        Some(next_id) if next_id != id => version_jar_exists(state, next_id, depth - 1),
+        _ => false,
+    }
+}
+
 #[tauri::command]
 pub fn list_installed_versions(state: State<AppState>) -> Result<Vec<String>> {
     let mut installed = Vec::new();
@@ -158,7 +203,7 @@ pub fn list_installed_versions(state: State<AppState>) -> Result<Vec<String>> {
     };
     for entry in entries.flatten() {
         let id = entry.file_name().to_string_lossy().into_owned();
-        if state.paths.version_json(&id).is_file() && state.paths.version_jar(&id).is_file() {
+        if state.paths.version_json(&id).is_file() && version_jar_exists(&state, &id, 3) {
             installed.push(id);
         }
     }
@@ -195,7 +240,16 @@ pub async fn install_instance(
     instance_id: String,
 ) -> Result<()> {
     let instance = find_instance(&state, &instance_id)?;
-    install::install_version(&app, &state, &instance.id, &instance.version_id).await
+    let launch_id = match (&instance.loader, &instance.launch_version_id) {
+        (Some(_), None) => {
+            let id = loaders::install_loader(&app, &state, &instance).await?;
+            state.db.set_launch_version(&instance.id, &id)?;
+            id
+        }
+        (_, Some(id)) => id.clone(),
+        (None, None) => instance.version_id.clone(),
+    };
+    install::install_version(&app, &state, &instance.id, &launch_id).await
 }
 
 #[tauri::command]

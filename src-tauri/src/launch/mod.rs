@@ -82,7 +82,11 @@ pub async fn launch_instance(
     state: &AppState,
     instance: &Instance,
 ) -> Result<String> {
-    let version: VersionJson = install::load_version_json(state, &instance.version_id).await?;
+    let launch_version_id = instance
+        .launch_version_id
+        .clone()
+        .unwrap_or_else(|| instance.version_id.clone());
+    let version: VersionJson = install::load_merged_version(state, &launch_version_id).await?;
     let account = ensure_account(state).await?;
 
     let settings = state.db.load_settings()?;
@@ -109,7 +113,7 @@ pub async fn launch_instance(
         .iter()
         .map(|spec| spec.dest.display().to_string())
         .collect();
-    classpath.push(state.paths.version_jar(&version.id).display().to_string());
+    classpath.push(state.paths.version_jar(version.jar_id()).display().to_string());
     let classpath = classpath.join(classpath_separator());
 
     let natives_dir = state.paths.natives_dir(&version.id);
@@ -130,7 +134,7 @@ pub async fn launch_instance(
     subs.insert("version_name", version.id.clone());
     subs.insert("game_directory", game_dir.display().to_string());
     subs.insert("assets_root", state.paths.assets().display().to_string());
-    subs.insert("assets_index_name", version.assets.clone());
+    subs.insert("assets_index_name", version.assets_name());
     subs.insert("auth_uuid", account.id.clone());
     subs.insert("auth_access_token", account.mc_access_token.clone());
     subs.insert("clientid", microsoft::CLIENT_ID.to_string());
