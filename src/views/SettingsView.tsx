@@ -6,8 +6,6 @@ import {
   Bug,
   Check,
   CircleCheck,
-  Coffee,
-  Database,
   FolderOpen,
   KeyRound,
   Plus,
@@ -394,14 +392,6 @@ export function SettingsView() {
                   <span className={chipCls}>
                     <Tag className="size-3.5" />
                     Version {appInfo?.version ?? "\u2026"}
-                  </span>
-                  <span className={chipCls}>
-                    <Coffee className="size-3.5" />
-                    {javas.length} java runtime{javas.length === 1 ? "" : "s"}
-                  </span>
-                  <span className={chipCls}>
-                    <Database className="size-3.5" />
-                    basalt.db
                   </span>
                 </div>
               </div>
