@@ -145,6 +145,8 @@ interface AppStore {
   applyUpdate: (instanceId: string, kind: string, fileName: string) => Promise<void>;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
+  pickLogo: (instanceId: string) => Promise<void>;
+  clearLogo: (instanceId: string) => Promise<void>;
 }
 
 let listenersBound = false;
@@ -414,6 +416,13 @@ export const useStore = create<AppStore>((set) => ({
         selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
         discoverTargetId: s.discoverTargetId ?? instances[0]?.id ?? null,
       }));
+
+      if (instances.some((i) => i.pack_project_id && !i.logo)) {
+        api
+          .backfillPackLogos()
+          .then((updated) => set({ instances: updated }))
+          .catch((e) => console.error("pack logo backfill failed:", e));
+      }
     } catch (e) {
       set({ error: String(e), ready: true });
     }
@@ -529,6 +538,26 @@ export const useStore = create<AppStore>((set) => ({
     await api.clearInstanceBanner(instanceId);
     const media = await api.getInstanceMedia(instanceId).catch(() => null);
     set((s) => ({ media: { ...s.media, [instanceId]: media } }));
+  },
+
+  pickLogo: async (instanceId) => {
+    const file = await openFileDialog({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+    });
+    if (typeof file !== "string") return;
+    const logo = await api.setInstanceLogo(instanceId, file);
+    set((s) => ({
+      instances: s.instances.map((i) => (i.id === instanceId ? { ...i, logo } : i)),
+    }));
+  },
+
+  clearLogo: async (instanceId) => {
+    await api.clearInstanceLogo(instanceId);
+    set((s) => ({
+      instances: s.instances.map((i) => (i.id === instanceId ? { ...i, logo: null } : i)),
+    }));
   },
 
   refreshInstances: async () => {

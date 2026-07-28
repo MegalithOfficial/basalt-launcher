@@ -14,7 +14,7 @@ import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
-import { mediaSrc } from "../lib/media";
+import { logoSrc, mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
 import { PlayButton } from "../components/PlayButton";
@@ -108,7 +108,14 @@ export function InstancesView() {
               key={it.id}
               className="flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-3"
             >
-              {mediaMap[it.id] ? (
+              {logoSrc(it.logo) ? (
+                <img
+                  src={logoSrc(it.logo)!}
+                  className="size-10 shrink-0 cursor-pointer rounded-lg border border-border-soft object-cover"
+                  onClick={() => openInstance(it.id)}
+                  draggable={false}
+                />
+              ) : mediaMap[it.id] ? (
                 <img
                   src={mediaSrc(mediaMap[it.id]!)}
                   className="size-10 shrink-0 cursor-pointer rounded-lg object-cover"
@@ -180,6 +187,14 @@ export function InstancesView() {
                     <div className="grid h-full w-full place-items-center bg-surface-3 text-content-faint">
                       <Boxes className="size-7" />
                     </div>
+                  )}
+                  {logoSrc(it.logo) && (
+                    <img
+                      src={logoSrc(it.logo)!}
+                      alt=""
+                      className="absolute left-3 top-3 size-10 rounded-xl border border-white/15 bg-black/40 object-cover shadow-lg backdrop-blur"
+                      draggable={false}
+                    />
                   )}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-4 pb-2.5 pt-8">
                     <div className="truncate font-display font-semibold text-white">{it.name}</div>

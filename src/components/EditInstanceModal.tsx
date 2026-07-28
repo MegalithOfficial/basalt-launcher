@@ -84,6 +84,8 @@ export function EditInstanceModal({
   const mediaMap = useStore((s) => s.media);
   const pickBanner = useStore((s) => s.pickBanner);
   const clearBanner = useStore((s) => s.clearBanner);
+  const pickLogo = useStore((s) => s.pickLogo);
+  const clearLogo = useStore((s) => s.clearLogo);
   const updateInstance = useStore((s) => s.updateInstance);
   const deleteInstance = useStore((s) => s.deleteInstance);
 
@@ -276,7 +278,23 @@ export function EditInstanceModal({
                   )}
                 </div>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                <button
+                  onClick={() => pickLogo(instance.id)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur hover:bg-black/70"
+                >
+                  <ImagePlus className="size-3.5" />
+                  {instance.logo ? "Change logo" : "Add logo"}
+                </button>
+                {instance.logo && (
+                  <button
+                    onClick={() => clearLogo(instance.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur hover:bg-black/70"
+                  >
+                    <ImageOff className="size-3.5" />
+                    Logo
+                  </button>
+                )}
                 <button
                   onClick={() => pickBanner(instance.id)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur hover:bg-black/70"

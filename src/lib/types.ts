@@ -19,6 +19,7 @@ export interface Instance {
   last_played_at: number | null;
   playtime_secs: number;
   dir: string;
+  logo: string | null;
   loader: string | null;
   loader_version: string | null;
   launch_version_id: string | null;

@@ -158,6 +158,11 @@ export const api = {
     invoke<VersionMedia>("set_instance_banner", { instanceId, sourcePath }),
   clearInstanceBanner: (instanceId: string) =>
     invoke<void>("clear_instance_banner", { instanceId }),
+  setInstanceLogo: (instanceId: string, sourcePath: string) =>
+    invoke<string>("set_instance_logo", { instanceId, sourcePath }),
+  clearInstanceLogo: (instanceId: string) =>
+    invoke<void>("clear_instance_logo", { instanceId }),
+  backfillPackLogos: () => invoke<Instance[]>("backfill_pack_logos"),
   installInstance: (instanceId: string) =>
     invoke<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>
