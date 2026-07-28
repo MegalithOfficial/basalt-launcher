@@ -277,7 +277,9 @@ fn migrate(conn: &Connection) -> Result<()> {
 
 impl Db {
     pub fn open(paths: &Paths) -> Result<Self> {
-        let conn = Connection::open(paths.root.join("basalt.db"))?;
+        let path = paths.root.join("basalt.db");
+        tracing::info!(path = %path.display(), schema_version = SCHEMA_VERSION, "opening database");
+        let conn = Connection::open(&path)?;
         let _ = conn.pragma_update(None, "journal_mode", "WAL");
         migrate(&conn)?;
         let db = Db(Arc::new(Mutex::new(conn)));
@@ -304,6 +306,7 @@ impl Db {
         let instances_file = paths.instances_file();
         if let Ok(bytes) = std::fs::read(&instances_file) {
             if let Ok(instances) = serde_json::from_slice::<Vec<Instance>>(&bytes) {
+                tracing::info!(count = instances.len(), "importing instances from legacy json");
                 for instance in &instances {
                     self.insert_instance(instance)?;
                 }

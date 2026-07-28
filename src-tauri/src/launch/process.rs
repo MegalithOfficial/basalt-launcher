@@ -102,8 +102,11 @@ pub fn spawn_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = command.spawn()?;
+    let mut child = command.spawn().inspect_err(|e| {
+        tracing::error!(program, error = %e, "could not spawn game process");
+    })?;
     let pid = child.id().unwrap_or(0);
+    tracing::info!(instance_id, running_id, pid, program, "game process started");
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
@@ -122,6 +125,7 @@ pub fn spawn_process(
     }
 
     let sup_app = app.clone();
+    let sup_logs = logs.clone();
     let sup_status = status.clone();
     let sup_running_id = running_id.to_string();
     let sup_instance_id = instance_id.to_string();
@@ -145,7 +149,38 @@ pub fn spawn_process(
             guard.exit_code = code;
         }
         let ended_at = chrono::Utc::now().timestamp();
-        let _ = db.record_playtime(&sup_instance_id, ended_at - started_at, ended_at);
+        let played_secs = ended_at - started_at;
+        if state == "crashed" {
+            let tail = {
+                let buffer = sup_logs.lock().unwrap();
+                buffer
+                    .iter()
+                    .rev()
+                    .take(12)
+                    .map(|line| line.line.clone())
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            tracing::error!(
+                instance_id = %sup_instance_id,
+                pid,
+                exit_code = ?code,
+                played_secs,
+                "game exited abnormally:\n{tail}"
+            );
+        } else {
+            tracing::info!(
+                instance_id = %sup_instance_id,
+                pid,
+                exit_code = ?code,
+                played_secs,
+                "game exited"
+            );
+        }
+        let _ = db.record_playtime(&sup_instance_id, played_secs, ended_at);
         let _ = sup_app.emit(
             "process:state",
             RunningInfo {

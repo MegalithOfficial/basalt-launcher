@@ -8,16 +8,16 @@ export function PageHeader({
   actions,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <div className="flex items-end justify-between gap-4 border-b border-border-soft px-8 py-6">
-      <div>
+      <div className="min-w-0">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-content">
           {title}
         </h1>
-        {subtitle && <p className="mt-1 text-sm text-content-muted">{subtitle}</p>}
+        {subtitle && <div className="mt-1 text-sm text-content-muted">{subtitle}</div>}
       </div>
       {actions}
     </div>

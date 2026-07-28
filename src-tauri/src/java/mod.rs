@@ -59,10 +59,12 @@ async fn candidates(explicit: Option<&str>) -> Vec<JavaInfo> {
 
     let mut found: Vec<JavaInfo> = Vec::new();
     for path in paths {
-        if let Some(info) = probe(&path).await {
-            found.push(info);
+        match probe(&path).await {
+            Some(info) => found.push(info),
+            None => tracing::trace!(path, "not a usable java runtime"),
         }
     }
+    tracing::debug!(count = found.len(), "probed java runtimes");
     found
 }
 
@@ -90,12 +92,17 @@ pub async fn list_all() -> Vec<JavaInfo> {
 
 pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<JavaInfo> {
     let found = candidates(explicit).await;
-    found
+    let picked = found
         .iter()
         .find(|j| j.major == required)
         .or_else(|| found.iter().find(|j| j.major > required))
         .or_else(|| found.first())
-        .cloned()
+        .cloned();
+    match &picked {
+        Some(java) => tracing::debug!(required, major = java.major, path = %java.path, "java selected"),
+        None => tracing::warn!(required, "no java runtime found on this system"),
+    }
+    picked
 }
 
 #[cfg(test)]

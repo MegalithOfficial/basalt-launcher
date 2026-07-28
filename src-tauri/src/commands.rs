@@ -14,12 +14,14 @@ use crate::install;
 use crate::java::{self, JavaStatus};
 use crate::launch::{self, process::{LogLine, RunningInfo}};
 use crate::loaders;
+use crate::logging::{self, LogConfig, LogRecord, LogState};
 use crate::meta::manifest::{self, VersionEntry};
 use crate::meta::media::{self, VersionMedia};
 use crate::search;
 use crate::state::AppState;
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub fn get_settings(state: State<AppState>) -> Result<LauncherSettings> {
     state.db.load_settings()
 }
@@ -31,6 +33,7 @@ pub struct AppInfo {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
     Ok(AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -39,21 +42,28 @@ pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub async fn list_javas() -> Result<Vec<java::JavaInfo>> {
     Ok(java::list_all().await)
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Result<()> {
+    if logging::normalize_level(&settings.log_level) != logging::current_level() {
+        logging::set_level(&settings.log_level)?;
+    }
     state.db.save_settings(&settings)
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub fn list_instances(state: State<AppState>) -> Result<Vec<Instance>> {
     state.db.list_instances(&state.paths)
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn create_instance(
     state: State<AppState>,
     name: String,
@@ -89,10 +99,18 @@ pub fn create_instance(
     };
     std::fs::create_dir_all(state.paths.instance_dir(&instance.id))?;
     state.db.insert_instance(&instance)?;
+    tracing::info!(
+        instance_id = %instance.id,
+        name = %instance.name,
+        version_id = %instance.version_id,
+        loader = ?instance.loader,
+        "instance created"
+    );
     Ok(instance)
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn list_loader_versions(
     state: State<'_, AppState>,
     loader: String,
@@ -103,6 +121,7 @@ pub async fn list_loader_versions(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn update_instance(
     state: State<AppState>,
     instance_id: String,
@@ -145,10 +164,12 @@ pub fn update_instance(
     if existing.version_id != version_id {
         state.media_cache.lock().unwrap().remove(&instance_id);
     }
+    tracing::info!(needs_reset, "instance updated");
     find_instance(&state, &instance_id)
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
     state.db.delete_instance(&instance_id)?;
     if !state.paths.remove_instance_dir(&instance_id) {
@@ -157,10 +178,12 @@ pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) ->
     media::clear_custom_banner(&state.paths, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     state.db.delete_instance_content_files(&instance_id)?;
+    tracing::info!("instance deleted");
     Ok(())
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn get_instance_media(
     state: State<'_, AppState>,
     instance_id: String,
@@ -197,6 +220,7 @@ pub async fn get_instance_media(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn set_instance_banner(
     state: State<'_, AppState>,
     instance_id: String,
@@ -213,6 +237,7 @@ pub async fn set_instance_banner(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn clear_instance_banner(
     state: State<'_, AppState>,
     instance_id: String,
@@ -348,6 +373,7 @@ fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub fn list_installed_versions(state: State<AppState>) -> Result<Vec<String>> {
     let mut installed = Vec::new();
     let entries = match std::fs::read_dir(state.paths.versions()) {
@@ -365,6 +391,7 @@ pub fn list_installed_versions(state: State<AppState>) -> Result<Vec<String>> {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn list_versions(
     state: State<'_, AppState>,
     include_snapshots: bool,
@@ -388,6 +415,7 @@ fn find_instance(state: &AppState, instance_id: &str) -> Result<Instance> {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
 pub async fn install_instance(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -432,6 +460,7 @@ pub async fn install_instance(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn get_java_status(
     state: State<'_, AppState>,
     instance_id: String,
@@ -489,16 +518,20 @@ pub async fn list_instance_content(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn toggle_instance_content(
     state: State<AppState>,
     instance_id: String,
     kind: String,
     file_name: String,
 ) -> Result<bool> {
-    content::toggle(&state.paths, &instance_id, &kind, &file_name)
+    let enabled = content::toggle(&state.paths, &instance_id, &kind, &file_name)?;
+    tracing::info!(enabled, "content toggled");
+    Ok(enabled)
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn delete_instance_content(
     state: State<AppState>,
     instance_id: String,
@@ -506,6 +539,7 @@ pub fn delete_instance_content(
     file_name: String,
 ) -> Result<()> {
     content::delete(&state.paths, &instance_id, &kind, &file_name)?;
+    tracing::info!("content deleted");
     state.db.delete_content_file(&instance_id, &kind, &file_name)
 }
 
@@ -541,10 +575,12 @@ pub async fn add_instance_content(
     find_instance(&state, &instance_id)?;
     let copied = content::add(&state.paths, &instance_id, &kind, &sources)?;
     let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
+    tracing::info!(copied, offered = sources.len(), "content added from disk");
     Ok(copied)
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn search_content(
     state: State<'_, AppState>,
     provider: String,
@@ -569,6 +605,7 @@ pub async fn get_filter_taxonomy(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn get_project_details(
     state: State<'_, AppState>,
     provider: String,
@@ -579,6 +616,7 @@ pub async fn get_project_details(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn list_project_versions(
     state: State<'_, AppState>,
     provider: String,
@@ -601,6 +639,7 @@ pub async fn list_project_versions(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn resolve_projects(
     state: State<'_, AppState>,
     provider: String,
@@ -617,6 +656,7 @@ pub struct InstalledFile {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn get_installed_project_file(
     state: State<AppState>,
     instance_id: String,
@@ -633,6 +673,7 @@ pub fn get_installed_project_file(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn get_version_changelog(
     state: State<'_, AppState>,
     provider: String,
@@ -798,6 +839,7 @@ pub async fn apply_content_update(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
 pub async fn install_modpack(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -844,6 +886,7 @@ async fn run_auth_flow(
         expires_at: chrono::Utc::now().timestamp() + mc.expires_in,
     };
 
+    tracing::info!(account = %account.name, uuid = %account.id, "microsoft sign-in completed");
     let mut store = db.load_accounts()?;
     store.upsert_active(account);
     db.save_accounts(&store)?;
@@ -856,8 +899,14 @@ async fn run_auth_flow(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<DeviceCodeInfo> {
     let device = microsoft::request_device_code(&state.http).await?;
+    tracing::info!(
+        verification_uri = %device.verification_uri,
+        interval = device.interval,
+        "device code issued"
+    );
     let info = DeviceCodeInfo {
         user_code: device.user_code.clone(),
         verification_uri: device.verification_uri.clone(),
@@ -875,6 +924,7 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
                 let _ = app.emit("auth:state", json!({ "status": "success", "account": view }));
             }
             Err(e) => {
+                tracing::error!(error = %e, "microsoft sign-in failed");
                 let _ = app.emit("auth:state", json!({ "status": "error", "message": e.to_string() }));
             }
         }
@@ -884,21 +934,25 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub fn list_accounts(state: State<AppState>) -> Result<Vec<AccountView>> {
     Ok(state.db.load_accounts()?.views())
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn set_active_account(state: State<AppState>, account_id: String) -> Result<()> {
     let mut store = state.db.load_accounts()?;
     if store.accounts.iter().any(|a| a.id == account_id) {
         store.active_id = Some(account_id);
         state.db.save_accounts(&store)?;
+        tracing::info!("active account changed");
     }
     Ok(())
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn remove_account(state: State<AppState>, account_id: String) -> Result<()> {
     let mut store = state.db.load_accounts()?;
     store.accounts.retain(|a| a.id != account_id);
@@ -906,10 +960,12 @@ pub fn remove_account(state: State<AppState>, account_id: String) -> Result<()> 
         store.active_id = store.accounts.first().map(|a| a.id.clone());
     }
     state.db.save_accounts(&store)?;
+    tracing::info!(remaining = store.accounts.len(), "account removed");
     Ok(())
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
 pub async fn launch_instance(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -920,10 +976,12 @@ pub async fn launch_instance(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn kill_instance(state: State<AppState>, running_id: String) -> Result<()> {
     let mut registry = state.running.lock().unwrap();
     if let Some(handle) = registry.get_mut(&running_id) {
         if let Some(tx) = handle.kill_tx.take() {
+            tracing::info!(pid = handle.pid, "kill requested");
             let _ = tx.send(());
         }
     }
@@ -931,12 +989,14 @@ pub fn kill_instance(state: State<AppState>, running_id: String) -> Result<()> {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all, err)]
 pub fn list_running(state: State<AppState>) -> Result<Vec<RunningInfo>> {
     let registry = state.running.lock().unwrap();
     Ok(registry.iter().map(|(id, handle)| handle.info(id)).collect())
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn get_logs(state: State<AppState>, running_id: String) -> Result<Vec<LogLine>> {
     let registry = state.running.lock().unwrap();
     Ok(registry
@@ -946,7 +1006,49 @@ pub fn get_logs(state: State<AppState>, running_id: String) -> Result<Vec<LogLin
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn close_running(state: State<AppState>, running_id: String) -> Result<()> {
     state.running.lock().unwrap().remove(&running_id);
+    Ok(())
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(logs), err)]
+pub fn get_log_records(logs: State<LogState>, limit: Option<usize>) -> Result<Vec<LogRecord>> {
+    Ok(logs.buffer.snapshot(limit.unwrap_or(2000)))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn clear_log_records(logs: State<LogState>) -> Result<()> {
+    logs.buffer.clear();
+    tracing::info!("log view cleared");
+    Ok(())
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn get_log_config(state: State<AppState>) -> Result<LogConfig> {
+    Ok(logging::config(&state.paths))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn set_log_level(state: State<AppState>, level: String) -> Result<LogConfig> {
+    logging::set_level(&level)?;
+    let mut settings = state.db.load_settings()?;
+    settings.log_level = logging::normalize_level(&level).to_string();
+    state.db.save_settings(&settings)?;
+    Ok(logging::config(&state.paths))
+}
+
+#[tauri::command]
+pub fn frontend_log(
+    level: String,
+    scope: String,
+    message: String,
+    data: Option<String>,
+) -> Result<()> {
+    logging::record_frontend(&level, &scope, &message, data.as_deref());
     Ok(())
 }

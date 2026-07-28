@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { log } from "./log";
 import type {
   AccountView,
   AppInfo,
@@ -14,7 +15,9 @@ import type {
   JavaInfo,
   JavaStatus,
   LauncherSettings,
+  LogConfig,
   LogLine,
+  LogRecord,
   ProjectDetails,
   ProjectSummary,
   ProjectVersion,
@@ -27,46 +30,60 @@ import type {
   VersionMedia,
 } from "./types";
 
+async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const started = performance.now();
+  try {
+    const result = await invoke<T>(command, args);
+    log.debug("ipc", `${command} ok`, { ms: Math.round(performance.now() - started) });
+    return result;
+  } catch (error) {
+    log.error("ipc", `${command} failed: ${String(error)}`, {
+      ms: Math.round(performance.now() - started),
+    });
+    throw error;
+  }
+}
+
 export const api = {
-  getSettings: () => invoke<LauncherSettings>("get_settings"),
-  getAppInfo: () => invoke<AppInfo>("get_app_info"),
-  listJavas: () => invoke<JavaInfo[]>("list_javas"),
+  getSettings: () => call<LauncherSettings>("get_settings"),
+  getAppInfo: () => call<AppInfo>("get_app_info"),
+  listJavas: () => call<JavaInfo[]>("list_javas"),
   updateSettings: (settings: LauncherSettings) =>
-    invoke<void>("update_settings", { settings }),
-  listInstances: () => invoke<Instance[]>("list_instances"),
+    call<void>("update_settings", { settings }),
+  listInstances: () => call<Instance[]>("list_instances"),
   createInstance: (
     name: string,
     versionId: string,
     loader: string | null = null,
     loaderVersion: string | null = null,
   ) =>
-    invoke<Instance>("create_instance", { name, versionId, loader, loaderVersion }),
+    call<Instance>("create_instance", { name, versionId, loader, loaderVersion }),
   listLoaderVersions: (loader: string, gameVersion: string) =>
-    invoke<string[]>("list_loader_versions", { loader, gameVersion }),
+    call<string[]>("list_loader_versions", { loader, gameVersion }),
   listInstanceContent: (instanceId: string, kind: string, reconcile = false) =>
-    invoke<ContentItem[]>("list_instance_content", { instanceId, kind, reconcile }),
+    call<ContentItem[]>("list_instance_content", { instanceId, kind, reconcile }),
   toggleInstanceContent: (instanceId: string, kind: string, fileName: string) =>
-    invoke<boolean>("toggle_instance_content", { instanceId, kind, fileName }),
+    call<boolean>("toggle_instance_content", { instanceId, kind, fileName }),
   deleteInstanceContent: (instanceId: string, kind: string, fileName: string) =>
-    invoke<void>("delete_instance_content", { instanceId, kind, fileName }),
+    call<void>("delete_instance_content", { instanceId, kind, fileName }),
   addInstanceContent: (instanceId: string, kind: string, sources: string[]) =>
-    invoke<number>("add_instance_content", { instanceId, kind, sources }),
+    call<number>("add_instance_content", { instanceId, kind, sources }),
   searchContent: (provider: string, kind: string, query: SearchQuery) =>
-    invoke<SearchPage>("search_content", { provider, kind, query }),
+    call<SearchPage>("search_content", { provider, kind, query }),
   getFilterTaxonomy: (provider: string, kind: string, includeSnapshots = false) =>
-    invoke<FilterTaxonomy>("get_filter_taxonomy", { provider, kind, includeSnapshots }),
+    call<FilterTaxonomy>("get_filter_taxonomy", { provider, kind, includeSnapshots }),
   getVersionChangelog: (provider: string, projectId: string, versionId: string) =>
-    invoke<Changelog>("get_version_changelog", { provider, projectId, versionId }),
+    call<Changelog>("get_version_changelog", { provider, projectId, versionId }),
   resolveProjects: (provider: string, ids: string[]) =>
-    invoke<ProjectSummary[]>("resolve_projects", { provider, ids }),
+    call<ProjectSummary[]>("resolve_projects", { provider, ids }),
   getInstalledProjectFile: (instanceId: string, kind: string, projectId: string) =>
-    invoke<InstalledFile | null>("get_installed_project_file", {
+    call<InstalledFile | null>("get_installed_project_file", {
       instanceId,
       kind,
       projectId,
     }),
   getProjectDetails: (provider: string, projectId: string) =>
-    invoke<ProjectDetails>("get_project_details", { provider, projectId }),
+    call<ProjectDetails>("get_project_details", { provider, projectId }),
   listProjectVersions: (
     provider: string,
     projectId: string,
@@ -74,7 +91,7 @@ export const api = {
     gameVersion: string,
     loader: string | null,
   ) =>
-    invoke<ProjectVersion[]>("list_project_versions", {
+    call<ProjectVersion[]>("list_project_versions", {
       provider,
       projectId,
       kind,
@@ -90,7 +107,7 @@ export const api = {
     loader: string | null,
     versionId: string | null = null,
   ) =>
-    invoke<InstallPlan>("plan_content_install", {
+    call<InstallPlan>("plan_content_install", {
       provider,
       projectId,
       instanceId,
@@ -109,7 +126,7 @@ export const api = {
     versionId: string | null = null,
     withDependencies = true,
   ) =>
-    invoke<string[]>("install_content", {
+    call<string[]>("install_content", {
       provider,
       projectId,
       instanceId,
@@ -120,15 +137,15 @@ export const api = {
       withDependencies,
     }),
   installModpack: (provider: string, projectId: string, versionId: string) =>
-    invoke<Instance>("install_modpack", { provider, projectId, versionId }),
+    call<Instance>("install_modpack", { provider, projectId, versionId }),
   checkContentUpdates: (instanceId: string, force = false) =>
-    invoke<ContentUpdate[]>("check_content_updates", { instanceId, force }),
+    call<ContentUpdate[]>("check_content_updates", { instanceId, force }),
   getContentUpdates: (instanceId: string) =>
-    invoke<ContentUpdate[]>("get_content_updates", { instanceId }),
+    call<ContentUpdate[]>("get_content_updates", { instanceId }),
   applyContentUpdate: (instanceId: string, kind: string, fileName: string) =>
-    invoke<string>("apply_content_update", { instanceId, kind, fileName }),
+    call<string>("apply_content_update", { instanceId, kind, fileName }),
   getContentDependents: (instanceId: string, kind: string, fileName: string) =>
-    invoke<string[]>("get_content_dependents", { instanceId, kind, fileName }),
+    call<string[]>("get_content_dependents", { instanceId, kind, fileName }),
   updateInstance: (
     instanceId: string,
     name: string,
@@ -139,7 +156,7 @@ export const api = {
     loaderVersion: string | null,
     versionId: string,
   ) =>
-    invoke<Instance>("update_instance", {
+    call<Instance>("update_instance", {
       instanceId,
       name,
       minMemoryMb,
@@ -150,41 +167,46 @@ export const api = {
       versionId,
     }),
   deleteInstance: (instanceId: string) =>
-    invoke<void>("delete_instance", { instanceId }),
+    call<void>("delete_instance", { instanceId }),
   listVersions: (includeSnapshots = false) =>
-    invoke<VersionEntry[]>("list_versions", { includeSnapshots }),
-  listInstalledVersions: () => invoke<string[]>("list_installed_versions"),
+    call<VersionEntry[]>("list_versions", { includeSnapshots }),
+  listInstalledVersions: () => call<string[]>("list_installed_versions"),
   getInstanceMedia: (instanceId: string) =>
-    invoke<VersionMedia | null>("get_instance_media", { instanceId }),
+    call<VersionMedia | null>("get_instance_media", { instanceId }),
   setInstanceBanner: (instanceId: string, sourcePath: string) =>
-    invoke<VersionMedia>("set_instance_banner", { instanceId, sourcePath }),
+    call<VersionMedia>("set_instance_banner", { instanceId, sourcePath }),
   clearInstanceBanner: (instanceId: string) =>
-    invoke<void>("clear_instance_banner", { instanceId }),
+    call<void>("clear_instance_banner", { instanceId }),
   setInstanceLogo: (instanceId: string, sourcePath: string) =>
-    invoke<string>("set_instance_logo", { instanceId, sourcePath }),
+    call<string>("set_instance_logo", { instanceId, sourcePath }),
   clearInstanceLogo: (instanceId: string) =>
-    invoke<void>("clear_instance_logo", { instanceId }),
-  backfillPackLogos: () => invoke<Instance[]>("backfill_pack_logos"),
-  listTasks: () => invoke<Task[]>("list_tasks"),
-  clearFinishedTasks: () => invoke<void>("clear_finished_tasks"),
-  cancelTask: (taskId: string) => invoke<boolean>("cancel_task", { taskId }),
-  recoverInterrupted: () => invoke<PendingOperation[]>("recover_interrupted"),
+    call<void>("clear_instance_logo", { instanceId }),
+  backfillPackLogos: () => call<Instance[]>("backfill_pack_logos"),
+  listTasks: () => call<Task[]>("list_tasks"),
+  clearFinishedTasks: () => call<void>("clear_finished_tasks"),
+  cancelTask: (taskId: string) => call<boolean>("cancel_task", { taskId }),
+  recoverInterrupted: () => call<PendingOperation[]>("recover_interrupted"),
   installInstance: (instanceId: string) =>
-    invoke<void>("install_instance", { instanceId }),
+    call<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>
-    invoke<JavaStatus>("get_java_status", { instanceId }),
-  authBegin: () => invoke<DeviceCodeInfo>("auth_begin"),
-  listAccounts: () => invoke<AccountView[]>("list_accounts"),
+    call<JavaStatus>("get_java_status", { instanceId }),
+  authBegin: () => call<DeviceCodeInfo>("auth_begin"),
+  listAccounts: () => call<AccountView[]>("list_accounts"),
   setActiveAccount: (accountId: string) =>
-    invoke<void>("set_active_account", { accountId }),
+    call<void>("set_active_account", { accountId }),
   removeAccount: (accountId: string) =>
-    invoke<void>("remove_account", { accountId }),
+    call<void>("remove_account", { accountId }),
   launchInstance: (instanceId: string) =>
-    invoke<string>("launch_instance", { instanceId }),
+    call<string>("launch_instance", { instanceId }),
   killInstance: (runningId: string) =>
-    invoke<void>("kill_instance", { runningId }),
-  listRunning: () => invoke<RunningInfo[]>("list_running"),
-  getLogs: (runningId: string) => invoke<LogLine[]>("get_logs", { runningId }),
+    call<void>("kill_instance", { runningId }),
+  listRunning: () => call<RunningInfo[]>("list_running"),
+  getLogs: (runningId: string) => call<LogLine[]>("get_logs", { runningId }),
   closeRunning: (runningId: string) =>
-    invoke<void>("close_running", { runningId }),
+    call<void>("close_running", { runningId }),
+  getLogRecords: (limit?: number) =>
+    call<LogRecord[]>("get_log_records", { limit: limit ?? null }),
+  clearLogRecords: () => call<void>("clear_log_records"),
+  getLogConfig: () => call<LogConfig>("get_log_config"),
+  setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
 };

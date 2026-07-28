@@ -17,6 +17,7 @@ fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
+#[tracing::instrument(skip_all, err)]
 async fn ensure_account(state: &AppState) -> Result<Account> {
     let mut store = state.db.load_accounts()?;
     let account = store
@@ -25,8 +26,11 @@ async fn ensure_account(state: &AppState) -> Result<Account> {
         .ok_or_else(|| Error::other("No account signed in. Add a Microsoft account first."))?;
 
     if account.expires_at > now() + 60 {
+        tracing::debug!(account = %account.name, "using cached session token");
         return Ok(account);
     }
+
+    tracing::info!(account = %account.name, "session expired, refreshing with microsoft");
 
     let refreshed = microsoft::refresh(&state.http, &account.refresh_token).await?;
     let mc = microsoft::authenticate_minecraft(&state.http, &refreshed.access_token).await?;
@@ -39,6 +43,7 @@ async fn ensure_account(state: &AppState) -> Result<Account> {
     };
     store.upsert_active(updated.clone());
     state.db.save_accounts(&store)?;
+    tracing::info!(account = %updated.name, "session refreshed");
     Ok(updated)
 }
 
@@ -77,6 +82,11 @@ fn classpath_separator() -> &'static str {
     }
 }
 
+#[tracing::instrument(
+    skip_all,
+    fields(instance_id = %instance.id, name = %instance.name, version_id = %instance.version_id),
+    err
+)]
 pub async fn launch_instance(
     app: &AppHandle,
     state: &AppState,
@@ -100,6 +110,13 @@ pub async fn launch_instance(
                 version.id
             ))
         })?;
+    tracing::info!(
+        launch_version_id = %launch_version_id,
+        required_java = required,
+        java_major = java.major,
+        java_path = %java.path,
+        "resolved runtime for launch"
+    );
     if java.major < required {
         return Err(Error::other(format!(
             "Minecraft {} needs Java {required}, but the newest Java found is {} ({}).",
@@ -172,6 +189,16 @@ pub async fn launch_instance(
             args.push(substitute(token, &subs));
         }
     }
+
+    tracing::info!(
+        main_class = %version.main_class,
+        classpath_entries = resolved.classpath.len() + resolved.natives.len() + 1,
+        args = args.len(),
+        min_memory_mb = min_mb,
+        max_memory_mb = max_mb,
+        game_dir = %game_dir.display(),
+        "launching minecraft"
+    );
 
     let running_id = uuid::Uuid::new_v4().to_string();
     process::spawn_process(

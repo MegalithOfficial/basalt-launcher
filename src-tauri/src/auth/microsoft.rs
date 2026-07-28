@@ -71,9 +71,10 @@ pub async fn request_device_code(client: &reqwest::Client) -> Result<DeviceCode>
     let status = resp.status();
     let text = resp.text().await?;
     if !status.is_success() {
+        let detail = aad_message(&text);
+        tracing::error!(%status, detail, "microsoft rejected the device code request");
         return Err(Error::other(format!(
-            "Microsoft rejected the sign-in request ({status}): {}",
-            aad_message(&text)
+            "Microsoft rejected the sign-in request ({status}): {detail}"
         )));
     }
     Ok(serde_json::from_str(&text)?)
@@ -117,7 +118,10 @@ pub async fn poll_token(client: &reqwest::Client, device_code: &str) -> Result<P
         serde_json::from_str(&text).unwrap_or(TokenErrorResp { error: "unknown".into() });
     match err.error.as_str() {
         "authorization_pending" => Ok(PollOutcome::Pending),
-        "slow_down" => Ok(PollOutcome::SlowDown),
+        "slow_down" => {
+            tracing::debug!("microsoft asked us to slow down polling");
+            Ok(PollOutcome::SlowDown)
+        }
         "authorization_declined" => Err(Error::other("Sign-in was declined.")),
         "expired_token" => Err(Error::other("The sign-in request expired. Try again.")),
         other => Err(Error::other(format!("Sign-in failed: {other}"))),
@@ -190,6 +194,7 @@ fn xsts_error_message(xerr: i64) -> String {
     }
 }
 
+#[tracing::instrument(skip_all, err)]
 pub async fn authenticate_minecraft(
     client: &reqwest::Client,
     ms_access_token: &str,
@@ -227,6 +232,7 @@ pub async fn authenticate_minecraft(
     if !xsts_resp.status().is_success() {
         let text = xsts_resp.text().await?;
         if let Ok(err) = serde_json::from_str::<XstsErr>(&text) {
+            tracing::error!(xerr = err.xerr, "xsts authorization refused");
             return Err(Error::other(xsts_error_message(err.xerr)));
         }
         return Err(Error::other("Xbox sign-in failed."));
@@ -260,6 +266,7 @@ pub async fn authenticate_minecraft(
         ));
     }
     let profile: ProfileResp = profile_resp.error_for_status()?.json().await?;
+    tracing::info!(name = %profile.name, uuid = %profile.id, "minecraft profile authenticated");
 
     Ok(McAuth {
         uuid: profile.id,

@@ -9,6 +9,7 @@ mod install;
 mod java;
 mod launch;
 mod loaders;
+mod logging;
 mod meta;
 mod modpack;
 mod paths;
@@ -32,8 +33,28 @@ pub fn run() {
             }
             let paths = Paths::resolve(app.handle())?;
             paths.ensure_dirs()?;
+
+            let log_state = logging::init(app.handle(), &paths, logging::DEFAULT_LEVEL)?;
+            tracing::info!(
+                version = env!("CARGO_PKG_VERSION"),
+                data_dir = %paths.root.display(),
+                log_file = %logging::log_file(&paths).display(),
+                "basalt starting"
+            );
+            app.manage(log_state);
+
             let db = db::Db::open(&paths)?;
+            match db.load_settings() {
+                Ok(settings) => {
+                    if let Err(e) = logging::set_level(&settings.log_level) {
+                        tracing::warn!(error = %e, "could not apply stored log level");
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "could not read settings for log level"),
+            }
+
             app.manage(AppState::new(paths, db));
+            tracing::info!("startup complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -87,6 +108,11 @@ pub fn run() {
             commands::list_running,
             commands::get_logs,
             commands::close_running,
+            commands::get_log_records,
+            commands::clear_log_records,
+            commands::get_log_config,
+            commands::set_log_level,
+            commands::frontend_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

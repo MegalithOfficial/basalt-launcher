@@ -24,6 +24,7 @@ impl Paths {
             self.natives(),
             self.runtimes(),
             self.instances(),
+            self.logs(),
         ] {
             std::fs::create_dir_all(dir)?;
         }
@@ -65,6 +66,9 @@ impl Paths {
     }
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")
+    }
+    pub fn logs(&self) -> PathBuf {
+        self.root.join("logs")
     }
     pub fn instance_dir(&self, id: &str) -> PathBuf {
         self.instances().join(id)

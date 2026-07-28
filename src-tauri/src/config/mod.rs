@@ -8,6 +8,7 @@ pub struct LauncherSettings {
     pub java_path: Option<String>,
     pub concurrent_downloads: usize,
     pub curseforge_api_key: Option<String>,
+    pub log_level: String,
 }
 
 impl Default for LauncherSettings {
@@ -18,6 +19,7 @@ impl Default for LauncherSettings {
             java_path: None,
             concurrent_downloads: 16,
             curseforge_api_key: None,
+            log_level: crate::logging::DEFAULT_LEVEL.to_string(),
         }
     }
 }

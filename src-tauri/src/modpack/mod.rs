@@ -148,6 +148,7 @@ struct HashVersion {
     id: String,
 }
 
+#[tracing::instrument(skip_all, fields(files = files.len()))]
 async fn link_pack_files(
     state: &AppState,
     instance_id: &str,
@@ -168,6 +169,7 @@ async fn link_pack_files(
         return;
     };
     let Ok(by_hash) = resp.json::<HashMap<String, HashVersion>>().await else {
+        tracing::warn!("could not match pack files to modrinth projects");
         return;
     };
 
@@ -210,6 +212,7 @@ async fn link_pack_files(
     }
 }
 
+#[tracing::instrument(skip(app, state), fields(provider = provider.as_str()), err)]
 pub async fn install_modpack(
     app: &AppHandle,
     state: &AppState,
@@ -261,6 +264,13 @@ pub async fn install_modpack(
         .cloned()
         .ok_or_else(|| Error::other("Pack index does not declare a Minecraft version."))?;
     let loader = loader_from_dependencies(&index.dependencies)?;
+    tracing::info!(
+        pack = %index.name,
+        game_version = %game_version,
+        loader = ?loader,
+        pack_files = index.files.len(),
+        "modpack index parsed"
+    );
 
     let existing_names: Vec<String> = state
         .db
@@ -298,6 +308,7 @@ pub async fn install_modpack(
     let instance_dir = state.paths.instance_dir(&instance.id);
     std::fs::create_dir_all(&instance_dir)?;
     state.db.insert_instance(&instance)?;
+    tracing::info!(instance_id = %instance.id, name = %instance.name, "modpack instance created");
 
     let task = state.tasks.start(
         app,

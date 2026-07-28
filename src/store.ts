@@ -5,6 +5,7 @@ import { notifySummary, notifyTaskFinished } from "./lib/notify";
 
 import { api } from "./lib/api";
 import { isInstanceInstalled } from "./lib/loader";
+import { log } from "./lib/log";
 import type {
   AccountView,
   ContentKind,
@@ -13,13 +14,17 @@ import type {
   Task,
   Instance,
   LauncherSettings,
+  LogConfig,
+  LogLevel,
   LogLine,
+  LogRecord,
   RunningInfo,
   SearchProvider,
   VersionMedia,
   View,
 } from "./lib/types";
 
+const MAX_LOG_RECORDS = 5000;
 interface AuthPayload {
   status: "success" | "error";
   account?: AccountView;
@@ -50,6 +55,8 @@ interface AppStore {
   auth: AuthFlow;
   running: Record<string, RunningInfo>;
   logs: Record<string, LogLine[]>;
+  logRecords: LogRecord[];
+  logConfig: LogConfig | null;
   activeRunningId: string | null;
   media: Record<string, VersionMedia | null>;
   detailInstanceId: string | null;
@@ -95,6 +102,9 @@ interface AppStore {
   killInstance: (runningId: string) => Promise<void>;
   closeRunning: (runningId: string) => Promise<void>;
   openConsole: (runningId: string) => void;
+  refreshLogs: () => Promise<void>;
+  clearLogs: () => Promise<void>;
+  setLogLevel: (level: LogLevel) => Promise<void>;
   loadMedia: (instanceId: string) => Promise<void>;
   selectInstance: (id: string) => void;
   openInstance: (id: string) => void;
@@ -148,6 +158,8 @@ export const useStore = create<AppStore>((set) => ({
   auth: { status: "idle" },
   running: {},
   logs: {},
+  logRecords: [],
+  logConfig: null,
   activeRunningId: null,
   media: {},
   selectedInstanceId: null,
@@ -372,6 +384,18 @@ export const useStore = create<AppStore>((set) => ({
           return { logs: { ...s.logs, [p.running_id]: next } };
         });
       }));
+      track(await listen<LogRecord[]>("log:record", (e) => {
+        set((s) => {
+          const last = s.logRecords[s.logRecords.length - 1]?.seq ?? 0;
+          const fresh = e.payload.filter((r) => r.seq > last);
+          if (fresh.length === 0) return {};
+          const next = [...s.logRecords, ...fresh];
+          if (next.length > MAX_LOG_RECORDS) {
+            next.splice(0, next.length - MAX_LOG_RECORDS);
+          }
+          return { logRecords: next };
+        });
+      }));
       track(await listen<RunningInfo>("process:state", (e) => {
         const info = e.payload;
         set((s) => ({ running: { ...s.running, [info.running_id]: info } }));
@@ -390,6 +414,7 @@ export const useStore = create<AppStore>((set) => ({
         api.listTasks().catch(() => [] as Task[]),
         api.recoverInterrupted().catch(() => [] as PendingOperation[]),
       ]);
+      log.setLevel(settings.log_level);
       const installedIds = instances
         .filter((i) => isInstanceInstalled(i, installedVersions))
         .map((i) => i.id);
@@ -415,9 +440,42 @@ export const useStore = create<AppStore>((set) => ({
           })
           .catch((e) => console.error("pack logo backfill failed:", e));
       }
+      log.info("app", "launcher ready", {
+        instances: instances.length,
+        accounts: accounts.length,
+      });
+      void useStore.getState().refreshLogs();
     } catch (e) {
+      log.error("app", `startup failed: ${String(e)}`);
       set({ error: String(e), ready: true });
     }
+  },
+
+  refreshLogs: async () => {
+    const [records, config] = await Promise.all([
+      api.getLogRecords(MAX_LOG_RECORDS),
+      api.getLogConfig(),
+    ]);
+    log.setLevel(config.level);
+    set((s) => {
+      const highest = records[records.length - 1]?.seq ?? 0;
+      const streamed = s.logRecords.filter((r) => r.seq > highest);
+      return { logRecords: [...records, ...streamed], logConfig: config };
+    });
+  },
+
+  clearLogs: async () => {
+    await api.clearLogRecords();
+    set({ logRecords: [] });
+  },
+
+  setLogLevel: async (level) => {
+    const config = await api.setLogLevel(level);
+    log.setLevel(config.level);
+    set((s) => ({
+      logConfig: config,
+      settings: s.settings ? { ...s.settings, log_level: config.level } : s.settings,
+    }));
   },
 
   refreshAccounts: async () => {

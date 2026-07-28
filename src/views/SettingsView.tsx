@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
-import { Check, Coffee, Database, FolderOpen, KeyRound } from "lucide-react";
+import { Check, Coffee, Database, FolderOpen, KeyRound, ScrollText } from "lucide-react";
 
 import { PageHeader } from "../components/ui";
 import { Select } from "../components/Select";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
-import type { AppInfo, JavaInfo, LauncherSettings } from "../lib/types";
+import type { AppInfo, JavaInfo, LauncherSettings, LogLevel } from "../lib/types";
 import { useStore } from "../store";
 
 const AUTO_DETECT = "Auto-detect";
@@ -59,6 +59,9 @@ function Row({
 
 export function SettingsView() {
   const settings = useStore((s) => s.settings);
+  const logConfig = useStore((s) => s.logConfig);
+  const setLogLevel = useStore((s) => s.setLogLevel);
+  const setView = useStore((s) => s.setView);
   const [draft, setDraft] = useState<LauncherSettings | null>(settings);
   const [javas, setJavas] = useState<JavaInfo[]>([]);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -226,6 +229,44 @@ export function SettingsView() {
                 className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
               >
                 <KeyRound className="size-4" />
+              </button>
+            </Row>
+          </Section>
+
+          <Section
+            title="Diagnostics"
+            description="Logs are written to disk and kept for seven days. Raise the level before reproducing a problem."
+          >
+            <Row
+              label="Capture level"
+              hint={
+                logConfig?.env_override
+                  ? `overridden by BASALT_LOG=${logConfig.env_override}`
+                  : "how much detail reaches the log file"
+              }
+            >
+              <div className="w-44">
+                <Select
+                  value={logConfig?.level ?? draft.log_level}
+                  options={logConfig?.levels ?? ["error", "warn", "info", "debug", "trace"]}
+                  onChange={(level) => void setLogLevel(level as LogLevel)}
+                />
+              </div>
+            </Row>
+            <Row label="Log file" hint={logConfig?.file ?? "resolving"}>
+              <button
+                onClick={() => setView("logs")}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+              >
+                <ScrollText className="size-3.5" />
+                View logs
+              </button>
+              <button
+                onClick={() => logConfig && openPath(logConfig.directory)}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+              >
+                <FolderOpen className="size-3.5" />
+                Open folder
               </button>
             </Row>
           </Section>

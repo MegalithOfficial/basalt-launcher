@@ -14,6 +14,7 @@ import { HomeView } from "./views/HomeView";
 import { InstanceView } from "./views/InstanceView";
 import { InstancesView } from "./views/InstancesView";
 import { DiscoverView } from "./views/DiscoverView";
+import { LogsView } from "./views/LogsView";
 import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
 import { useStore } from "./store";
@@ -28,6 +29,7 @@ const VIEWS: Record<View, React.ComponentType> = {
   instance: InstanceView,
   discover: DiscoverView,
   project: ProjectView,
+  logs: LogsView,
 };
 
 function App() {

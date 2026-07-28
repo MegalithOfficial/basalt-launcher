@@ -39,7 +39,10 @@ pub async fn fetch(client: &reqwest::Client, paths: &Paths) -> Result<VersionMan
             let _ = tokio::fs::write(&cache, &bytes).await;
             bytes.to_vec()
         }
-        Err(_) => tokio::fs::read(&cache).await?,
+        Err(e) => {
+            tracing::warn!(error = %e, cache = %cache.display(), "manifest fetch failed, using cache");
+            tokio::fs::read(&cache).await?
+        }
     };
     Ok(serde_json::from_slice(&bytes)?)
 }

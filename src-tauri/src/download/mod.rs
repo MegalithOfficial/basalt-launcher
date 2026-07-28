@@ -120,6 +120,7 @@ fn short_reason(error: &Error) -> String {
 
 async fn download_once(client: &reqwest::Client, spec: &DownloadSpec) -> Result<bool> {
     if already_valid(spec).await {
+        tracing::trace!(dest = %spec.dest.display(), "already on disk, skipped");
         return Ok(false);
     }
     if let Some(parent) = spec.dest.parent() {
@@ -143,6 +144,12 @@ async fn download_once(client: &reqwest::Client, spec: &DownloadSpec) -> Result<
     if let Some(expected) = &spec.sha1 {
         let actual = hasher.digest().to_string();
         if &actual != expected {
+            tracing::warn!(
+                url = %spec.url,
+                expected = %expected,
+                actual = %actual,
+                "checksum mismatch, discarding download"
+            );
             let _ = tokio::fs::remove_file(&tmp).await;
             return Err(Error::Checksum {
                 path: spec.dest.display().to_string(),
@@ -153,6 +160,7 @@ async fn download_once(client: &reqwest::Client, spec: &DownloadSpec) -> Result<
     }
 
     tokio::fs::rename(&tmp, &spec.dest).await?;
+    tracing::trace!(url = %spec.url, dest = %spec.dest.display(), "downloaded");
     Ok(true)
 }
 
@@ -180,8 +188,10 @@ pub async fn download_many_cancellable<F>(
 where
     F: Fn(DownloadProgress) + Send + Sync,
 {
+    let started = std::time::Instant::now();
     let total = specs.len();
     let total_bytes: u64 = specs.iter().filter_map(|s| s.size).sum();
+    tracing::debug!(total, total_bytes, concurrency, "download batch started");
     let completed = AtomicUsize::new(0);
     let done_bytes = AtomicU64::new(0);
     let on_progress = &on_progress;
@@ -204,10 +214,11 @@ where
             Some(token) => tokio::select! {
                 biased;
                 _ = token.cancelled() => return Err(Error::Cancelled),
-                result = download_one_reporting(client, &spec, on_retry) => result?,
+                result = download_one_reporting(client, &spec, on_retry) => result,
             },
-            None => download_one_reporting(client, &spec, on_retry).await?,
-        };
+            None => download_one_reporting(client, &spec, on_retry).await,
+        }
+        .inspect_err(|e| tracing::warn!(url = %spec.url, error = %e, "download failed"))?;
         if created {
             if let Some(sink) = written {
                 sink.lock().unwrap().push(spec.dest.clone());
@@ -229,9 +240,17 @@ where
     .collect::<Vec<_>>()
     .await;
 
+    let failures = results.iter().filter(|r| r.is_err()).count();
     for result in results {
         result?;
     }
+    tracing::info!(
+        total,
+        total_bytes,
+        failures,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "download batch finished"
+    );
     Ok(())
 }
 

@@ -23,13 +23,16 @@ struct ProgressPayload {
     progress: DownloadProgress,
 }
 
+#[tracing::instrument(skip(state), err)]
 pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<VersionJson> {
     let path = state.paths.version_json(version_id);
     if let Ok(bytes) = tokio::fs::read(&path).await {
         if let Ok(parsed) = serde_json::from_slice(&bytes) {
+            tracing::debug!("version json read from cache");
             return Ok(parsed);
         }
     }
+    tracing::debug!("version json not cached, fetching from mojang");
 
     let manifest = manifest::fetch(&state.http, &state.paths).await?;
     let entry = manifest
@@ -50,6 +53,7 @@ pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<Ver
         tokio::fs::create_dir_all(parent).await?;
     }
     tokio::fs::write(&path, &bytes).await?;
+    tracing::debug!(bytes = bytes.len(), "version json cached");
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -66,9 +70,13 @@ pub async fn load_merged_version(state: &AppState, version_id: &str) -> Result<V
         current = merge_versions(parent, current);
         depth += 1;
     }
+    if depth > 0 {
+        tracing::debug!(version_id, depth, "merged inherited version json");
+    }
     Ok(current)
 }
 
+#[tracing::instrument(skip_all, fields(version_id = %version.id), err)]
 async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<AssetIndex> {
     let asset_index = version
         .asset_index
@@ -99,6 +107,7 @@ async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<Ass
     Ok(serde_json::from_slice(&bytes)?)
 }
 
+#[tracing::instrument(skip_all, fields(count = natives.len(), dest = %dest.display()), err)]
 fn extract_natives(natives: &[NativeSpec], dest: &Path) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     for native in natives {
@@ -125,6 +134,7 @@ fn extract_natives(natives: &[NativeSpec], dest: &Path) -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(skip_all, fields(version_id = %version_id), err)]
 pub async fn install_version(
     _app: &AppHandle,
     state: &AppState,
@@ -132,6 +142,7 @@ pub async fn install_version(
     version_id: &str,
     task: &crate::tasks::TaskHandle,
 ) -> Result<()> {
+    let started = std::time::Instant::now();
     task.stage("metadata");
     let version = load_merged_version(state, version_id).await?;
 
@@ -149,6 +160,14 @@ pub async fn install_version(
     specs.extend(asset_index.specs(&state.paths));
 
     let concurrency = state.db.load_settings()?.concurrent_downloads;
+    tracing::info!(
+        libraries = resolved.classpath.len(),
+        natives = resolved.natives.len(),
+        assets = asset_index.objects.len(),
+        files = specs.len(),
+        concurrency,
+        "install plan resolved"
+    );
 
     task.stage("downloading");
     task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
@@ -177,5 +196,6 @@ pub async fn install_version(
         .await
         .map_err(|e| Error::other(format!("native extraction task failed: {e}")))??;
 
+    tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "install finished");
     Ok(())
 }

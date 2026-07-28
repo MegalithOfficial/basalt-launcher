@@ -71,6 +71,7 @@ fn neoforge_prefix(game_version: &str) -> String {
     }
 }
 
+#[tracing::instrument(skip(client), fields(loader = ?loader), err)]
 pub async fn list_loader_versions(
     client: &reqwest::Client,
     loader: Loader,
@@ -122,6 +123,7 @@ pub async fn list_loader_versions(
     }
 }
 
+#[tracing::instrument(skip(state), err)]
 async fn install_profile_json(
     state: &AppState,
     url: &str,
@@ -139,9 +141,11 @@ async fn install_profile_json(
         serde_json::to_vec_pretty(&profile)?,
     )
     .await?;
+    tracing::info!(version_id = %id, "loader profile written");
     Ok(id)
 }
 
+#[tracing::instrument(skip_all, fields(installer = installer_name, expected_id), err)]
 async fn run_installer(
     app: &AppHandle,
     state: &AppState,
@@ -178,6 +182,7 @@ async fn run_installer(
         .await
         .ok_or_else(|| Error::other("No Java found to run the loader installer."))?;
 
+    tracing::info!(java = %java.path, installer = %installer_path.display(), "running loader installer");
     let output = tokio::process::Command::new(&java.path)
         .arg("-jar")
         .arg(&installer_path)
@@ -199,14 +204,21 @@ async fn run_installer(
             .rev()
             .collect::<Vec<_>>()
             .join("\n");
+        tracing::error!(expected_id, "loader installer produced no version json:\n{tail}");
         return Err(Error::other(format!(
             "Loader installer failed for {expected_id}:\n{tail}"
         )));
     }
 
+    tracing::info!(version_id = expected_id, "loader installed");
     Ok(expected_id.to_string())
 }
 
+#[tracing::instrument(
+    skip_all,
+    fields(instance_id = %instance.id, loader = ?instance.loader, loader_version = ?instance.loader_version),
+    err
+)]
 pub async fn install_loader(
     app: &AppHandle,
     state: &AppState,

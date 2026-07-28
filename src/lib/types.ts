@@ -5,6 +5,7 @@ export interface LauncherSettings {
   java_path: string | null;
   concurrent_downloads: number;
   curseforge_api_key: string | null;
+  log_level: LogLevel;
 }
 
 export interface Instance {
@@ -355,6 +356,29 @@ export interface LogLine {
   line: string;
 }
 
+export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
+
+export type LogSource = "backend" | "frontend";
+
+export interface LogRecord {
+  seq: number;
+  ts: number;
+  level: LogLevel;
+  source: LogSource;
+  target: string;
+  span: string | null;
+  message: string;
+  fields: Record<string, string>;
+}
+
+export interface LogConfig {
+  level: LogLevel;
+  directory: string;
+  file: string;
+  env_override: string | null;
+  levels: LogLevel[];
+}
+
 export type View =
   | "home"
   | "instances"
@@ -363,4 +387,5 @@ export type View =
   | "console"
   | "instance"
   | "discover"
-  | "project";
+  | "project"
+  | "logs";

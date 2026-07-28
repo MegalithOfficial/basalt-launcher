@@ -7,6 +7,9 @@ import "@fontsource-variable/jetbrains-mono";
 import "./index.css";
 
 import App from "./App";
+import { bindGlobalErrorHandlers } from "./lib/log";
+
+bindGlobalErrorHandlers();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
