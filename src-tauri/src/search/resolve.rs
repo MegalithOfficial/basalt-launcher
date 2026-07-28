@@ -1,13 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::content;
 use crate::db::ContentFile;
 use crate::download::{self, DownloadSpec};
 use crate::error::Result;
 use crate::state::AppState;
+use crate::tasks::{TaskKind, TaskSpec};
 
 use super::model::*;
 use super::{download_url, fetch_version, resolve_projects};
@@ -162,6 +163,17 @@ fn planned_from(
         replaces,
         dependencies: version.dependencies.clone(),
     })
+}
+
+/// Mods and pack files live inside a single instance, so removing the ones a
+/// cancelled task created is safe. Shared caches (libraries, assets, version
+/// jars) are deliberately never rolled back: they are content addressed and
+/// reused by every other instance on that game version.
+pub fn rollback_written(task: &crate::tasks::TaskHandle) {
+    let paths = std::mem::take(&mut *task.written().lock().unwrap());
+    for path in paths {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -340,19 +352,6 @@ pub async fn plan(
     Ok(plan)
 }
 
-fn emit_progress(app: Option<&AppHandle>, instance_id: &str, completed: usize, total: usize, current: &str) {
-    let Some(app) = app else { return };
-    let _ = app.emit(
-        "content:progress",
-        serde_json::json!({
-            "instance_id": instance_id,
-            "completed": completed,
-            "total": total,
-            "current": current,
-        }),
-    );
-}
-
 pub async fn apply(
     app: Option<&AppHandle>,
     state: &AppState,
@@ -381,19 +380,76 @@ pub async fn apply(
         })
         .collect();
 
+    let task = app.map(|app| {
+        let instance_name = state
+            .db
+            .list_instances(&state.paths)
+            .ok()
+            .and_then(|list| list.into_iter().find(|i| i.id == instance_id))
+            .map(|i| i.name);
+        state.tasks.start(
+            app,
+            match pack_version_id {
+                Some(_) => TaskKind::ModpackInstall,
+                None => TaskKind::ContentInstall,
+            },
+            TaskSpec {
+                title: plan
+                    .primary
+                    .as_ref()
+                    .map(|f| f.title.clone())
+                    .unwrap_or_else(|| "Content".to_string()),
+                subtitle: instance_name.map(|name| format!("into {name}")),
+                icon_url: plan.primary.as_ref().and_then(|f| f.icon_url.clone()),
+                instance_id: Some(instance_id.to_string()),
+                project_id: plan.primary.as_ref().map(|f| f.project_id.clone()),
+                total: total as u64,
+                total_bytes: plan.total_bytes,
+            },
+        )
+    });
+
+    if let Some(task) = &task {
+        task.stage("downloading");
+    }
+
     let concurrency = state.db.load_settings()?.concurrent_downloads;
-    let progress_app = app.cloned();
-    let progress_instance = instance_id.to_string();
-    download::download_many(&state.http, specs, concurrency, move |progress| {
-        emit_progress(
-            progress_app.as_ref(),
-            &progress_instance,
-            progress.completed,
-            progress.total,
-            &progress.current,
-        );
-    })
-    .await?;
+    let outcome = {
+        let task_ref = task.as_ref();
+        download::download_many_cancellable(
+            &state.http,
+            specs,
+            concurrency,
+            move |progress| {
+                if let Some(task) = task_ref {
+                    task.progress(
+                        progress.completed as u64,
+                        progress.total as u64,
+                        progress.downloaded_bytes,
+                        progress.total_bytes,
+                    );
+                }
+            },
+            task.as_ref().map(|t| t.token()),
+            task.as_ref().map(|t| t.written()),
+        )
+        .await
+    };
+
+    if let Err(e) = outcome {
+        if let Some(task) = &task {
+            rollback_written(task);
+            match &e {
+                crate::error::Error::Cancelled => task.cancelled(),
+                other => task.fail(other),
+            }
+        }
+        return Err(e);
+    }
+
+    if let Some(task) = &task {
+        task.stage("recording");
+    }
 
     let now = chrono::Utc::now().timestamp();
     let mut written = Vec::with_capacity(total);
@@ -433,6 +489,10 @@ pub async fn apply(
             .db
             .record_content_file(instance_id, kind.as_str(), &record);
         written.push(file.file_name.clone());
+    }
+
+    if let Some(task) = &task {
+        task.succeed();
     }
 
     Ok(written)

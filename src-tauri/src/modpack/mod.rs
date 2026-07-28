@@ -299,16 +299,83 @@ pub async fn install_modpack(
     std::fs::create_dir_all(&instance_dir)?;
     state.db.insert_instance(&instance)?;
 
+    let task = state.tasks.start(
+        app,
+        crate::tasks::TaskKind::ModpackInstall,
+        crate::tasks::TaskSpec {
+            title: index.name.clone(),
+            subtitle: Some(format!(
+                "{}{}",
+                instance.version_id,
+                instance
+                    .loader
+                    .as_deref()
+                    .map(|l| format!(" · {l}"))
+                    .unwrap_or_default()
+            )),
+            instance_id: Some(instance.id.clone()),
+            project_id: Some(project_id.to_string()),
+            ..Default::default()
+        },
+    );
+
+    let outcome = install_pack_body(
+        app,
+        state,
+        provider,
+        project_id,
+        &instance,
+        &instance_dir,
+        &archive_path,
+        &index,
+        &task,
+    )
+    .await;
+
+    if let Err(e) = outcome {
+        // A half built pack instance is unusable, so it goes entirely.
+        let _ = state.db.delete_instance_content_files(&instance.id);
+        let _ = state.db.delete_instance(&instance.id);
+        state.paths.remove_instance_dir(&instance.id);
+        match &e {
+            Error::Cancelled => task.cancelled(),
+            other => task.fail(other),
+        }
+        return Err(e);
+    }
+
+    task.succeed();
+
+    state
+        .db
+        .list_instances(&state.paths)?
+        .into_iter()
+        .find(|i| i.id == instance.id)
+        .ok_or_else(|| Error::other("instance vanished after pack install"))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn install_pack_body(
+    app: &AppHandle,
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    instance: &Instance,
+    instance_dir: &Path,
+    archive_path: &Path,
+    index: &MrIndex,
+    task: &crate::tasks::TaskHandle,
+) -> Result<()> {
     let launch_id = if instance.loader.is_some() {
-        let launch_id = loaders::install_loader(app, state, &instance).await?;
+        let launch_id = loaders::install_loader(app, state, instance, task).await?;
         state.db.set_launch_version(&instance.id, &launch_id)?;
         launch_id
     } else {
         instance.version_id.clone()
     };
-    install::install_version(app, state, &instance.id, &launch_id).await?;
+    install::install_version(app, state, &instance.id, &launch_id, task).await?;
 
-    install::emit_stage(app, &instance.id, "modpack-files");
+    task.stage("modpack-files");
     let mut specs = Vec::new();
     let mut linkable: Vec<(String, String)> = Vec::new();
     for file in &index.files {
@@ -335,28 +402,30 @@ pub async fn install_modpack(
         }
     }
     let concurrency = state.db.load_settings()?.concurrent_downloads;
-    let emit_app = app.clone();
-    let emit_id = instance.id.clone();
-    download::download_many(&state.http, specs, concurrency, move |progress| {
-        let _ = tauri::Emitter::emit(
-            &emit_app,
-            "install:progress",
-            serde_json::json!({
-                "instance_id": emit_id,
-                "completed": progress.completed,
-                "total": progress.total,
-                "downloaded_bytes": progress.downloaded_bytes,
-                "total_bytes": progress.total_bytes,
-                "current": progress.current,
-            }),
-        );
-    })
-    .await?;
+    task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
+    let downloaded = download::download_many_cancellable(
+        &state.http,
+        specs,
+        concurrency,
+        |progress| {
+            task.progress(
+                progress.completed as u64,
+                progress.total as u64,
+                progress.downloaded_bytes,
+                progress.total_bytes,
+            );
+        },
+        Some(task.token()),
+        Some(task.written()),
+    )
+    .await;
 
-    install::emit_stage(app, &instance.id, "modpack-overrides");
+    downloaded?;
+
+    task.stage("modpack-overrides");
     {
-        let archive = archive_path.clone();
-        let dest = instance_dir.clone();
+        let archive = archive_path.to_path_buf();
+        let dest = instance_dir.to_path_buf();
         tokio::task::spawn_blocking(move || extract_overrides(&archive, &dest))
             .await
             .map_err(|e| Error::other(format!("override extraction task failed: {e}")))??;
@@ -379,13 +448,7 @@ pub async fn install_modpack(
         .await;
     }
 
-    install::emit_stage(app, &instance.id, "done");
-    state
-        .db
-        .list_instances(&state.paths)?
-        .into_iter()
-        .find(|i| i.id == instance.id)
-        .ok_or_else(|| Error::other("instance vanished after pack install"))
+    Ok(())
 }
 
 #[cfg(test)]
