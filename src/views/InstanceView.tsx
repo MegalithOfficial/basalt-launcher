@@ -77,6 +77,8 @@ export function InstanceView() {
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const refreshUpdates = useStore((s) => s.refreshUpdates);
   const applyUpdate = useStore((s) => s.applyUpdate);
+  const beginToastBatch = useStore((s) => s.beginToastBatch);
+  const endToastBatch = useStore((s) => s.endToastBatch);
   const storedUpdates = useStore((s) => (detailId ? s.updates[detailId] : undefined));
   const updates = storedUpdates ?? NO_UPDATES;
   const activeProjects = useActiveProjectIds();
@@ -217,12 +219,19 @@ export function InstanceView() {
 
   const updateAll = async () => {
     setUpdatingAll(true);
+    const total = tabUpdates.length;
+    let done = 0;
+    beginToastBatch();
     try {
       for (const update of tabUpdates) {
         await applyUpdate(instance.id, update.kind, update.file_name);
+        done += 1;
       }
       await refresh();
     } finally {
+      endToastBatch(
+        done > 0 ? `Updated ${done} of ${total} ${total === 1 ? "file" : "files"}` : null,
+      );
       setUpdatingAll(false);
     }
   };

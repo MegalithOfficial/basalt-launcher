@@ -7,7 +7,7 @@ import { cn } from "./lib/cn";
 import { Sidebar } from "./components/Sidebar";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { TitleBar } from "./components/TitleBar";
-import { ToastHost } from "./components/ToastHost";
+import { Toaster } from "sonner";
 import { AccountsView } from "./views/AccountsView";
 import { ConsoleView } from "./views/ConsoleView";
 import { HomeView } from "./views/HomeView";
@@ -66,7 +66,24 @@ function App() {
       )}
       style={accentVars(accent)}
     >
-      <ToastHost />
+      <Toaster
+        theme="dark"
+        position="bottom-left"
+        offset={16}
+        gap={8}
+        visibleToasts={4}
+        toastOptions={{
+          classNames: {
+            toast:
+              "!bg-surface !border !border-border !text-content !rounded-xl !shadow-2xl !font-sans",
+            title: "!text-[13px] !font-medium !text-content",
+            description: "!text-[11px] !text-content-muted",
+            success: "!border-ok/40",
+            error: "!border-danger/40",
+            closeButton: "!bg-surface-2 !border-border !text-content-faint",
+          },
+        }}
+      />
       <Sidebar />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <TitleBar immersive={immersive} />

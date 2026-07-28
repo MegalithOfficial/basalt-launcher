@@ -226,13 +226,6 @@ export interface Task {
   finished_at: number | null;
 }
 
-export interface Toast {
-  id: string;
-  tone: "success" | "error";
-  title: string;
-  message: string | null;
-}
-
 export interface PendingOperation {
   id: string;
   kind: string;

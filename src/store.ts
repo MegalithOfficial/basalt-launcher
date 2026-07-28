@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
+import { toast } from "sonner";
 
 import { api } from "./lib/api";
 import { isInstanceInstalled } from "./lib/loader";
@@ -10,7 +11,6 @@ import type {
   ContentUpdate,
   PendingOperation,
   Task,
-  Toast,
   Instance,
   LauncherSettings,
   LogLine,
@@ -61,7 +61,6 @@ interface AppStore {
   contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
   updates: Record<string, ContentUpdate[]>;
   interrupted: PendingOperation[];
-  toasts: Toast[];
   tasks: Record<string, Task>;
   taskOrder: string[];
   selectedInstanceId: string | null;
@@ -125,8 +124,8 @@ interface AppStore {
   clearFinishedTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   dismissInterrupted: () => void;
-  pushToast: (toast: Omit<Toast, "id">) => void;
-  dismissToast: (id: string) => void;
+  beginToastBatch: () => void;
+  endToastBatch: (summary: string | null) => void;
   applyUpdate: (instanceId: string, kind: string, fileName: string) => Promise<void>;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
@@ -135,6 +134,7 @@ interface AppStore {
 }
 
 let listenersBound = false;
+let batching = false;
 
 export const useStore = create<AppStore>((set) => ({
   view: "home",
@@ -159,7 +159,6 @@ export const useStore = create<AppStore>((set) => ({
   contentSources: {},
   updates: {},
   interrupted: [],
-  toasts: [],
   tasks: {},
   taskOrder: [],
 
@@ -258,13 +257,14 @@ export const useStore = create<AppStore>((set) => ({
 
   dismissInterrupted: () => set({ interrupted: [] }),
 
-  pushToast: (toast) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    set((s) => ({ toasts: [...s.toasts.slice(-4), { ...toast, id }] }));
+  beginToastBatch: () => {
+    batching = true;
   },
 
-  dismissToast: (id) =>
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  endToastBatch: (summary) => {
+    batching = false;
+    if (summary) toast.success(summary);
+  },
 
   clearFinishedTasks: async () => {
     await api.clearFinishedTasks();
@@ -335,19 +335,11 @@ export const useStore = create<AppStore>((set) => ({
           task.state !== "running" &&
           task.state !== "queued";
 
-        if (justFinished && task.state === "succeeded") {
-          useStore.getState().pushToast({
-            tone: "success",
-            title: task.title,
-            message: task.subtitle ?? "Installed",
-          });
+        if (justFinished && !batching && task.state === "succeeded") {
+          toast.success(task.title, { description: task.subtitle ?? "Installed" });
         }
         if (justFinished && task.state === "failed") {
-          useStore.getState().pushToast({
-            tone: "error",
-            title: `${task.title} failed`,
-            message: task.error,
-          });
+          toast.error(`${task.title} failed`, { description: task.error ?? undefined });
         }
 
         const known = useStore.getState().instances;
@@ -640,3 +632,7 @@ export const useStore = create<AppStore>((set) => ({
     }
   },
 }));
+
+if (import.meta.env.DEV) {
+  (window as unknown as { __store: typeof useStore }).__store = useStore;
+}
