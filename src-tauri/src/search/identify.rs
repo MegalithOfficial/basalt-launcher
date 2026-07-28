@@ -1,0 +1,403 @@
+use std::collections::HashMap;
+use std::io::Read;
+use std::path::Path;
+
+use serde::Deserialize;
+
+use crate::content;
+use crate::db::ContentFile;
+use crate::error::Result;
+use crate::state::AppState;
+
+use super::curseforge;
+use super::modrinth;
+use super::model::Provider;
+
+const MURMUR_M: u32 = 0x5bd1_e995;
+const MURMUR_R: u32 = 24;
+const CURSEFORGE_SEED: u32 = 1;
+
+fn is_ignored_byte(byte: u8) -> bool {
+    matches!(byte, 0x09 | 0x0a | 0x0d | 0x20)
+}
+
+pub fn murmur2(data: &[u8], seed: u32) -> u32 {
+    let mut hash = seed ^ (data.len() as u32);
+    let mut chunks = data.chunks_exact(4);
+
+    for chunk in chunks.by_ref() {
+        let mut k = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        k = k.wrapping_mul(MURMUR_M);
+        k ^= k >> MURMUR_R;
+        k = k.wrapping_mul(MURMUR_M);
+        hash = hash.wrapping_mul(MURMUR_M);
+        hash ^= k;
+    }
+
+    let tail = chunks.remainder();
+    if !tail.is_empty() {
+        if tail.len() >= 3 {
+            hash ^= (tail[2] as u32) << 16;
+        }
+        if tail.len() >= 2 {
+            hash ^= (tail[1] as u32) << 8;
+        }
+        hash ^= tail[0] as u32;
+        hash = hash.wrapping_mul(MURMUR_M);
+    }
+
+    hash ^= hash >> 13;
+    hash = hash.wrapping_mul(MURMUR_M);
+    hash ^= hash >> 15;
+    hash
+}
+
+pub fn curseforge_fingerprint(bytes: &[u8]) -> u32 {
+    let stripped: Vec<u8> = bytes
+        .iter()
+        .copied()
+        .filter(|b| !is_ignored_byte(*b))
+        .collect();
+    murmur2(&stripped, CURSEFORGE_SEED)
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FileIdentity {
+    pub sha1: String,
+    pub murmur2: u32,
+    pub mod_id: Option<String>,
+    pub mod_version: Option<String>,
+    pub display_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct FabricMod {
+    id: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct QuiltMod {
+    quilt_loader: QuiltLoader,
+}
+
+#[derive(Deserialize)]
+struct QuiltLoader {
+    id: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    metadata: Option<QuiltMetadata>,
+}
+
+#[derive(Deserialize)]
+struct QuiltMetadata {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ForgeManifest {
+    #[serde(default)]
+    mods: Vec<ForgeMod>,
+}
+
+#[derive(Deserialize)]
+struct ForgeMod {
+    #[serde(rename = "modId")]
+    mod_id: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(rename = "displayName", default)]
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct LegacyForgeMod {
+    #[serde(default)]
+    modid: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PackMeta {
+    pack: PackMetaInner,
+}
+
+#[derive(Deserialize)]
+struct PackMetaInner {
+    #[serde(default)]
+    description: Option<serde_json::Value>,
+}
+
+fn placeholder(value: &str) -> bool {
+    value.contains("${")
+}
+
+fn clean(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty() && !placeholder(v))
+}
+
+fn read_entry(zip: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Option<String> {
+    let mut entry = zip.by_name(name).ok()?;
+    let mut body = String::new();
+    entry.read_to_string(&mut body).ok()?;
+    Some(body)
+}
+
+pub fn read_metadata(path: &Path) -> Option<(Option<String>, Option<String>, Option<String>)> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut zip = zip::ZipArchive::new(file).ok()?;
+
+    if let Some(body) = read_entry(&mut zip, "fabric.mod.json") {
+        if let Ok(parsed) = serde_json::from_str::<FabricMod>(&body) {
+            return Some((
+                Some(parsed.id),
+                clean(parsed.version),
+                clean(parsed.name),
+            ));
+        }
+    }
+
+    if let Some(body) = read_entry(&mut zip, "quilt.mod.json") {
+        if let Ok(parsed) = serde_json::from_str::<QuiltMod>(&body) {
+            return Some((
+                Some(parsed.quilt_loader.id),
+                clean(parsed.quilt_loader.version),
+                clean(parsed.quilt_loader.metadata.and_then(|m| m.name)),
+            ));
+        }
+    }
+
+    for name in ["META-INF/neoforge.mods.toml", "META-INF/mods.toml"] {
+        if let Some(body) = read_entry(&mut zip, name) {
+            if let Ok(parsed) = toml::from_str::<ForgeManifest>(&body) {
+                if let Some(first) = parsed.mods.into_iter().next() {
+                    return Some((
+                        Some(first.mod_id),
+                        clean(first.version),
+                        clean(first.display_name),
+                    ));
+                }
+            }
+        }
+    }
+
+    if let Some(body) = read_entry(&mut zip, "mcmod.info") {
+        if let Ok(parsed) = serde_json::from_str::<Vec<LegacyForgeMod>>(&body) {
+            if let Some(first) = parsed.into_iter().next() {
+                return Some((first.modid, clean(first.version), clean(first.name)));
+            }
+        }
+    }
+
+    if let Some(body) = read_entry(&mut zip, "pack.mcmeta") {
+        if let Ok(parsed) = serde_json::from_str::<PackMeta>(&body) {
+            let description = match parsed.pack.description {
+                Some(serde_json::Value::String(s)) => clean(Some(s)),
+                _ => None,
+            };
+            return Some((None, None, description));
+        }
+    }
+
+    None
+}
+
+pub fn identify_file(path: &Path) -> Result<FileIdentity> {
+    let bytes = std::fs::read(path)?;
+    let (mod_id, mod_version, display_name) = read_metadata(path).unwrap_or((None, None, None));
+    Ok(FileIdentity {
+        sha1: crate::download::sha1_hex(&bytes),
+        murmur2: curseforge_fingerprint(&bytes),
+        mod_id,
+        mod_version,
+        display_name,
+    })
+}
+
+pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Result<()> {
+    let items = content::list(&state.paths, instance_id, kind)?;
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let known: HashMap<String, ContentFile> = state
+        .db
+        .content_files(instance_id, kind)?
+        .into_iter()
+        .map(|f| (f.file_name.clone(), f))
+        .collect();
+
+    let dir = content::dir_for(&state.paths, instance_id, kind)?;
+    let mut hashed: Vec<(String, String, u32)> = Vec::new();
+
+    for item in &items {
+        let existing = known.get(&item.file_name);
+        if existing.is_some_and(|f| f.sha1.is_some()) {
+            let file = existing.expect("checked above");
+            hashed.push((
+                item.file_name.clone(),
+                file.sha1.clone().expect("checked above"),
+                file.murmur2.unwrap_or(0) as u32,
+            ));
+            continue;
+        }
+
+        let path = content::resolve_path(&dir, &item.file_name);
+        let Ok(identity) = identify_file(&path) else {
+            continue;
+        };
+        let _ = state.db.merge_identity(
+            instance_id,
+            kind,
+            &item.file_name,
+            Some(&identity.sha1),
+            None,
+            Some(identity.murmur2 as i64),
+            identity.mod_id.as_deref(),
+            identity.mod_version.as_deref(),
+        );
+        if existing.is_none() {
+            if let Some(name) = &identity.display_name {
+                let _ = state.db.set_fallback_title(instance_id, kind, &item.file_name, name);
+            }
+        }
+        hashed.push((item.file_name.clone(), identity.sha1, identity.murmur2));
+    }
+
+    let unlinked: Vec<&(String, String, u32)> = hashed
+        .iter()
+        .filter(|(name, _, _)| {
+            known
+                .get(name)
+                .map_or(true, |f| f.project_id.is_none())
+        })
+        .collect();
+
+    if unlinked.is_empty() {
+        return Ok(());
+    }
+
+    let sha1s: Vec<String> = unlinked.iter().map(|(_, sha1, _)| sha1.clone()).collect();
+    let by_hash = modrinth::versions_by_hash(state, &sha1s)
+        .await
+        .unwrap_or_default();
+
+    let project_ids: Vec<String> = {
+        let mut ids: Vec<String> = by_hash.values().map(|v| v.project_id.clone()).collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    };
+    let projects = modrinth::resolve_projects(state, &project_ids)
+        .await
+        .unwrap_or_default();
+    let info: HashMap<&str, &super::ProjectSummary> =
+        projects.iter().map(|p| (p.id.as_str(), p)).collect();
+
+    let mut still_unknown = Vec::new();
+    for (file_name, sha1, fingerprint) in &unlinked {
+        match by_hash.get(sha1) {
+            Some(version) => {
+                let project = info.get(version.project_id.as_str());
+                let _ = state.db.merge_provider_identity(
+                    instance_id,
+                    kind,
+                    file_name,
+                    Provider::Modrinth.as_str(),
+                    &version.project_id,
+                    Some(&version.id),
+                    project.map(|p| p.title.as_str()),
+                    project.and_then(|p| p.icon_url.as_deref()),
+                );
+            }
+            None => still_unknown.push((file_name.clone(), *fingerprint)),
+        }
+    }
+
+    if still_unknown.is_empty() || curseforge::key(state).is_err() {
+        return Ok(());
+    }
+
+    let fingerprints: Vec<u32> = still_unknown.iter().map(|(_, f)| *f).collect();
+    let Ok(matches) = curseforge::match_fingerprints(state, &fingerprints).await else {
+        return Ok(());
+    };
+    let by_fingerprint: HashMap<u32, &curseforge::FingerprintMatch> =
+        matches.iter().map(|m| (m.id as u32, m)).collect();
+
+    let mod_ids: Vec<String> = matches.iter().map(|m| m.file.mod_id.to_string()).collect();
+    let cf_projects = curseforge::resolve_projects(state, &mod_ids)
+        .await
+        .unwrap_or_default();
+    let cf_info: HashMap<&str, &super::ProjectSummary> =
+        cf_projects.iter().map(|p| (p.id.as_str(), p)).collect();
+
+    for (file_name, fingerprint) in &still_unknown {
+        let Some(entry) = by_fingerprint.get(fingerprint) else {
+            continue;
+        };
+        let project_id = entry.file.mod_id.to_string();
+        let project = cf_info.get(project_id.as_str());
+        let _ = state.db.merge_provider_identity(
+            instance_id,
+            kind,
+            file_name,
+            Provider::Curseforge.as_str(),
+            &project_id,
+            Some(&entry.file.id.to_string()),
+            project.map(|p| p.title.as_str()),
+            project.and_then(|p| p.icon_url.as_deref()),
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{curseforge_fingerprint, is_ignored_byte, murmur2};
+
+    #[test]
+    fn murmur_is_deterministic_and_content_sensitive() {
+        assert_eq!(murmur2(b"basalt", 1), murmur2(b"basalt", 1));
+        assert_ne!(murmur2(b"basalt", 1), murmur2(b"basalu", 1));
+        assert_ne!(murmur2(b"basalt", 1), murmur2(b"basalt", 2));
+    }
+
+    #[test]
+    fn murmur_handles_every_tail_length() {
+        for len in 0..9 {
+            let data = vec![b'x'; len];
+            assert_eq!(murmur2(&data, 1), murmur2(&data, 1));
+        }
+    }
+
+    #[test]
+    fn fingerprint_ignores_whitespace_bytes() {
+        assert_eq!(
+            curseforge_fingerprint(b"abc"),
+            curseforge_fingerprint(b" a\tb\r\nc ")
+        );
+        assert_ne!(curseforge_fingerprint(b"abc"), curseforge_fingerprint(b"abd"));
+    }
+
+    #[test]
+    fn ignored_bytes_are_the_curseforge_set() {
+        assert!(is_ignored_byte(b' '));
+        assert!(is_ignored_byte(b'\t'));
+        assert!(is_ignored_byte(b'\n'));
+        assert!(is_ignored_byte(b'\r'));
+        assert!(!is_ignored_byte(b'a'));
+        assert!(!is_ignored_byte(0));
+    }
+}
