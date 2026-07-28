@@ -14,6 +14,7 @@ mod modpack;
 mod paths;
 mod search;
 mod state;
+mod tasks;
 
 use paths::Paths;
 use state::AppState;
@@ -50,6 +51,13 @@ pub fn run() {
             commands::get_instance_media,
             commands::set_instance_banner,
             commands::clear_instance_banner,
+            commands::set_instance_logo,
+            commands::clear_instance_logo,
+            commands::backfill_pack_logos,
+            commands::list_tasks,
+            commands::clear_finished_tasks,
+            commands::cancel_task,
+            commands::recover_interrupted,
             commands::install_instance,
             commands::get_java_status,
             commands::auth_begin,
@@ -64,8 +72,12 @@ pub fn run() {
             commands::get_installed_project_file,
             commands::install_content,
             commands::install_modpack,
-            commands::get_missing_dependencies,
-            commands::list_content_sources,
+            commands::plan_content_install,
+            commands::get_filter_taxonomy,
+            commands::check_content_updates,
+            commands::get_content_updates,
+            commands::apply_content_update,
+            commands::get_content_dependents,
             commands::list_instance_content,
             commands::toggle_instance_content,
             commands::delete_instance_content,

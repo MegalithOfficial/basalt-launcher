@@ -70,6 +70,7 @@ pub fn create_instance(
     let id = uuid::Uuid::new_v4().to_string();
     let instance = Instance {
         dir: state.paths.instance_dir(&id).display().to_string(),
+        logo: None,
         id,
         name,
         version_id,
@@ -150,13 +151,12 @@ pub fn update_instance(
 #[tauri::command]
 pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
     state.db.delete_instance(&instance_id)?;
-    let dir = state.paths.instance_dir(&instance_id);
-    if dir.exists() {
-        std::fs::remove_dir_all(dir)?;
+    if !state.paths.remove_instance_dir(&instance_id) {
+        return Err(Error::other("refusing to delete an instance with an invalid id"));
     }
     media::clear_custom_banner(&state.paths, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
-    state.db.delete_instance_content_sources(&instance_id)?;
+    state.db.delete_instance_content_files(&instance_id)?;
     Ok(())
 }
 
@@ -220,6 +220,108 @@ pub async fn clear_instance_banner(
     media::clear_custom_banner(&state.paths, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn set_instance_logo(
+    state: State<'_, AppState>,
+    instance_id: String,
+    source_path: String,
+) -> Result<String> {
+    find_instance(&state, &instance_id)?;
+    media::set_instance_logo(&state.paths, &instance_id, &source_path).await
+}
+
+#[tauri::command]
+pub async fn clear_instance_logo(state: State<'_, AppState>, instance_id: String) -> Result<()> {
+    media::clear_instance_logo(&state.paths, &instance_id).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Instance>> {
+    let instances = state.db.list_instances(&state.paths)?;
+
+    for instance in &instances {
+        if instance.logo.is_some() {
+            continue;
+        }
+        let (Some(provider), Some(project_id)) =
+            (instance.pack_provider.as_deref(), instance.pack_project_id.as_deref())
+        else {
+            continue;
+        };
+        let Ok(provider) = search::Provider::parse(provider) else {
+            continue;
+        };
+        let icon = search::resolve_projects(&state, provider, &[project_id.to_string()])
+            .await
+            .ok()
+            .and_then(|mut list| list.pop())
+            .and_then(|summary| summary.icon_url);
+        if let Some(icon) = icon {
+            media::fetch_instance_logo(&state.http, &state.paths, &instance.id, &icon).await;
+        }
+    }
+
+    state.db.list_instances(&state.paths)
+}
+
+#[tauri::command]
+pub fn list_tasks(state: State<AppState>) -> Vec<crate::tasks::Task> {
+    state.tasks.list()
+}
+
+#[tauri::command]
+pub fn clear_finished_tasks(state: State<AppState>) {
+    state.tasks.clear_finished();
+}
+
+#[tauri::command]
+pub fn cancel_task(state: State<AppState>, task_id: String) -> bool {
+    state.tasks.cancel(&task_id)
+}
+
+fn sweep_partials(dir: &std::path::Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            removed += sweep_partials(&path);
+        } else if path.extension().is_some_and(|e| e == "part") {
+            if std::fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
+#[tauri::command]
+pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::PendingOperation>> {
+    let pending = state.db.pending_operations()?;
+    if pending.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    for op in &pending {
+        let Some(instance_id) = op.instance_id.as_deref() else {
+            continue;
+        };
+        if op.kind == "ModpackInstall" {
+            let _ = state.db.delete_instance_content_files(instance_id);
+            let _ = state.db.delete_instance(instance_id);
+            state.paths.remove_instance_dir(instance_id);
+        } else {
+            sweep_partials(&state.paths.instance_dir(instance_id));
+        }
+    }
+
+    state.db.clear_pending_operations()?;
+    Ok(pending)
 }
 
 fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {
@@ -292,16 +394,41 @@ pub async fn install_instance(
     instance_id: String,
 ) -> Result<()> {
     let instance = find_instance(&state, &instance_id)?;
-    let launch_id = match (&instance.loader, &instance.launch_version_id) {
-        (Some(_), None) => {
-            let id = loaders::install_loader(&app, &state, &instance).await?;
-            state.db.set_launch_version(&instance.id, &id)?;
-            id
-        }
-        (_, Some(id)) => id.clone(),
-        (None, None) => instance.version_id.clone(),
-    };
-    install::install_version(&app, &state, &instance.id, &launch_id).await
+    let task = state.tasks.start(
+        &app,
+        crate::tasks::TaskKind::GameInstall,
+        crate::tasks::TaskSpec {
+            title: instance.name.clone(),
+            subtitle: Some(format!(
+                "{}{}",
+                instance.version_id,
+                instance
+                    .loader
+                    .as_deref()
+                    .map(|l| format!(" · {l}"))
+                    .unwrap_or_default()
+            )),
+            instance_id: Some(instance.id.clone()),
+            ..Default::default()
+        },
+    );
+
+    let result = async {
+        let launch_id = match (&instance.loader, &instance.launch_version_id) {
+            (Some(_), None) => {
+                let id = loaders::install_loader(&app, &state, &instance, &task).await?;
+                state.db.set_launch_version(&instance.id, &id)?;
+                id
+            }
+            (_, Some(id)) => id.clone(),
+            (None, None) => instance.version_id.clone(),
+        };
+        install::install_version(&app, &state, &instance.id, &launch_id, &task).await
+    }
+    .await;
+
+    task.finish(&result);
+    result
 }
 
 #[tauri::command]
@@ -327,47 +454,36 @@ pub async fn get_java_status(
     })
 }
 
-#[derive(Serialize)]
-pub struct ContentSourceEntry {
-    pub file_name: String,
-    pub provider: String,
-    pub project_id: String,
-    pub version_id: Option<String>,
-    pub title: Option<String>,
-    pub icon_url: Option<String>,
-}
-
 #[tauri::command]
-pub fn list_content_sources(
-    state: State<AppState>,
+pub async fn list_instance_content(
+    state: State<'_, AppState>,
     instance_id: String,
     kind: String,
-) -> Result<Vec<ContentSourceEntry>> {
-    let sources = state.db.content_sources(&instance_id, &kind)?;
-    Ok(sources
-        .into_iter()
-        .map(|(file_name, s)| ContentSourceEntry {
-            file_name,
-            provider: s.provider,
-            project_id: s.project_id,
-            version_id: s.version_id,
-            title: s.title,
-            icon_url: s.icon_url,
-        })
-        .collect())
-}
-
-#[tauri::command]
-pub fn list_instance_content(
-    state: State<AppState>,
-    instance_id: String,
-    kind: String,
+    reconcile: Option<bool>,
 ) -> Result<Vec<ContentItem>> {
     find_instance(&state, &instance_id)?;
+    if reconcile.unwrap_or(false) {
+        let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
+    }
+
     let mut items = content::list(&state.paths, &instance_id, &kind)?;
-    let mut sources = state.db.content_sources(&instance_id, &kind)?;
+    let mut sources: std::collections::HashMap<String, crate::db::ContentFile> = state
+        .db
+        .content_files(&instance_id, &kind)?
+        .into_iter()
+        .map(|f| (f.file_name.clone(), f))
+        .collect();
+    let mut updates: std::collections::HashMap<String, crate::db::ContentUpdate> = state
+        .db
+        .content_updates(&instance_id)?
+        .into_iter()
+        .filter(|u| u.kind == kind)
+        .map(|u| (u.file_name.clone(), u))
+        .collect();
+
     for item in &mut items {
         item.source = sources.remove(&item.file_name);
+        item.update = updates.remove(&item.file_name);
     }
     Ok(items)
 }
@@ -390,18 +506,42 @@ pub fn delete_instance_content(
     file_name: String,
 ) -> Result<()> {
     content::delete(&state.paths, &instance_id, &kind, &file_name)?;
-    state.db.delete_content_source(&instance_id, &kind, &file_name)
+    state.db.delete_content_file(&instance_id, &kind, &file_name)
 }
 
 #[tauri::command]
-pub fn add_instance_content(
+pub fn get_content_dependents(
     state: State<AppState>,
+    instance_id: String,
+    kind: String,
+    file_name: String,
+) -> Result<Vec<String>> {
+    let kind_enum = search::ContentKind::parse(&kind)?;
+    let Some(file) = state.db.content_file(&instance_id, &kind, &file_name)? else {
+        return Ok(Vec::new());
+    };
+    let Some(project_id) = file.project_id else {
+        return Ok(Vec::new());
+    };
+    Ok(search::resolve::dependents_of(
+        &state,
+        &instance_id,
+        kind_enum,
+        &project_id,
+    ))
+}
+
+#[tauri::command]
+pub async fn add_instance_content(
+    state: State<'_, AppState>,
     instance_id: String,
     kind: String,
     sources: Vec<String>,
 ) -> Result<usize> {
     find_instance(&state, &instance_id)?;
-    content::add(&state.paths, &instance_id, &kind, &sources)
+    let copied = content::add(&state.paths, &instance_id, &kind, &sources)?;
+    let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
+    Ok(copied)
 }
 
 #[tauri::command]
@@ -409,12 +549,23 @@ pub async fn search_content(
     state: State<'_, AppState>,
     provider: String,
     kind: String,
-    query: String,
-    game_version: String,
-    loader: Option<String>,
-) -> Result<Vec<search::SearchResult>> {
+    query: search::SearchQuery,
+) -> Result<search::SearchPage> {
     let provider = search::Provider::parse(&provider)?;
-    search::search(&state, provider, &kind, &query, &game_version, loader.as_deref()).await
+    let kind = search::ContentKind::parse(&kind)?;
+    search::search(&state, provider, kind, &query).await
+}
+
+#[tauri::command]
+pub async fn get_filter_taxonomy(
+    state: State<'_, AppState>,
+    provider: String,
+    kind: String,
+    include_snapshots: Option<bool>,
+) -> Result<search::FilterTaxonomy> {
+    let provider = search::Provider::parse(&provider)?;
+    let kind = search::ContentKind::parse(&kind)?;
+    search::taxonomy(&state, provider, kind, include_snapshots.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -437,11 +588,12 @@ pub async fn list_project_versions(
     loader: Option<String>,
 ) -> Result<Vec<search::ProjectVersion>> {
     let provider = search::Provider::parse(&provider)?;
+    let kind = search::ContentKind::parse(&kind)?;
     search::project_versions(
         &state,
         provider,
         &project_id,
-        &kind,
+        kind,
         &game_version,
         loader.as_deref(),
     )
@@ -453,9 +605,15 @@ pub async fn resolve_projects(
     state: State<'_, AppState>,
     provider: String,
     ids: Vec<String>,
-) -> Result<Vec<search::SearchResult>> {
+) -> Result<Vec<search::ProjectSummary>> {
     let provider = search::Provider::parse(&provider)?;
-    search::resolve_projects(&state, provider, ids).await
+    search::resolve_projects(&state, provider, &ids).await
+}
+
+#[derive(Serialize)]
+pub struct InstalledFile {
+    pub version_id: Option<String>,
+    pub file_name: String,
 }
 
 #[tauri::command]
@@ -464,11 +622,11 @@ pub fn get_installed_project_file(
     instance_id: String,
     kind: String,
     project_id: String,
-) -> Result<Option<search::InstalledFile>> {
+) -> Result<Option<InstalledFile>> {
     let result = state
         .db
         .installed_project_file(&instance_id, &kind, &project_id)?;
-    Ok(result.map(|(version_id, file_name)| search::InstalledFile {
+    Ok(result.map(|(version_id, file_name)| InstalledFile {
         version_id,
         file_name,
     }))
@@ -485,8 +643,9 @@ pub async fn get_version_changelog(
     search::version_changelog(&state, provider, &project_id, &version_id).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn install_content(
+pub async fn plan_content_install(
     state: State<'_, AppState>,
     provider: String,
     project_id: String,
@@ -495,26 +654,147 @@ pub async fn install_content(
     game_version: String,
     loader: Option<String>,
     version_id: Option<String>,
-    title: Option<String>,
-    icon_url: Option<String>,
-    with_dependencies: Option<bool>,
-) -> Result<Vec<String>> {
+) -> Result<search::resolve::InstallPlan> {
     find_instance(&state, &instance_id)?;
     let provider = search::Provider::parse(&provider)?;
-    search::install(
+    let kind = search::ContentKind::parse(&kind)?;
+    search::resolve::plan(
         &state,
         provider,
         &project_id,
         &instance_id,
-        &kind,
+        kind,
         &game_version,
         loader.as_deref(),
         version_id.as_deref(),
-        title.as_deref(),
-        icon_url.as_deref(),
-        with_dependencies.unwrap_or(true),
+        true,
     )
     .await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn install_content(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    instance_id: String,
+    kind: String,
+    game_version: String,
+    loader: Option<String>,
+    version_id: Option<String>,
+    with_dependencies: Option<bool>,
+) -> Result<Vec<String>> {
+    find_instance(&state, &instance_id)?;
+    let provider = search::Provider::parse(&provider)?;
+    let kind = search::ContentKind::parse(&kind)?;
+    let plan = search::resolve::plan(
+        &state,
+        provider,
+        &project_id,
+        &instance_id,
+        kind,
+        &game_version,
+        loader.as_deref(),
+        version_id.as_deref(),
+        with_dependencies.unwrap_or(true),
+    )
+    .await?;
+    search::resolve::apply(
+        Some(&app),
+        &state,
+        &plan,
+        provider,
+        &instance_id,
+        kind,
+        None,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn check_content_updates(
+    state: State<'_, AppState>,
+    instance_id: String,
+    force: Option<bool>,
+) -> Result<Vec<crate::db::ContentUpdate>> {
+    let instance = find_instance(&state, &instance_id)?;
+    let checked_at = state.db.updates_checked_at(&instance_id)?;
+    if !force.unwrap_or(false) && !search::updates::is_stale(checked_at) {
+        return state.db.content_updates(&instance_id);
+    }
+    search::updates::check(
+        &state,
+        &instance_id,
+        &instance.version_id,
+        instance.loader.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub fn get_content_updates(
+    state: State<AppState>,
+    instance_id: String,
+) -> Result<Vec<crate::db::ContentUpdate>> {
+    state.db.content_updates(&instance_id)
+}
+
+#[tauri::command]
+pub async fn apply_content_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    kind: String,
+    file_name: String,
+) -> Result<String> {
+    let instance = find_instance(&state, &instance_id)?;
+    let kind_enum = search::ContentKind::parse(&kind)?;
+    let file = state
+        .db
+        .content_file(&instance_id, &kind, &file_name)?
+        .ok_or_else(|| Error::other("This file is not linked to a project."))?;
+    let (Some(provider), Some(project_id)) = (file.provider.clone(), file.project_id.clone())
+    else {
+        return Err(Error::other("This file is not linked to a project."));
+    };
+    let update = state
+        .db
+        .content_updates(&instance_id)?
+        .into_iter()
+        .find(|u| u.kind == kind && u.file_name == file_name)
+        .ok_or_else(|| Error::other("No update is available for this file."))?;
+
+    let provider = search::Provider::parse(&provider)?;
+    let plan = search::resolve::plan(
+        &state,
+        provider,
+        &project_id,
+        &instance_id,
+        kind_enum,
+        &instance.version_id,
+        instance.loader.as_deref(),
+        Some(&update.latest_version_id),
+        true,
+    )
+    .await?;
+    let written = search::resolve::apply(
+        Some(&app),
+        &state,
+        &plan,
+        provider,
+        &instance_id,
+        kind_enum,
+        None,
+    )
+    .await?;
+
+    state
+        .db
+        .delete_content_file(&instance_id, &kind, &file_name)
+        .ok();
+    Ok(written.into_iter().next().unwrap_or(file_name))
 }
 
 #[tauri::command]
@@ -527,32 +807,6 @@ pub async fn install_modpack(
 ) -> Result<Instance> {
     let provider = search::Provider::parse(&provider)?;
     crate::modpack::install_modpack(&app, &state, provider, &project_id, &version_id).await
-}
-
-#[tauri::command]
-pub async fn get_missing_dependencies(
-    state: State<'_, AppState>,
-    provider: String,
-    project_id: String,
-    instance_id: String,
-    kind: String,
-    game_version: String,
-    loader: Option<String>,
-    version_id: Option<String>,
-) -> Result<Vec<search::SearchResult>> {
-    find_instance(&state, &instance_id)?;
-    let provider = search::Provider::parse(&provider)?;
-    search::missing_dependencies(
-        &state,
-        provider,
-        &project_id,
-        &instance_id,
-        &kind,
-        &game_version,
-        loader.as_deref(),
-        version_id.as_deref(),
-    )
-    .await
 }
 
 #[derive(Serialize)]

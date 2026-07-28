@@ -18,6 +18,7 @@ import { formatPlaytime, relativeTime } from "../lib/time";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { InstanceSheet } from "../components/InstanceSheet";
+import { useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
 const gridStyle: React.CSSProperties = {
@@ -78,7 +79,6 @@ function HeroArt({ media, id }: { media: VersionMedia | null; id: string }) {
 
 export function HomeView() {
   const instances = useStore((s) => s.instances);
-  const installs = useStore((s) => s.installs);
   const installedIds = useStore((s) => s.installedIds);
   const installInstance = useStore((s) => s.installInstance);
   const launchInstance = useStore((s) => s.launchInstance);
@@ -100,7 +100,7 @@ export function HomeView() {
   const selected = instances.find((i) => i.id === selectedId) ?? instances[0];
   const hasInstance = !!selected;
   const media = selected ? (mediaMap[selected.id] ?? null) : null;
-  const install = selected ? installs[selected.id] : undefined;
+  const install = useInstanceTask(selected?.id);
   const installing = !!install;
   const installed = selected ? installedIds.includes(selected.id) : false;
 

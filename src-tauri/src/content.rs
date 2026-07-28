@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::db::ContentSource;
+use crate::db::ContentFile;
 use crate::error::{Error, Result};
 use crate::paths::Paths;
 
@@ -11,8 +11,9 @@ pub struct ContentItem {
     pub file_name: String,
     pub size: u64,
     pub enabled: bool,
-    pub source: Option<ContentSource>,
-} 
+    pub source: Option<ContentFile>,
+    pub update: Option<crate::db::ContentUpdate>,
+}
 
 fn kind_subdir(kind: &str) -> Result<&'static str> {
     match kind {
@@ -64,6 +65,7 @@ pub fn list(paths: &Paths, instance_id: &str, kind: &str) -> Result<Vec<ContentI
             size: meta.len(),
             enabled,
             source: None,
+            update: None,
         });
     }
     items.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
@@ -102,6 +104,18 @@ pub fn delete(paths: &Paths, instance_id: &str, kind: &str, file_name: &str) -> 
 
 pub fn dir_for(paths: &Paths, instance_id: &str, kind: &str) -> Result<std::path::PathBuf> {
     content_dir(paths, instance_id, kind)
+}
+
+pub fn resolve_path(dir: &std::path::Path, file_name: &str) -> std::path::PathBuf {
+    let enabled = dir.join(file_name);
+    if enabled.is_file() {
+        return enabled;
+    }
+    let disabled = dir.join(format!("{file_name}{DISABLED_SUFFIX}"));
+    if disabled.is_file() {
+        return disabled;
+    }
+    enabled
 }
 
 pub fn add(paths: &Paths, instance_id: &str, kind: &str, sources: &[String]) -> Result<usize> {

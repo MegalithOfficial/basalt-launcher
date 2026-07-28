@@ -22,6 +22,41 @@ mod tests {
         migrate(&conn).unwrap();
         assert!(column_exists(&conn, "instances", "pack_provider").unwrap());
         assert!(column_exists(&conn, "instances", "loader").unwrap());
+        assert!(column_exists(&conn, "content_files", "origin").unwrap());
+        assert!(super::table_exists(&conn, "api_cache").unwrap());
+    }
+
+    #[test]
+    fn migrate_moves_content_sources_forward() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE content_sources(
+                instance_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                version_id TEXT,
+                title TEXT,
+                icon_url TEXT,
+                PRIMARY KEY (instance_id, kind, file_name)
+            );
+            INSERT INTO content_sources VALUES
+                ('i1', 'mods', 'sodium.jar', 'modrinth', 'AANobbMI', 'abc', 'Sodium', NULL);",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        assert!(!super::table_exists(&conn, "content_sources").unwrap());
+        let (project, origin): (String, String) = conn
+            .query_row(
+                "SELECT project_id, origin FROM content_files WHERE file_name = 'sodium.jar'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(project, "AANobbMI");
+        assert_eq!(origin, "user");
     }
 
     #[test]
@@ -57,16 +92,51 @@ mod tests {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ContentSource {
-    pub provider: String,
-    pub project_id: String,
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ContentFile {
+    pub file_name: String,
+    pub sha1: Option<String>,
+    pub sha512: Option<String>,
+    pub murmur2: Option<i64>,
+    pub provider: Option<String>,
+    pub project_id: Option<String>,
     pub version_id: Option<String>,
     pub title: Option<String>,
     pub icon_url: Option<String>,
+    pub mod_id: Option<String>,
+    pub mod_version: Option<String>,
+    pub dependencies: Option<String>,
+    pub origin: String,
+    pub pack_version_id: Option<String>,
+    pub installed_at: i64,
 }
 
-const SCHEMA_VERSION: i64 = 4;
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PendingOperation {
+    pub id: String,
+    pub kind: String,
+    pub instance_id: Option<String>,
+    pub title: String,
+    pub payload: Option<String>,
+    pub started_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContentUpdate {
+    pub kind: String,
+    pub file_name: String,
+    pub latest_version_id: String,
+    pub latest_name: String,
+    pub latest_file_name: String,
+}
+
+pub struct CachedResponse {
+    pub body: String,
+    pub etag: Option<String>,
+    pub fresh: bool,
+}
+
+const SCHEMA_VERSION: i64 = 6;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -77,6 +147,15 @@ fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        params![table],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 fn add_column_if_missing(
@@ -119,16 +198,53 @@ fn migrate(conn: &Connection) -> Result<()> {
             expires_at INTEGER NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 0
         );
-        CREATE TABLE IF NOT EXISTS content_sources(
+        CREATE TABLE IF NOT EXISTS content_files(
             instance_id TEXT NOT NULL,
             kind TEXT NOT NULL,
             file_name TEXT NOT NULL,
-            provider TEXT NOT NULL,
-            project_id TEXT NOT NULL,
+            sha1 TEXT,
+            sha512 TEXT,
+            murmur2 INTEGER,
+            provider TEXT,
+            project_id TEXT,
             version_id TEXT,
             title TEXT,
             icon_url TEXT,
+            mod_id TEXT,
+            mod_version TEXT,
+            dependencies TEXT,
+            origin TEXT NOT NULL DEFAULT 'user',
+            pack_version_id TEXT,
+            installed_at INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (instance_id, kind, file_name)
+        );
+        CREATE INDEX IF NOT EXISTS content_files_project
+            ON content_files(instance_id, kind, project_id);
+        CREATE INDEX IF NOT EXISTS content_files_sha1 ON content_files(sha1);
+        CREATE TABLE IF NOT EXISTS content_updates(
+            instance_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            latest_version_id TEXT NOT NULL,
+            latest_name TEXT NOT NULL,
+            latest_file_name TEXT NOT NULL,
+            checked_at INTEGER NOT NULL,
+            PRIMARY KEY (instance_id, kind, file_name)
+        );
+        CREATE TABLE IF NOT EXISTS pending_operations(
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            instance_id TEXT,
+            title TEXT NOT NULL,
+            payload TEXT,
+            started_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS api_cache(
+            key TEXT PRIMARY KEY,
+            body TEXT NOT NULL,
+            etag TEXT,
+            fetched_at INTEGER NOT NULL,
+            ttl_secs INTEGER NOT NULL
         );",
     )?;
 
@@ -143,6 +259,18 @@ fn migrate(conn: &Connection) -> Result<()> {
         add_column_if_missing(conn, "instances", column, declaration)?;
     }
 
+    if table_exists(conn, "content_sources")? {
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO content_files
+                (instance_id, kind, file_name, provider, project_id, version_id,
+                 title, icon_url, origin, installed_at)
+             SELECT instance_id, kind, file_name, provider, project_id, version_id,
+                    title, icon_url, 'user', 0
+             FROM content_sources;
+             DROP TABLE content_sources;",
+        )?;
+    }
+
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
@@ -155,6 +283,13 @@ impl Db {
         let db = Db(Arc::new(Mutex::new(conn)));
         db.import_legacy_json(paths)?;
         Ok(db)
+    }
+
+    #[cfg(test)]
+    pub fn open_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        migrate(&conn)?;
+        Ok(Db(Arc::new(Mutex::new(conn))))
     }
 
     fn import_legacy_json(&self, paths: &Paths) -> Result<()> {
@@ -223,6 +358,7 @@ impl Db {
             let created_at: String = row.get(3)?;
             Ok(Instance {
                 dir: paths.instance_dir(&id).display().to_string(),
+                logo: crate::meta::media::instance_logo(paths, &id),
                 id,
                 name: row.get(1)?,
                 version_id: row.get(2)?,
@@ -334,7 +470,71 @@ impl Db {
         Ok(())
     }
 
-    pub fn record_content_source(
+    pub fn record_content_file(
+        &self,
+        instance_id: &str,
+        kind: &str,
+        file: &ContentFile,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO content_files
+                (instance_id, kind, file_name, sha1, sha512, murmur2, provider, project_id,
+                 version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
+                 pack_version_id, installed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![
+                instance_id,
+                kind,
+                file.file_name,
+                file.sha1,
+                file.sha512,
+                file.murmur2,
+                file.provider,
+                file.project_id,
+                file.version_id,
+                file.title,
+                file.icon_url,
+                file.mod_id,
+                file.mod_version,
+                file.dependencies,
+                file.origin,
+                file.pack_version_id,
+                file.installed_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn merge_identity(
+        &self,
+        instance_id: &str,
+        kind: &str,
+        file_name: &str,
+        sha1: Option<&str>,
+        sha512: Option<&str>,
+        murmur2: Option<i64>,
+        mod_id: Option<&str>,
+        mod_version: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO content_files
+                (instance_id, kind, file_name, sha1, sha512, murmur2, mod_id, mod_version,
+                 origin, installed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'manual', 0)
+             ON CONFLICT(instance_id, kind, file_name) DO UPDATE SET
+                sha1 = coalesce(excluded.sha1, sha1),
+                sha512 = coalesce(excluded.sha512, sha512),
+                murmur2 = coalesce(excluded.murmur2, murmur2),
+                mod_id = coalesce(excluded.mod_id, mod_id),
+                mod_version = coalesce(excluded.mod_version, mod_version)",
+            params![instance_id, kind, file_name, sha1, sha512, murmur2, mod_id, mod_version],
+        )?;
+        Ok(())
+    }
+
+    pub fn merge_provider_identity(
         &self,
         instance_id: &str,
         kind: &str,
@@ -347,42 +547,86 @@ impl Db {
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO content_sources
-                (instance_id, kind, file_name, provider, project_id, version_id, title, icon_url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![instance_id, kind, file_name, provider, project_id, version_id, title, icon_url],
+            "UPDATE content_files SET
+                provider = ?4,
+                project_id = ?5,
+                version_id = coalesce(?6, version_id),
+                title = coalesce(?7, title),
+                icon_url = coalesce(?8, icon_url)
+             WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+            params![
+                instance_id, kind, file_name, provider, project_id, version_id, title, icon_url
+            ],
         )?;
         Ok(())
     }
 
-    pub fn content_sources(
+    pub fn set_fallback_title(
         &self,
         instance_id: &str,
         kind: &str,
-    ) -> Result<std::collections::HashMap<String, ContentSource>> {
+        file_name: &str,
+        title: &str,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE content_files SET title = ?4
+             WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3 AND title IS NULL",
+            params![instance_id, kind, file_name, title],
+        )?;
+        Ok(())
+    }
+
+    fn read_content_file(row: &rusqlite::Row) -> rusqlite::Result<ContentFile> {
+        Ok(ContentFile {
+            file_name: row.get(0)?,
+            sha1: row.get(1)?,
+            sha512: row.get(2)?,
+            murmur2: row.get(3)?,
+            provider: row.get(4)?,
+            project_id: row.get(5)?,
+            version_id: row.get(6)?,
+            title: row.get(7)?,
+            icon_url: row.get(8)?,
+            mod_id: row.get(9)?,
+            mod_version: row.get(10)?,
+            dependencies: row.get(11)?,
+            origin: row.get(12)?,
+            pack_version_id: row.get(13)?,
+            installed_at: row.get(14)?,
+        })
+    }
+
+    pub fn content_files(&self, instance_id: &str, kind: &str) -> Result<Vec<ContentFile>> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT file_name, provider, project_id, version_id, title, icon_url
-             FROM content_sources WHERE instance_id = ?1 AND kind = ?2",
+            "SELECT file_name, sha1, sha512, murmur2, provider, project_id, version_id,
+                    title, icon_url, mod_id, mod_version, dependencies, origin,
+                    pack_version_id, installed_at
+             FROM content_files WHERE instance_id = ?1 AND kind = ?2",
         )?;
-        let rows = stmt.query_map(params![instance_id, kind], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                ContentSource {
-                    provider: row.get(1)?,
-                    project_id: row.get(2)?,
-                    version_id: row.get(3)?,
-                    title: row.get(4)?,
-                    icon_url: row.get(5)?,
-                },
-            ))
-        })?;
-        let mut map = std::collections::HashMap::new();
-        for row in rows {
-            let (file_name, source) = row?;
-            map.insert(file_name, source);
-        }
-        Ok(map)
+        let rows = stmt.query_map(params![instance_id, kind], Self::read_content_file)?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    pub fn content_file(
+        &self,
+        instance_id: &str,
+        kind: &str,
+        file_name: &str,
+    ) -> Result<Option<ContentFile>> {
+        let conn = self.0.lock().unwrap();
+        let result = conn
+            .query_row(
+                "SELECT file_name, sha1, sha512, murmur2, provider, project_id, version_id,
+                        title, icon_url, mod_id, mod_version, dependencies, origin,
+                        pack_version_id, installed_at
+                 FROM content_files WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+                params![instance_id, kind, file_name],
+                Self::read_content_file,
+            )
+            .optional()?;
+        Ok(result)
     }
 
     pub fn installed_project_file(
@@ -394,8 +638,9 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let result = conn
             .query_row(
-                "SELECT version_id, file_name FROM content_sources
-                 WHERE instance_id = ?1 AND kind = ?2 AND project_id = ?3",
+                "SELECT version_id, file_name FROM content_files
+                 WHERE instance_id = ?1 AND kind = ?2 AND project_id = ?3
+                 ORDER BY installed_at DESC LIMIT 1",
                 params![instance_id, kind, project_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -403,7 +648,7 @@ impl Db {
         Ok(result)
     }
 
-    pub fn delete_content_source(
+    pub fn delete_content_file(
         &self,
         instance_id: &str,
         kind: &str,
@@ -411,18 +656,176 @@ impl Db {
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "DELETE FROM content_sources
+            "DELETE FROM content_files
+             WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+            params![instance_id, kind, file_name],
+        )?;
+        conn.execute(
+            "DELETE FROM content_updates
              WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
             params![instance_id, kind, file_name],
         )?;
         Ok(())
     }
 
-    pub fn delete_instance_content_sources(&self, instance_id: &str) -> Result<()> {
+    pub fn delete_instance_content_files(&self, instance_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        for table in ["content_files", "content_updates"] {
+            conn.execute(
+                &format!("DELETE FROM {table} WHERE instance_id = ?1"),
+                params![instance_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn replace_content_updates(
+        &self,
+        instance_id: &str,
+        updates: &[ContentUpdate],
+        checked_at: i64,
+    ) -> Result<()> {
+        let mut guard = self.0.lock().unwrap();
+        let tx = guard.transaction()?;
+        tx.execute(
+            "DELETE FROM content_updates WHERE instance_id = ?1",
+            params![instance_id],
+        )?;
+        for update in updates {
+            tx.execute(
+                "INSERT OR REPLACE INTO content_updates
+                    (instance_id, kind, file_name, latest_version_id, latest_name,
+                     latest_file_name, checked_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    instance_id,
+                    update.kind,
+                    update.file_name,
+                    update.latest_version_id,
+                    update.latest_name,
+                    update.latest_file_name,
+                    checked_at
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn content_updates(&self, instance_id: &str) -> Result<Vec<ContentUpdate>> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT kind, file_name, latest_version_id, latest_name, latest_file_name
+             FROM content_updates WHERE instance_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![instance_id], |row| {
+            Ok(ContentUpdate {
+                kind: row.get(0)?,
+                file_name: row.get(1)?,
+                latest_version_id: row.get(2)?,
+                latest_name: row.get(3)?,
+                latest_file_name: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    pub fn updates_checked_at(&self, instance_id: &str) -> Result<Option<i64>> {
+        let conn = self.0.lock().unwrap();
+        let result = conn
+            .query_row(
+                "SELECT max(checked_at) FROM content_updates WHERE instance_id = ?1",
+                params![instance_id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .optional()?;
+        Ok(result.flatten())
+    }
+
+    pub fn begin_operation(&self, op: &PendingOperation) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "DELETE FROM content_sources WHERE instance_id = ?1",
-            params![instance_id],
+            "INSERT OR REPLACE INTO pending_operations
+                (id, kind, instance_id, title, payload, started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![op.id, op.kind, op.instance_id, op.title, op.payload, op.started_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn end_operation(&self, id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM pending_operations WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn pending_operations(&self) -> Result<Vec<PendingOperation>> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, kind, instance_id, title, payload, started_at
+             FROM pending_operations ORDER BY started_at",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(PendingOperation {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                instance_id: row.get(2)?,
+                title: row.get(3)?,
+                payload: row.get(4)?,
+                started_at: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    pub fn clear_pending_operations(&self) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM pending_operations", [])?;
+        Ok(())
+    }
+
+    pub fn cache_get(&self, key: &str, now: i64) -> Result<Option<CachedResponse>> {
+        let conn = self.0.lock().unwrap();
+        let result = conn
+            .query_row(
+                "SELECT body, etag, fetched_at, ttl_secs FROM api_cache WHERE key = ?1",
+                params![key],
+                |row| {
+                    let fetched_at: i64 = row.get(2)?;
+                    let ttl_secs: i64 = row.get(3)?;
+                    Ok(CachedResponse {
+                        body: row.get(0)?,
+                        etag: row.get(1)?,
+                        fresh: now - fetched_at < ttl_secs,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(result)
+    }
+
+    pub fn cache_put(
+        &self,
+        key: &str,
+        body: &str,
+        etag: Option<&str>,
+        fetched_at: i64,
+        ttl_secs: i64,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO api_cache(key, body, etag, fetched_at, ttl_secs)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![key, body, etag, fetched_at, ttl_secs],
+        )?;
+        Ok(())
+    }
+
+    pub fn cache_touch(&self, key: &str, fetched_at: i64) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE api_cache SET fetched_at = ?2 WHERE key = ?1",
+            params![key, fetched_at],
         )?;
         Ok(())
     }

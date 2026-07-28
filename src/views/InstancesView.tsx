@@ -14,7 +14,8 @@ import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
-import { mediaSrc } from "../lib/media";
+import { logoSrc, mediaSrc } from "../lib/media";
+import { taskFraction, useActiveTasksByInstance } from "../lib/useTasks";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
 import { PlayButton } from "../components/PlayButton";
@@ -23,6 +24,7 @@ import { useStore } from "../store";
 type ViewMode = "list" | "grid";
 
 export function InstancesView() {
+  const busyTasks = useActiveTasksByInstance();
   const instances = useStore((s) => s.instances);
   const deleteInstance = useStore((s) => s.deleteInstance);
   const mediaMap = useStore((s) => s.media);
@@ -108,7 +110,14 @@ export function InstancesView() {
               key={it.id}
               className="flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-3"
             >
-              {mediaMap[it.id] ? (
+              {logoSrc(it.logo) ? (
+                <img
+                  src={logoSrc(it.logo)!}
+                  className="size-10 shrink-0 cursor-pointer rounded-lg border border-border-soft object-cover"
+                  onClick={() => openInstance(it.id)}
+                  draggable={false}
+                />
+              ) : mediaMap[it.id] ? (
                 <img
                   src={mediaSrc(mediaMap[it.id]!)}
                   className="size-10 shrink-0 cursor-pointer rounded-lg object-cover"
@@ -181,6 +190,14 @@ export function InstancesView() {
                       <Boxes className="size-7" />
                     </div>
                   )}
+                  {logoSrc(it.logo) && (
+                    <img
+                      src={logoSrc(it.logo)!}
+                      alt=""
+                      className="absolute left-3 top-3 size-10 rounded-xl border border-white/15 bg-black/40 object-cover shadow-lg backdrop-blur"
+                      draggable={false}
+                    />
+                  )}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-4 pb-2.5 pt-8">
                     <div className="truncate font-display font-semibold text-white">{it.name}</div>
                     <div className="truncate font-pixel text-[10px] text-white/60">
@@ -189,11 +206,39 @@ export function InstancesView() {
                     </div>
                   </div>
                 </div>
+                {busyTasks.get(it.id) && (
+                  <div className="h-0.5 w-full overflow-hidden bg-surface-3">
+                    <div
+                      className={cn(
+                        "h-full",
+                        busyTasks.get(it.id)!.retry_note ? "bg-warn" : "bg-[var(--accent)]",
+                        taskFraction(busyTasks.get(it.id)!) == null
+                          ? "w-1/3 animate-pulse"
+                          : "transition-[width] duration-300",
+                      )}
+                      style={
+                        taskFraction(busyTasks.get(it.id)!) == null
+                          ? undefined
+                          : { width: `${(taskFraction(busyTasks.get(it.id)!) ?? 0) * 100}%` }
+                      }
+                    />
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <span className="truncate text-[11px] text-content-faint">
-                    {it.last_played_at
-                      ? `Played ${relativeTime(it.last_played_at)}`
-                      : "Never played"}
+                    {busyTasks.get(it.id) ? (
+                      busyTasks.get(it.id)!.retry_note ? (
+                        <span className="text-warn">Retrying</span>
+                      ) : (
+                        <span className="capitalize text-[var(--accent)]">
+                          {busyTasks.get(it.id)!.stage}
+                        </span>
+                      )
+                    ) : it.last_played_at ? (
+                      `Played ${relativeTime(it.last_played_at)}`
+                    ) : (
+                      "Never played"
+                    )}
                   </span>
                   <div className="flex shrink-0 items-center gap-1">
                     <PlayButton instance={it} compact onError={setLaunchError} />

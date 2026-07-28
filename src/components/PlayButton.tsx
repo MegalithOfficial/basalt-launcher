@@ -2,6 +2,7 @@ import { Download, Loader2, Play, Terminal } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import type { Instance } from "../lib/types";
+import { taskFraction, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
 export function PlayButton({
@@ -13,20 +14,19 @@ export function PlayButton({
   compact?: boolean;
   onError: (message: string | null) => void;
 }) {
-  const installs = useStore((s) => s.installs);
   const installedIds = useStore((s) => s.installedIds);
   const running = useStore((s) => s.running);
   const installInstance = useStore((s) => s.installInstance);
   const launchInstance = useStore((s) => s.launchInstance);
   const openConsole = useStore((s) => s.openConsole);
 
-  const install = installs[instance.id];
+  const install = useInstanceTask(instance.id);
   const installed = installedIds.includes(instance.id);
   const run = Object.values(running).find(
     (r) => r.instance_id === instance.id && r.state === "running",
   );
-  const percent =
-    install && install.total > 0 ? Math.round((install.completed / install.total) * 100) : 0;
+  const fraction = install ? taskFraction(install) : null;
+  const percent = fraction == null ? 0 : Math.round(fraction * 100);
 
   const base = cn(
     "inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-all",

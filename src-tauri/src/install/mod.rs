@@ -2,7 +2,7 @@ use std::io::Read;
 use std::path::Path;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::download::{self, DownloadProgress, DownloadSpec};
 use crate::error::{Error, Result};
@@ -21,16 +21,6 @@ struct ProgressPayload {
     instance_id: String,
     #[serde(flatten)]
     progress: DownloadProgress,
-}
-
-pub fn emit_stage(app: &AppHandle, instance_id: &str, stage: &str) {
-    let _ = app.emit(
-        "install:stage",
-        StagePayload {
-            instance_id: instance_id.to_string(),
-            stage: stage.to_string(),
-        },
-    );
 }
 
 pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<VersionJson> {
@@ -136,17 +126,18 @@ fn extract_natives(natives: &[NativeSpec], dest: &Path) -> Result<()> {
 }
 
 pub async fn install_version(
-    app: &AppHandle,
+    _app: &AppHandle,
     state: &AppState,
-    instance_id: &str,
+    _instance_id: &str,
     version_id: &str,
+    task: &crate::tasks::TaskHandle,
 ) -> Result<()> {
-    emit_stage(app, instance_id, "metadata");
+    task.stage("metadata");
     let version = load_merged_version(state, version_id).await?;
 
     let resolved = version.resolve_libraries(&state.paths);
 
-    emit_stage(app, instance_id, "assets-index");
+    task.stage("assets-index");
     let asset_index = load_asset_index(state, &version).await?;
 
     let mut specs: Vec<DownloadSpec> = Vec::new();
@@ -159,27 +150,32 @@ pub async fn install_version(
 
     let concurrency = state.db.load_settings()?.concurrent_downloads;
 
-    emit_stage(app, instance_id, "downloading");
-    let emit_app = app.clone();
-    let emit_id = instance_id.to_string();
-    download::download_many(&state.http, specs, concurrency, move |progress| {
-        let _ = emit_app.emit(
-            "install:progress",
-            ProgressPayload {
-                instance_id: emit_id.clone(),
-                progress,
-            },
-        );
-    })
+    task.stage("downloading");
+    task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
+    download::download_many_cancellable(
+        &state.http,
+        specs,
+        concurrency,
+        |progress| {
+            task.progress(
+                progress.completed as u64,
+                progress.total as u64,
+                progress.downloaded_bytes,
+                progress.total_bytes,
+            );
+        },
+        Some(task.token()),
+        None,
+        Some(&|attempt, max, reason| task.note_retry(attempt, max, reason)),
+    )
     .await?;
 
-    emit_stage(app, instance_id, "natives");
+    task.stage("natives");
     let natives = resolved.natives.clone();
     let natives_dir = state.paths.natives_dir(version_id);
     tokio::task::spawn_blocking(move || extract_natives(&natives, &natives_dir))
         .await
         .map_err(|e| Error::other(format!("native extraction task failed: {e}")))??;
 
-    emit_stage(app, instance_id, "done");
     Ok(())
 }

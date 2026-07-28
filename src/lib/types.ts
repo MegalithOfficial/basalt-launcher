@@ -1,4 +1,3 @@
-// Mirrors the Rust models exposed over Tauri commands.
 
 export interface LauncherSettings {
   min_memory_mb: number;
@@ -19,6 +18,7 @@ export interface Instance {
   last_played_at: number | null;
   playtime_secs: number;
   dir: string;
+  logo: string | null;
   loader: string | null;
   loader_version: string | null;
   launch_version_id: string | null;
@@ -36,38 +36,107 @@ export type ContentKind =
   | "schematics"
   | "modpacks";
 
-export interface ContentSource {
-  provider: SearchProvider;
-  project_id: string;
+export type ContentOrigin = "user" | "dependency" | "pack" | "manual";
+
+export interface ContentFile {
+  file_name: string;
+  sha1: string | null;
+  sha512: string | null;
+  murmur2: number | null;
+  provider: SearchProvider | null;
+  project_id: string | null;
   version_id: string | null;
   title: string | null;
   icon_url: string | null;
+  mod_id: string | null;
+  mod_version: string | null;
+  dependencies: string | null;
+  origin: ContentOrigin;
+  pack_version_id: string | null;
+  installed_at: number;
 }
 
-export interface ContentSourceEntry extends ContentSource {
+export interface ContentUpdate {
+  kind: string;
   file_name: string;
+  latest_version_id: string;
+  latest_name: string;
+  latest_file_name: string;
 }
 
 export interface ContentItem {
   file_name: string;
   size: number;
   enabled: boolean;
-  source: ContentSource | null;
+  source: ContentFile | null;
+  update: ContentUpdate | null;
 }
 
 export type SearchProvider = "modrinth" | "curseforge";
 
-export interface SearchResult {
+export type SortOrder = "relevance" | "downloads" | "follows" | "newest" | "updated";
+
+export type Environment = "client" | "server";
+
+export interface SearchQuery {
+  query: string;
+  game_versions: string[];
+  loaders: string[];
+  categories: string[];
+  environment: Environment | null;
+  open_source_only: boolean;
+  sort: SortOrder;
+  offset: number;
+  limit: number;
+}
+
+export interface ProjectSummary {
   id: string;
+  slug: string | null;
   title: string;
   description: string;
   icon_url: string | null;
   downloads: number;
+  follows: number;
   author: string;
+  categories: string[];
+  game_versions: string[];
+  loaders: string[];
+  updated: string | null;
+  color: number | null;
+}
+
+export interface SearchPage {
+  hits: ProjectSummary[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface FilterOption {
+  id: string;
+  name: string;
+  group: string;
+}
+
+export interface FilterTaxonomy {
+  categories: FilterOption[];
+  loaders: FilterOption[];
+  game_versions: string[];
+}
+
+export interface VersionFile {
+  url: string | null;
+  file_name: string;
+  sha1: string | null;
+  sha512: string | null;
+  size: number | null;
+  primary: boolean;
 }
 
 export interface ProjectVersion {
   id: string;
+  project_id: string;
   name: string;
   version_number: string;
   channel: string;
@@ -80,11 +149,97 @@ export interface ProjectVersion {
   compatible: boolean;
   changelog: string | null;
   dependencies: VersionDependency[];
+  files: VersionFile[];
 }
 
 export interface VersionDependency {
   project_id: string;
+  version_id: string | null;
   dependency_type: string;
+}
+
+export interface PlannedFile {
+  project_id: string;
+  version_id: string;
+  title: string;
+  icon_url: string | null;
+  file_name: string;
+  version_name: string;
+  url: string;
+  sha1: string | null;
+  sha512: string | null;
+  size: number | null;
+  is_dependency: boolean;
+  replaces: string | null;
+  dependencies: VersionDependency[];
+}
+
+export interface SkippedProject {
+  project_id: string;
+  title: string;
+  icon_url: string | null;
+  reason: string;
+}
+
+export interface Conflict {
+  project_id: string;
+  title: string;
+  file_name: string | null;
+  reason: string;
+}
+
+export interface InstallPlan {
+  primary: PlannedFile | null;
+  dependencies: PlannedFile[];
+  already_present: ProjectSummary[];
+  skipped: SkippedProject[];
+  conflicts: Conflict[];
+  total_bytes: number;
+}
+
+export type TaskKind =
+  | "game_install"
+  | "loader_install"
+  | "modpack_install"
+  | "content_install"
+  | "content_update";
+
+export type TaskState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export interface Task {
+  id: string;
+  kind: TaskKind;
+  title: string;
+  subtitle: string | null;
+  icon_url: string | null;
+  instance_id: string | null;
+  project_id: string | null;
+  state: TaskState;
+  stage: string;
+  completed: number;
+  total: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  error: string | null;
+  retries: number;
+  retry_note: string | null;
+  started_at: number;
+  finished_at: number | null;
+}
+
+export interface PendingOperation {
+  id: string;
+  kind: string;
+  instance_id: string | null;
+  title: string;
+  payload: string | null;
+  started_at: number;
+}
+
+export interface ContentProgress {
+  completed: number;
+  total: number;
+  current: string;
 }
 
 export interface InstalledFile {
@@ -102,16 +257,25 @@ export interface ProjectLink {
   url: string;
 }
 
+export interface GalleryImage {
+  url: string;
+  title: string | null;
+  description: string | null;
+  featured: boolean;
+}
+
 export interface ProjectDetails {
   id: string;
+  slug: string | null;
   title: string;
   description: string;
   body: string;
   body_format: "markdown" | "html";
   icon_url: string | null;
   downloads: number;
+  follows: number;
   author: string;
-  gallery: string[];
+  gallery: GalleryImage[];
   game_versions: string[];
   loaders: string[];
   client_side: string | null;
@@ -122,6 +286,7 @@ export interface ProjectDetails {
   published: string | null;
   updated: string | null;
   website_url: string | null;
+  color: number | null;
 }
 
 export interface VersionEntry {
@@ -197,6 +362,5 @@ export type View =
   | "settings"
   | "console"
   | "instance"
-  | "search"
-  | "project"
-  | "modpacks";
+  | "discover"
+  | "project";

@@ -149,10 +149,11 @@ async fn run_installer(
     installer_url: &str,
     installer_name: &str,
     expected_id: &str,
+    task: &crate::tasks::TaskHandle,
 ) -> Result<String> {
-    install::install_version(app, state, &instance.id, &instance.version_id).await?;
+    install::install_version(app, state, &instance.id, &instance.version_id, task).await?;
 
-    install::emit_stage(app, &instance.id, "loader-installer");
+    task.stage("loader-installer");
 
     let installer_dir = state.paths.root.join("cache").join("installers");
     let installer_path = installer_dir.join(installer_name);
@@ -210,6 +211,7 @@ pub async fn install_loader(
     app: &AppHandle,
     state: &AppState,
     instance: &Instance,
+    task: &crate::tasks::TaskHandle,
 ) -> Result<String> {
     let loader = Loader::parse(
         instance
@@ -223,7 +225,7 @@ pub async fn install_loader(
         .ok_or_else(|| Error::other("instance has no loader version"))?;
     let game = &instance.version_id;
 
-    install::emit_stage(app, &instance.id, "loader-profile");
+    task.stage("loader-profile");
 
     match loader {
         Loader::Fabric => {
@@ -244,7 +246,7 @@ pub async fn install_loader(
             );
             let name = format!("neoforge-{loader_version}-installer.jar");
             let expected = format!("neoforge-{loader_version}");
-            run_installer(app, state, instance, &url, &name, &expected).await
+            run_installer(app, state, instance, &url, &name, &expected, task).await
         }
         Loader::Forge => {
             let full = format!("{game}-{loader_version}");
@@ -253,7 +255,7 @@ pub async fn install_loader(
             );
             let name = format!("forge-{full}-installer.jar");
             let expected = format!("{game}-forge-{loader_version}");
-            run_installer(app, state, instance, &url, &name, &expected).await
+            run_installer(app, state, instance, &url, &name, &expected, task).await
         }
     }
 }

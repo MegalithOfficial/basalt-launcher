@@ -5,8 +5,10 @@ import type {
   AppInfo,
   Changelog,
   ContentItem,
-  ContentSourceEntry,
+  ContentUpdate,
   DeviceCodeInfo,
+  FilterTaxonomy,
+  InstallPlan,
   InstalledFile,
   Instance,
   JavaInfo,
@@ -14,9 +16,13 @@ import type {
   LauncherSettings,
   LogLine,
   ProjectDetails,
+  ProjectSummary,
   ProjectVersion,
   RunningInfo,
-  SearchResult,
+  SearchPage,
+  SearchQuery,
+  PendingOperation,
+  Task,
   VersionEntry,
   VersionMedia,
 } from "./types";
@@ -37,28 +43,22 @@ export const api = {
     invoke<Instance>("create_instance", { name, versionId, loader, loaderVersion }),
   listLoaderVersions: (loader: string, gameVersion: string) =>
     invoke<string[]>("list_loader_versions", { loader, gameVersion }),
-  listContentSources: (instanceId: string, kind: string) =>
-    invoke<ContentSourceEntry[]>("list_content_sources", { instanceId, kind }),
-  listInstanceContent: (instanceId: string, kind: string) =>
-    invoke<ContentItem[]>("list_instance_content", { instanceId, kind }),
+  listInstanceContent: (instanceId: string, kind: string, reconcile = false) =>
+    invoke<ContentItem[]>("list_instance_content", { instanceId, kind, reconcile }),
   toggleInstanceContent: (instanceId: string, kind: string, fileName: string) =>
     invoke<boolean>("toggle_instance_content", { instanceId, kind, fileName }),
   deleteInstanceContent: (instanceId: string, kind: string, fileName: string) =>
     invoke<void>("delete_instance_content", { instanceId, kind, fileName }),
   addInstanceContent: (instanceId: string, kind: string, sources: string[]) =>
     invoke<number>("add_instance_content", { instanceId, kind, sources }),
-  searchContent: (
-    provider: string,
-    kind: string,
-    query: string,
-    gameVersion: string,
-    loader: string | null,
-  ) =>
-    invoke<SearchResult[]>("search_content", { provider, kind, query, gameVersion, loader }),
+  searchContent: (provider: string, kind: string, query: SearchQuery) =>
+    invoke<SearchPage>("search_content", { provider, kind, query }),
+  getFilterTaxonomy: (provider: string, kind: string, includeSnapshots = false) =>
+    invoke<FilterTaxonomy>("get_filter_taxonomy", { provider, kind, includeSnapshots }),
   getVersionChangelog: (provider: string, projectId: string, versionId: string) =>
     invoke<Changelog>("get_version_changelog", { provider, projectId, versionId }),
   resolveProjects: (provider: string, ids: string[]) =>
-    invoke<SearchResult[]>("resolve_projects", { provider, ids }),
+    invoke<ProjectSummary[]>("resolve_projects", { provider, ids }),
   getInstalledProjectFile: (instanceId: string, kind: string, projectId: string) =>
     invoke<InstalledFile | null>("get_installed_project_file", {
       instanceId,
@@ -81,6 +81,24 @@ export const api = {
       gameVersion,
       loader,
     }),
+  planContentInstall: (
+    provider: string,
+    projectId: string,
+    instanceId: string,
+    kind: string,
+    gameVersion: string,
+    loader: string | null,
+    versionId: string | null = null,
+  ) =>
+    invoke<InstallPlan>("plan_content_install", {
+      provider,
+      projectId,
+      instanceId,
+      kind,
+      gameVersion,
+      loader,
+      versionId,
+    }),
   installContent: (
     provider: string,
     projectId: string,
@@ -89,8 +107,6 @@ export const api = {
     gameVersion: string,
     loader: string | null,
     versionId: string | null = null,
-    title: string | null = null,
-    iconUrl: string | null = null,
     withDependencies = true,
   ) =>
     invoke<string[]>("install_content", {
@@ -101,30 +117,18 @@ export const api = {
       gameVersion,
       loader,
       versionId,
-      title,
-      iconUrl,
       withDependencies,
     }),
   installModpack: (provider: string, projectId: string, versionId: string) =>
     invoke<Instance>("install_modpack", { provider, projectId, versionId }),
-  getMissingDependencies: (
-    provider: string,
-    projectId: string,
-    instanceId: string,
-    kind: string,
-    gameVersion: string,
-    loader: string | null,
-    versionId: string | null = null,
-  ) =>
-    invoke<SearchResult[]>("get_missing_dependencies", {
-      provider,
-      projectId,
-      instanceId,
-      kind,
-      gameVersion,
-      loader,
-      versionId,
-    }),
+  checkContentUpdates: (instanceId: string, force = false) =>
+    invoke<ContentUpdate[]>("check_content_updates", { instanceId, force }),
+  getContentUpdates: (instanceId: string) =>
+    invoke<ContentUpdate[]>("get_content_updates", { instanceId }),
+  applyContentUpdate: (instanceId: string, kind: string, fileName: string) =>
+    invoke<string>("apply_content_update", { instanceId, kind, fileName }),
+  getContentDependents: (instanceId: string, kind: string, fileName: string) =>
+    invoke<string[]>("get_content_dependents", { instanceId, kind, fileName }),
   updateInstance: (
     instanceId: string,
     name: string,
@@ -156,6 +160,15 @@ export const api = {
     invoke<VersionMedia>("set_instance_banner", { instanceId, sourcePath }),
   clearInstanceBanner: (instanceId: string) =>
     invoke<void>("clear_instance_banner", { instanceId }),
+  setInstanceLogo: (instanceId: string, sourcePath: string) =>
+    invoke<string>("set_instance_logo", { instanceId, sourcePath }),
+  clearInstanceLogo: (instanceId: string) =>
+    invoke<void>("clear_instance_logo", { instanceId }),
+  backfillPackLogos: () => invoke<Instance[]>("backfill_pack_logos"),
+  listTasks: () => invoke<Task[]>("list_tasks"),
+  clearFinishedTasks: () => invoke<void>("clear_finished_tasks"),
+  cancelTask: (taskId: string) => invoke<boolean>("cancel_task", { taskId }),
+  recoverInterrupted: () => invoke<PendingOperation[]>("recover_interrupted"),
   installInstance: (instanceId: string) =>
     invoke<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>

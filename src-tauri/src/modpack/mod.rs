@@ -177,12 +177,13 @@ async fn link_pack_files(
         ids.dedup();
         ids
     };
-    let projects = search::resolve_projects(state, Provider::Modrinth, project_ids)
+    let projects = search::resolve_projects(state, Provider::Modrinth, &project_ids)
         .await
         .unwrap_or_default();
-    let project_info: HashMap<String, &search::SearchResult> =
+    let project_info: HashMap<String, &search::ProjectSummary> =
         projects.iter().map(|p| (p.id.clone(), p)).collect();
 
+    let now = chrono::Utc::now().timestamp();
     for (path, sha1) in files {
         let Some(version) = by_hash.get(sha1) else { continue };
         let Some(kind) = kind_for_path(path) else { continue };
@@ -190,15 +191,21 @@ async fn link_pack_files(
             continue;
         };
         let info = project_info.get(&version.project_id);
-        let _ = state.db.record_content_source(
+        let _ = state.db.record_content_file(
             instance_id,
             kind,
-            file_name,
-            "modrinth",
-            &version.project_id,
-            Some(version.id.as_str()),
-            info.map(|i| i.title.as_str()),
-            info.and_then(|i| i.icon_url.as_deref()),
+            &crate::db::ContentFile {
+                file_name: file_name.to_string(),
+                sha1: Some(sha1.clone()),
+                provider: Some("modrinth".to_string()),
+                project_id: Some(version.project_id.clone()),
+                version_id: Some(version.id.clone()),
+                title: info.map(|i| i.title.clone()),
+                icon_url: info.and_then(|i| i.icon_url.clone()),
+                origin: "pack".to_string(),
+                installed_at: now,
+                ..Default::default()
+            },
         );
     }
 }
@@ -216,26 +223,27 @@ pub async fn install_modpack(
         ));
     }
 
-    let target = search::fetch_install_target(
+    let target = search::fetch_version(
         state,
         provider,
         project_id,
-        "modpacks",
+        search::ContentKind::Modpack,
         "",
         None,
         Some(version_id),
     )
     .await?;
+    let (url, archive) = search::download_url(&target)?;
 
     let cache_dir = state.paths.root.join("cache").join("modpacks");
-    let archive_path = cache_dir.join(&target.file_name);
+    let archive_path = cache_dir.join(&archive.file_name);
     download::download_one(
         &state.http,
         &DownloadSpec {
-            url: target.url.clone(),
+            url,
             dest: archive_path.clone(),
-            sha1: target.sha1.clone(),
-            size: target.size,
+            sha1: archive.sha1.clone(),
+            size: archive.size,
         },
     )
     .await?;
@@ -270,6 +278,7 @@ pub async fn install_modpack(
     let id = uuid::Uuid::new_v4().to_string();
     let instance = Instance {
         dir: state.paths.instance_dir(&id).display().to_string(),
+        logo: None,
         id,
         name,
         version_id: game_version.clone(),
@@ -284,22 +293,88 @@ pub async fn install_modpack(
         launch_version_id: None,
         pack_provider: Some(provider.as_str().to_string()),
         pack_project_id: Some(project_id.to_string()),
-        pack_version_id: Some(target.source_version.clone()),
+        pack_version_id: Some(target.id.clone()),
     };
     let instance_dir = state.paths.instance_dir(&instance.id);
     std::fs::create_dir_all(&instance_dir)?;
     state.db.insert_instance(&instance)?;
 
+    let task = state.tasks.start(
+        app,
+        crate::tasks::TaskKind::ModpackInstall,
+        crate::tasks::TaskSpec {
+            title: index.name.clone(),
+            subtitle: Some(format!(
+                "{}{}",
+                instance.version_id,
+                instance
+                    .loader
+                    .as_deref()
+                    .map(|l| format!(" · {l}"))
+                    .unwrap_or_default()
+            )),
+            instance_id: Some(instance.id.clone()),
+            project_id: Some(project_id.to_string()),
+            ..Default::default()
+        },
+    );
+
+    let outcome = install_pack_body(
+        app,
+        state,
+        provider,
+        project_id,
+        &instance,
+        &instance_dir,
+        &archive_path,
+        &index,
+        &task,
+    )
+    .await;
+
+    if let Err(e) = outcome {
+        let _ = state.db.delete_instance_content_files(&instance.id);
+        let _ = state.db.delete_instance(&instance.id);
+        state.paths.remove_instance_dir(&instance.id);
+        match &e {
+            Error::Cancelled => task.cancelled(),
+            other => task.fail(other),
+        }
+        return Err(e);
+    }
+
+    task.succeed();
+
+    state
+        .db
+        .list_instances(&state.paths)?
+        .into_iter()
+        .find(|i| i.id == instance.id)
+        .ok_or_else(|| Error::other("instance vanished after pack install"))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn install_pack_body(
+    app: &AppHandle,
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    instance: &Instance,
+    instance_dir: &Path,
+    archive_path: &Path,
+    index: &MrIndex,
+    task: &crate::tasks::TaskHandle,
+) -> Result<()> {
     let launch_id = if instance.loader.is_some() {
-        let launch_id = loaders::install_loader(app, state, &instance).await?;
+        let launch_id = loaders::install_loader(app, state, instance, task).await?;
         state.db.set_launch_version(&instance.id, &launch_id)?;
         launch_id
     } else {
         instance.version_id.clone()
     };
-    install::install_version(app, state, &instance.id, &launch_id).await?;
+    install::install_version(app, state, &instance.id, &launch_id, task).await?;
 
-    install::emit_stage(app, &instance.id, "modpack-files");
+    task.stage("modpack-files");
     let mut specs = Vec::new();
     let mut linkable: Vec<(String, String)> = Vec::new();
     for file in &index.files {
@@ -326,28 +401,31 @@ pub async fn install_modpack(
         }
     }
     let concurrency = state.db.load_settings()?.concurrent_downloads;
-    let emit_app = app.clone();
-    let emit_id = instance.id.clone();
-    download::download_many(&state.http, specs, concurrency, move |progress| {
-        let _ = tauri::Emitter::emit(
-            &emit_app,
-            "install:progress",
-            serde_json::json!({
-                "instance_id": emit_id,
-                "completed": progress.completed,
-                "total": progress.total,
-                "downloaded_bytes": progress.downloaded_bytes,
-                "total_bytes": progress.total_bytes,
-                "current": progress.current,
-            }),
-        );
-    })
-    .await?;
+    task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
+    let downloaded = download::download_many_cancellable(
+        &state.http,
+        specs,
+        concurrency,
+        |progress| {
+            task.progress(
+                progress.completed as u64,
+                progress.total as u64,
+                progress.downloaded_bytes,
+                progress.total_bytes,
+            );
+        },
+        Some(task.token()),
+        Some(task.written()),
+        Some(&|attempt, max, reason| task.note_retry(attempt, max, reason)),
+    )
+    .await;
 
-    install::emit_stage(app, &instance.id, "modpack-overrides");
+    downloaded?;
+
+    task.stage("modpack-overrides");
     {
-        let archive = archive_path.clone();
-        let dest = instance_dir.clone();
+        let archive = archive_path.to_path_buf();
+        let dest = instance_dir.to_path_buf();
         tokio::task::spawn_blocking(move || extract_overrides(&archive, &dest))
             .await
             .map_err(|e| Error::other(format!("override extraction task failed: {e}")))??;
@@ -355,13 +433,22 @@ pub async fn install_modpack(
 
     link_pack_files(state, &instance.id, &linkable).await;
 
-    install::emit_stage(app, &instance.id, "done");
-    state
-        .db
-        .list_instances(&state.paths)?
-        .into_iter()
-        .find(|i| i.id == instance.id)
-        .ok_or_else(|| Error::other("instance vanished after pack install"))
+    if let Some(icon_url) = search::resolve_projects(state, provider, &[project_id.to_string()])
+        .await
+        .ok()
+        .and_then(|mut list| list.pop())
+        .and_then(|summary| summary.icon_url)
+    {
+        crate::meta::media::fetch_instance_logo(
+            &state.http,
+            &state.paths,
+            &instance.id,
+            &icon_url,
+        )
+        .await;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

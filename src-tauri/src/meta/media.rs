@@ -238,6 +238,82 @@ pub async fn clear_custom_banner(paths: &Paths, instance_id: &str) {
     let _ = tokio::fs::remove_file(banner_accent_path(paths, instance_id)).await;
 }
 
+fn logo_paths(paths: &Paths, instance_id: &str) -> Vec<std::path::PathBuf> {
+    let media_dir = paths.root.join("media");
+    BANNER_EXTENSIONS
+        .iter()
+        .map(|ext| media_dir.join(format!("logo-{instance_id}.{ext}")))
+        .collect()
+}
+
+pub fn instance_logo(paths: &Paths, instance_id: &str) -> Option<String> {
+    logo_paths(paths, instance_id)
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .map(|path| path.display().to_string())
+}
+
+pub async fn clear_instance_logo(paths: &Paths, instance_id: &str) {
+    for path in logo_paths(paths, instance_id) {
+        let _ = tokio::fs::remove_file(path).await;
+    }
+}
+
+async fn write_logo(
+    paths: &Paths,
+    instance_id: &str,
+    ext: &str,
+    bytes: &[u8],
+) -> crate::error::Result<String> {
+    clear_instance_logo(paths, instance_id).await;
+    let media_dir = paths.root.join("media");
+    tokio::fs::create_dir_all(&media_dir).await?;
+    let dest = media_dir.join(format!("logo-{instance_id}.{ext}"));
+    tokio::fs::write(&dest, bytes).await?;
+    Ok(dest.display().to_string())
+}
+
+pub async fn set_instance_logo(
+    paths: &Paths,
+    instance_id: &str,
+    source: &str,
+) -> crate::error::Result<String> {
+    use crate::error::Error;
+
+    let source_path = std::path::Path::new(source);
+    let ext = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if !BANNER_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(Error::other(format!(
+            "Unsupported image type .{ext}. Use png, jpg, webp, or gif."
+        )));
+    }
+
+    let bytes = tokio::fs::read(source_path).await?;
+    write_logo(paths, instance_id, &ext, &bytes).await
+}
+
+pub async fn fetch_instance_logo(
+    http: &reqwest::Client,
+    paths: &Paths,
+    instance_id: &str,
+    url: &str,
+) -> Option<String> {
+    let ext = url
+        .rsplit('.')
+        .next()
+        .map(|e| e.split(['?', '#']).next().unwrap_or(e).to_lowercase())
+        .filter(|e| BANNER_EXTENSIONS.contains(&e.as_str()))
+        .unwrap_or_else(|| "png".to_string());
+
+    let response = http.get(url).send().await.ok()?.error_for_status().ok()?;
+    let bytes = response.bytes().await.ok()?;
+    write_logo(paths, instance_id, &ext, &bytes).await.ok()
+}
+
 pub async fn media_for(
     client: &reqwest::Client,
     paths: &Paths,
