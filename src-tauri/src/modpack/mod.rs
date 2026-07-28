@@ -177,12 +177,13 @@ async fn link_pack_files(
         ids.dedup();
         ids
     };
-    let projects = search::resolve_projects(state, Provider::Modrinth, project_ids)
+    let projects = search::resolve_projects(state, Provider::Modrinth, &project_ids)
         .await
         .unwrap_or_default();
-    let project_info: HashMap<String, &search::SearchResult> =
+    let project_info: HashMap<String, &search::ProjectSummary> =
         projects.iter().map(|p| (p.id.clone(), p)).collect();
 
+    let now = chrono::Utc::now().timestamp();
     for (path, sha1) in files {
         let Some(version) = by_hash.get(sha1) else { continue };
         let Some(kind) = kind_for_path(path) else { continue };
@@ -190,15 +191,21 @@ async fn link_pack_files(
             continue;
         };
         let info = project_info.get(&version.project_id);
-        let _ = state.db.record_content_source(
+        let _ = state.db.record_content_file(
             instance_id,
             kind,
-            file_name,
-            "modrinth",
-            &version.project_id,
-            Some(version.id.as_str()),
-            info.map(|i| i.title.as_str()),
-            info.and_then(|i| i.icon_url.as_deref()),
+            &crate::db::ContentFile {
+                file_name: file_name.to_string(),
+                sha1: Some(sha1.clone()),
+                provider: Some("modrinth".to_string()),
+                project_id: Some(version.project_id.clone()),
+                version_id: Some(version.id.clone()),
+                title: info.map(|i| i.title.clone()),
+                icon_url: info.and_then(|i| i.icon_url.clone()),
+                origin: "pack".to_string(),
+                installed_at: now,
+                ..Default::default()
+            },
         );
     }
 }
@@ -216,26 +223,27 @@ pub async fn install_modpack(
         ));
     }
 
-    let target = search::fetch_install_target(
+    let target = search::fetch_version(
         state,
         provider,
         project_id,
-        "modpacks",
+        search::ContentKind::Modpack,
         "",
         None,
         Some(version_id),
     )
     .await?;
+    let (url, archive) = search::download_url(&target)?;
 
     let cache_dir = state.paths.root.join("cache").join("modpacks");
-    let archive_path = cache_dir.join(&target.file_name);
+    let archive_path = cache_dir.join(&archive.file_name);
     download::download_one(
         &state.http,
         &DownloadSpec {
-            url: target.url.clone(),
+            url,
             dest: archive_path.clone(),
-            sha1: target.sha1.clone(),
-            size: target.size,
+            sha1: archive.sha1.clone(),
+            size: archive.size,
         },
     )
     .await?;
@@ -284,7 +292,7 @@ pub async fn install_modpack(
         launch_version_id: None,
         pack_provider: Some(provider.as_str().to_string()),
         pack_project_id: Some(project_id.to_string()),
-        pack_version_id: Some(target.source_version.clone()),
+        pack_version_id: Some(target.id.clone()),
     };
     let instance_dir = state.paths.instance_dir(&instance.id);
     std::fs::create_dir_all(&instance_dir)?;
