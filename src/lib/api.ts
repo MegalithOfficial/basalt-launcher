@@ -4,6 +4,7 @@ import { log } from "./log";
 import type {
   AboutLinks,
   AccountView,
+  Appearance,
   AppInfo,
   Changelog,
   ContentItem,
@@ -26,6 +27,7 @@ import type {
   SearchPage,
   SearchQuery,
   PendingOperation,
+  SkinEntry,
   Task,
   UpdateInfo,
   VersionEntry,
@@ -213,4 +215,18 @@ export const api = {
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
   checkForUpdates: () => call<UpdateInfo>("check_for_updates"),
   getAboutLinks: () => call<AboutLinks>("get_about_links"),
+  getAppearance: () => call<Appearance>("get_appearance"),
+  listSkins: () => call<SkinEntry[]>("list_skins"),
+  addSkinFromFile: (path: string, name: string | null, variant: string) =>
+    call<SkinEntry>("add_skin_from_file", { path, name, variant }),
+  addSkinFromReference: (reference: string) =>
+    call<SkinEntry>("add_skin_from_reference", { reference }),
+  deleteSkin: (skinId: string) => call<void>("delete_skin", { skinId }),
+  renameSkin: (skinId: string, name: string) =>
+    call<SkinEntry>("rename_skin", { skinId, name }),
+  getWornSkin: (uuid: string) => call<SkinEntry | null>("get_worn_skin", { uuid }),
+  applySavedSkin: (skinId: string, variant: string | null = null) =>
+    call<Appearance>("apply_saved_skin", { skinId, variant }),
+  resetSkin: () => call<Appearance>("reset_skin"),
+  setCape: (capeId: string | null) => call<Appearance>("set_cape", { capeId }),
 };

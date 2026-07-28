@@ -1,6 +1,8 @@
 import { useState } from "react";
 
 import { cn } from "../lib/cn";
+import { useStore } from "../store";
+import { FACE, FACE_OVERLAY, TextureCrop } from "./TextureCrop";
 
 export function PlayerHead({
   uuid,
@@ -13,11 +15,25 @@ export function PlayerHead({
   size?: number;
   className?: string;
 }) {
+  const revision = useStore((s) => s.skinRevision);
+  const localSkin = useStore((s) => s.skinHeads[uuid]);
   const sources = [
-    `https://mc-heads.net/avatar/${uuid}/${size * 2}`,
-    `https://minotar.net/helm/${uuid}/${size * 2}.png`,
+    `https://mc-heads.net/avatar/${uuid}/${size * 2}?v=${revision}`,
+    `https://minotar.net/helm/${uuid}/${size * 2}.png?v=${revision}`,
   ];
   const [sourceIndex, setSourceIndex] = useState(0);
+
+  if (localSkin) {
+    return (
+      <TextureCrop
+        url={localSkin}
+        crop={FACE}
+        overlay={FACE_OVERLAY}
+        className={cn("rounded-md", className)}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
 
   if (sourceIndex >= sources.length) {
     return (
@@ -35,6 +51,7 @@ export function PlayerHead({
 
   return (
     <img
+      key={revision}
       src={sources[sourceIndex]}
       onError={() => setSourceIndex((i) => i + 1)}
       alt={name}

@@ -57,6 +57,8 @@ interface AppStore {
   logs: Record<string, LogLine[]>;
   logRecords: LogRecord[];
   logConfig: LogConfig | null;
+  skinRevision: number;
+  skinHeads: Record<string, string>;
   activeRunningId: string | null;
   media: Record<string, VersionMedia | null>;
   detailInstanceId: string | null;
@@ -102,6 +104,9 @@ interface AppStore {
   killInstance: (runningId: string) => Promise<void>;
   closeRunning: (runningId: string) => Promise<void>;
   openConsole: (runningId: string) => void;
+  bumpSkinRevision: () => void;
+  setSkinHead: (uuid: string, dataUrl: string | null) => void;
+  syncActiveSkin: () => Promise<void>;
   refreshLogs: () => Promise<void>;
   clearLogs: () => Promise<void>;
   setLogLevel: (level: LogLevel) => Promise<void>;
@@ -160,6 +165,8 @@ export const useStore = create<AppStore>((set) => ({
   logs: {},
   logRecords: [],
   logConfig: null,
+  skinRevision: 0,
+  skinHeads: {},
   activeRunningId: null,
   media: {},
   selectedInstanceId: null,
@@ -445,9 +452,35 @@ export const useStore = create<AppStore>((set) => ({
         accounts: accounts.length,
       });
       void useStore.getState().refreshLogs();
+      void useStore.getState().syncActiveSkin();
     } catch (e) {
       log.error("app", `startup failed: ${String(e)}`);
       set({ error: String(e), ready: true });
+    }
+  },
+
+  bumpSkinRevision: () => set((s) => ({ skinRevision: s.skinRevision + 1 })),
+
+  setSkinHead: (uuid, dataUrl) =>
+    set((s) => {
+      if (!dataUrl) {
+        if (!(uuid in s.skinHeads)) return {};
+        const next = { ...s.skinHeads };
+        delete next[uuid];
+        return { skinHeads: next };
+      }
+      if (s.skinHeads[uuid] === dataUrl) return {};
+      return { skinHeads: { ...s.skinHeads, [uuid]: dataUrl } };
+    }),
+
+  syncActiveSkin: async () => {
+    const active = useStore.getState().accounts.find((a) => a.active);
+    if (!active) return;
+    try {
+      const worn = await api.getWornSkin(active.id);
+      if (worn) useStore.getState().setSkinHead(active.id, worn.data_url);
+    } catch (e) {
+      log.debug("skins", `could not read the worn skin: ${String(e)}`);
     }
   },
 
@@ -502,6 +535,7 @@ export const useStore = create<AppStore>((set) => ({
   setActiveAccount: async (id) => {
     await api.setActiveAccount(id);
     await useStore.getState().refreshAccounts();
+    void useStore.getState().syncActiveSkin();
   },
 
   removeAccount: async (id) => {

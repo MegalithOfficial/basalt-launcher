@@ -25,6 +25,7 @@ impl Paths {
             self.runtimes(),
             self.instances(),
             self.logs(),
+            self.skins(),
         ] {
             std::fs::create_dir_all(dir)?;
         }
@@ -69,6 +70,9 @@ impl Paths {
     }
     pub fn logs(&self) -> PathBuf {
         self.root.join("logs")
+    }
+    pub fn skins(&self) -> PathBuf {
+        self.root.join("media").join("skins")
     }
     pub fn instance_dir(&self, id: &str) -> PathBuf {
         self.instances().join(id)

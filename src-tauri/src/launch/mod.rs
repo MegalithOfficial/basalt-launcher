@@ -18,7 +18,7 @@ fn now() -> i64 {
 }
 
 #[tracing::instrument(skip_all, err)]
-async fn ensure_account(state: &AppState) -> Result<Account> {
+pub(crate) async fn ensure_account(state: &AppState) -> Result<Account> {
     let mut store = state.db.load_accounts()?;
     let account = store
         .active()

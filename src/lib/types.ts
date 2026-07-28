@@ -403,3 +403,30 @@ export interface AboutLinks {
   issues: string;
   releases: string;
 }
+
+export type SkinVariant = "classic" | "slim";
+
+export interface SkinEntry {
+  id: string;
+  name: string;
+  variant: SkinVariant;
+  source: string | null;
+  data_url: string;
+}
+
+export interface CapeEntry {
+  id: string;
+  alias: string;
+  url: string;
+  active: boolean;
+}
+
+export interface Appearance {
+  uuid: string;
+  name: string;
+  skin_url: string | null;
+  variant: SkinVariant;
+  capes: CapeEntry[];
+  active_cape_id: string | null;
+  library_id: string | null;
+}

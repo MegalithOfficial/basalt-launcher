@@ -14,6 +14,7 @@ mod meta;
 mod modpack;
 mod paths;
 mod search;
+mod skin;
 mod state;
 mod tasks;
 mod update;
@@ -54,7 +55,11 @@ pub fn run() {
                 Err(e) => tracing::warn!(error = %e, "could not read settings for log level"),
             }
 
-            app.manage(AppState::new(paths, db));
+            let state = AppState::new(paths, db);
+            if let Err(e) = skin::reconcile_library(&state) {
+                tracing::warn!(error = %e, "could not reconcile the skin library");
+            }
+            app.manage(state);
             tracing::info!("startup complete");
             Ok(())
         })
@@ -116,6 +121,16 @@ pub fn run() {
             commands::frontend_log,
             commands::check_for_updates,
             commands::get_about_links,
+            commands::get_appearance,
+            commands::list_skins,
+            commands::add_skin_from_file,
+            commands::add_skin_from_reference,
+            commands::delete_skin,
+            commands::rename_skin,
+            commands::get_worn_skin,
+            commands::apply_saved_skin,
+            commands::reset_skin,
+            commands::set_cape,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
