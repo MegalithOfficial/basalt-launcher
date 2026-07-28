@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowLeft,
+  ArrowUpCircle,
   FileBox,
   Loader2,
   Package,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 
 import { EditInstanceModal } from "../components/EditInstanceModal";
@@ -68,6 +71,10 @@ export function InstanceView() {
   const openSearch = useStore((s) => s.openSearch);
   const openProject = useStore((s) => s.openProject);
   const refreshContentSources = useStore((s) => s.refreshContentSources);
+  const refreshUpdates = useStore((s) => s.refreshUpdates);
+  const applyUpdate = useStore((s) => s.applyUpdate);
+  const updates = useStore((s) => (detailId ? (s.updates[detailId] ?? []) : []));
+  const installingContent = useStore((s) => s.installingContent);
 
   const [tab, setTab] = useState<ContentKind>("mods");
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -75,27 +82,40 @@ export function InstanceView() {
   const [editOpen, setEditOpen] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [hasSchematicMod, setHasSchematicMod] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updatingAll, setUpdatingAll] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    item: ContentItem;
+    dependents: string[];
+  } | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!instance) return;
-    setLoading(true);
-    try {
-      setItems(await api.listInstanceContent(instance.id, tab));
-      void refreshContentSources(instance.id, tab);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [instance?.id, tab, refreshContentSources]);
+  const refresh = useCallback(
+    async (reconcile = false) => {
+      if (!instance) return;
+      setLoading(true);
+      try {
+        setItems(await api.listInstanceContent(instance.id, tab, reconcile));
+        void refreshContentSources(instance.id, tab);
+      } catch {
+        setItems([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [instance?.id, tab, refreshContentSources],
+  );
 
   useEffect(() => {
-    void refresh();
+    void refresh(true);
   }, [refresh]);
 
   useEffect(() => {
     setTab(instance?.loader ? "mods" : "resourcepacks");
   }, [instance?.id]);
+
+  useEffect(() => {
+    if (instance) void refreshUpdates(instance.id);
+  }, [instance?.id, refreshUpdates]);
 
   useEffect(() => {
     if (!instance) return;
@@ -130,6 +150,7 @@ export function InstanceView() {
     : TABS.filter((t) => t.kind === "resourcepacks");
   const allTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
+  const tabUpdates = updates.filter((u) => u.kind === tab);
 
   const addContent = async () => {
     if (tab !== "schematics") {
@@ -152,8 +173,47 @@ export function InstanceView() {
     await refresh();
   };
 
+  const askRemove = async (item: ContentItem) => {
+    const dependents = await api
+      .getContentDependents(instance.id, tab, item.file_name)
+      .catch(() => [] as string[]);
+    if (dependents.length === 0 && item.source?.origin !== "pack") {
+      await remove(item);
+      return;
+    }
+    setConfirmDelete({ item, dependents });
+  };
+
   const remove = async (item: ContentItem) => {
+    setConfirmDelete(null);
     await api.deleteInstanceContent(instance.id, tab, item.file_name);
+    await refresh();
+  };
+
+  const checkUpdates = async () => {
+    setCheckingUpdates(true);
+    try {
+      await refreshUpdates(instance.id, true);
+      await refresh();
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  const updateAll = async () => {
+    setUpdatingAll(true);
+    try {
+      for (const update of tabUpdates) {
+        await applyUpdate(instance.id, update.kind, update.file_name);
+      }
+      await refresh();
+    } finally {
+      setUpdatingAll(false);
+    }
+  };
+
+  const updateOne = async (item: ContentItem) => {
+    await applyUpdate(instance.id, tab, item.file_name);
     await refresh();
   };
 
@@ -221,31 +281,66 @@ export function InstanceView() {
 
       <div className="flex items-center justify-between gap-4 border-b border-border-soft px-6 pt-4">
         <div className="flex gap-1">
-          {allTabs.map((t) => (
-            <button
-              key={t.kind}
-              onClick={() => setTab(t.kind)}
-              className={cn(
-                "relative rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors",
-                tab === t.kind
-                  ? "text-content"
-                  : "text-content-faint hover:text-content-muted",
-              )}
-            >
-              {t.label}
-              {tab === t.kind && (
-                <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--accent)] transition-colors duration-500" />
-              )}
-            </button>
-          ))}
+          {allTabs.map((t) => {
+            const count = updates.filter((u) => u.kind === t.kind).length;
+            return (
+              <button
+                key={t.kind}
+                onClick={() => setTab(t.kind)}
+                className={cn(
+                  "relative rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors",
+                  tab === t.kind
+                    ? "text-content"
+                    : "text-content-faint hover:text-content-muted",
+                )}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {t.label}
+                  {count > 0 && (
+                    <span className="rounded-full bg-warn/20 px-1.5 text-[10px] font-bold text-warn">
+                      {count}
+                    </span>
+                  )}
+                </span>
+                {tab === t.kind && (
+                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--accent)] transition-colors duration-500" />
+                )}
+              </button>
+            );
+          })}
         </div>
-        <button
-          onClick={addContent}
-          className="mb-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
-        >
-          <Plus className="size-3.5" />
-          Add content
-        </button>
+        <div className="mb-2 flex items-center gap-2">
+          {tabUpdates.length > 0 && (
+            <button
+              onClick={updateAll}
+              disabled={updatingAll}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60"
+            >
+              {updatingAll ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <ArrowUpCircle className="size-3.5" />
+              )}
+              Update all ({tabUpdates.length})
+            </button>
+          )}
+          <button
+            onClick={checkUpdates}
+            disabled={checkingUpdates}
+            title="Check for updates"
+            aria-label="Check for updates"
+            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-60"
+          >
+            <RefreshCw className={cn("size-3.5", checkingUpdates && "animate-spin")} />
+          </button>
+          <button
+            onClick={addContent}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+          >
+            <Plus className="size-3.5" />
+            Add content
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -263,67 +358,164 @@ export function InstanceView() {
               No {tabMeta.label.toLowerCase()} yet
             </div>
             <p className="max-w-sm text-xs text-content-faint">
-              Drop files into this instance with Add content. Searching Modrinth and
-              CurseForge from here is coming later.
+              Browse Modrinth and CurseForge with Add content, or drop in your own files.
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {items.map((item) => (
-              <div
-                key={item.file_name}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl border border-border-soft bg-surface-2/70 px-4 py-2.5 transition-opacity",
-                  !item.enabled && "opacity-55",
-                )}
-              >
-                {item.source?.icon_url ? (
-                  <img
-                    src={item.source.icon_url}
-                    className="size-8 shrink-0 rounded-lg bg-surface-3 object-cover"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
-                    <FileBox className="size-4" />
-                  </div>
-                )}
+            {items.map((item) => {
+              const source = item.source;
+              const displayName = source?.title ?? item.file_name;
+              const linked = !!source?.provider && !!source.project_id;
+              const busy = installingContent.includes(
+                `${instance.id}:${tab}:${item.file_name}`,
+              );
+              return (
                 <div
-                  className={cn("min-w-0 flex-1", item.source && "cursor-pointer")}
-                  onClick={() =>
-                    item.source &&
-                    openProject(item.source.provider, item.source.project_id, tab)
-                  }
+                  key={item.file_name}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border px-4 py-2.5 transition-opacity",
+                    item.update
+                      ? "border-warn/30 bg-warn/[0.06]"
+                      : "border-border-soft bg-surface-2/70",
+                    !item.enabled && "opacity-55",
+                  )}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-content">
-                      {item.source?.title ?? item.file_name}
-                    </span>
-                    {item.source && (
-                      <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
-                        {item.source.provider}
+                  {source?.icon_url ? (
+                    <img
+                      src={source.icon_url}
+                      loading="lazy"
+                      className="size-9 shrink-0 rounded-lg bg-surface-3 object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+                      <FileBox className="size-4" />
+                    </div>
+                  )}
+                  <div
+                    className={cn("min-w-0 flex-1", linked && "cursor-pointer")}
+                    onClick={() =>
+                      linked &&
+                      openProject(source!.provider!, source!.project_id!, tab)
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-content">
+                        {displayName}
                       </span>
-                    )}
+                      {source?.provider && (
+                        <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
+                          {source.provider}
+                        </span>
+                      )}
+                      {source?.origin === "pack" && (
+                        <span className="shrink-0 rounded bg-[var(--accent-glow)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-muted">
+                          pack
+                        </span>
+                      )}
+                      {source?.origin === "dependency" && (
+                        <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
+                          dependency
+                        </span>
+                      )}
+                      {!linked && source?.mod_id && (
+                        <span
+                          title="Identified from the file itself, not linked to a provider"
+                          className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint"
+                        >
+                          local
+                        </span>
+                      )}
+                    </div>
+                    <div className="truncate text-[11px] text-content-faint">
+                      {source?.title ? `${item.file_name} · ` : ""}
+                      {source?.mod_version && `v${source.mod_version} · `}
+                      {formatSize(item.size)}
+                      {!item.enabled && " · disabled"}
+                    </div>
                   </div>
-                  <div className="truncate text-[11px] text-content-faint">
-                    {item.source?.title ? `${item.file_name} · ` : ""}
-                    {formatSize(item.size)}
-                    {!item.enabled && " · disabled"}
-                  </div>
+
+                  {item.update && (
+                    <button
+                      onClick={() => updateOne(item)}
+                      disabled={busy}
+                      title={`Update to ${item.update.latest_name}`}
+                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-warn/15 px-3 text-xs font-semibold text-warn transition-colors hover:bg-warn/25 disabled:opacity-60"
+                    >
+                      {busy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <ArrowUpCircle className="size-3.5" />
+                      )}
+                      Update
+                    </button>
+                  )}
+
+                  <Toggle on={item.enabled} onClick={() => toggle(item)} />
+                  <button
+                    onClick={() => askRemove(item)}
+                    aria-label="Delete file"
+                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
                 </div>
-                <Toggle on={item.enabled} onClick={() => toggle(item)} />
-                <button
-                  onClick={() => remove(item)}
-                  aria-label="Delete file"
-                  className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-6 backdrop-blur-sm"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
+          >
+            <div className="flex items-start gap-3 border-b border-border-soft px-5 py-4">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" />
+              <div className="min-w-0">
+                <h2 className="font-display text-base font-semibold text-content">
+                  Remove {confirmDelete.item.source?.title ?? confirmDelete.item.file_name}?
+                </h2>
+                <div className="mt-1 text-xs text-content-muted">
+                  {confirmDelete.dependents.length > 0 ? (
+                    <>
+                      {confirmDelete.dependents.length === 1
+                        ? "This mod is required by "
+                        : "This mod is required by "}
+                      <span className="font-medium text-warn">
+                        {confirmDelete.dependents.join(", ")}
+                      </span>
+                      . Removing it will likely break the game.
+                    </>
+                  ) : (
+                    "This file came from a modpack. Removing it may break the pack."
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-content-muted transition-colors hover:text-content"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={() => remove(confirmDelete.item)}
+                className="rounded-lg bg-danger/15 px-4 py-2 text-sm font-semibold text-danger transition-colors hover:bg-danger/25"
+              >
+                Remove anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <EditInstanceModal
         instance={editOpen ? instance : null}
