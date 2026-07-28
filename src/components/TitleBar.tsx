@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { ActivityCenter } from "./ActivityCenter";
 
 const win = getCurrentWindow();
 
@@ -47,7 +48,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
         "flex h-9 shrink-0 items-center justify-between",
         immersive
           ? "absolute inset-x-0 top-0 z-50"
-          : "relative border-b border-border-soft bg-base/80 backdrop-blur",
+          : "relative z-50 border-b border-border-soft bg-base/80 backdrop-blur",
       )}
     >
       {immersive && (
@@ -72,6 +73,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
       </div>
 
       <div className="relative flex items-center">
+        <ActivityCenter immersive={immersive} />
         <Control label="Minimize" immersive={immersive} onClick={() => win.minimize()}>
           <Minus className="size-3.5" />
         </Control>
