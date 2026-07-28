@@ -21,6 +21,9 @@ pub enum Error {
     #[error("tauri error: {0}")]
     Tauri(#[from] tauri::Error),
 
+    #[error("cancelled")]
+    Cancelled,
+
     #[error("checksum mismatch for {path}: expected {expected}, got {actual}")]
     Checksum {
         path: String,

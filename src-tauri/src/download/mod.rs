@@ -6,6 +6,8 @@ use serde::Serialize;
 use sha1_smol::Sha1;
 use tokio::io::AsyncWriteExt;
 
+use tokio_util::sync::CancellationToken;
+
 use crate::error::{Error, Result};
 
 #[derive(Debug, Clone)]
@@ -92,6 +94,22 @@ pub async fn download_many<F>(
 where
     F: Fn(DownloadProgress) + Send + Sync,
 {
+    download_many_cancellable(client, specs, concurrency, on_progress, None, None).await
+}
+
+/// `written` collects the files this call actually created, so a rollback can
+/// remove those without touching files that were already present and valid.
+pub async fn download_many_cancellable<F>(
+    client: &reqwest::Client,
+    specs: Vec<DownloadSpec>,
+    concurrency: usize,
+    on_progress: F,
+    cancel: Option<CancellationToken>,
+    written: Option<&std::sync::Mutex<Vec<PathBuf>>>,
+) -> Result<()>
+where
+    F: Fn(DownloadProgress) + Send + Sync,
+{
     let total = specs.len();
     let total_bytes: u64 = specs.iter().filter_map(|s| s.size).sum();
     let completed = AtomicUsize::new(0);
@@ -100,13 +118,31 @@ where
     let completed = &completed;
     let done_bytes = &done_bytes;
 
+    let cancel = &cancel;
     let results = stream::iter(specs.into_iter().map(|spec| async move {
+        if let Some(token) = cancel {
+            if token.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+        }
         let name = spec
             .dest
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        download_one(client, &spec).await?;
+        let created = match cancel {
+            Some(token) => tokio::select! {
+                biased;
+                _ = token.cancelled() => return Err(Error::Cancelled),
+                result = download_one(client, &spec) => result?,
+            },
+            None => download_one(client, &spec).await?,
+        };
+        if created {
+            if let Some(sink) = written {
+                sink.lock().unwrap().push(spec.dest.clone());
+            }
+        }
         let c = completed.fetch_add(1, Ordering::Relaxed) + 1;
         let b = done_bytes.fetch_add(spec.size.unwrap_or(0), Ordering::Relaxed)
             + spec.size.unwrap_or(0);
@@ -131,7 +167,115 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use super::sha1_hex;
+
+    #[tokio::test]
+    async fn cancelled_before_start_downloads_nothing() {
+        let dir = std::env::temp_dir().join(format!("basalt-cancel-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let written = std::sync::Mutex::new(Vec::new());
+        let specs = vec![DownloadSpec {
+            url: "http://127.0.0.1:1/never".into(),
+            dest: dir.join("never.jar"),
+            sha1: None,
+            size: None,
+        }];
+
+        let result = download_many_cancellable(
+            &reqwest::Client::new(),
+            specs,
+            2,
+            |_| {},
+            Some(token),
+            Some(&written),
+        )
+        .await;
+
+        assert!(matches!(result, Err(Error::Cancelled)));
+        assert!(written.lock().unwrap().is_empty());
+        assert!(!dir.join("never.jar").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cancelling_mid_flight_aborts_the_remaining_queue() {
+        let dir = std::env::temp_dir().join(format!("basalt-midflight-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let token = CancellationToken::new();
+
+        // 10.255.255.1 is non routable, so each request hangs until cancelled
+        let specs: Vec<DownloadSpec> = (0..8)
+            .map(|i| DownloadSpec {
+                url: "http://10.255.255.1/hang".into(),
+                dest: dir.join(format!("f{i}.jar")),
+                sha1: None,
+                size: None,
+            })
+            .collect();
+
+        let cancel = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            cancel.cancel();
+        });
+
+        let started = std::time::Instant::now();
+        let result = download_many_cancellable(
+            &reqwest::Client::new(),
+            specs,
+            4,
+            |_| {},
+            Some(token),
+            None,
+        )
+        .await;
+
+        assert!(matches!(result, Err(Error::Cancelled)), "expected Cancelled, got {result:?}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "cancel should abort in flight requests, took {:?}",
+            started.elapsed()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn already_valid_files_are_not_recorded_as_written() {
+        let dir = std::env::temp_dir().join(format!("basalt-existing-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let dest = dir.join("present.jar");
+        std::fs::write(&dest, b"abc").unwrap();
+
+        let spec = DownloadSpec {
+            url: "http://127.0.0.1:1/unused".into(),
+            dest: dest.clone(),
+            sha1: Some(sha1_hex(b"abc")),
+            size: None,
+        };
+        // already_valid short circuits, so no request is made and nothing is
+        // recorded, which is what keeps rollback from deleting pre-existing files
+        assert!(!download_one(&reqwest::Client::new(), &spec).await.unwrap());
+
+        let written = std::sync::Mutex::new(Vec::new());
+        let result = download_many_cancellable(
+            &reqwest::Client::new(),
+            vec![spec],
+            2,
+            |_| {},
+            None,
+            Some(&written),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        assert!(written.lock().unwrap().is_empty(), "pre-existing file must not be rollback eligible");
+        assert!(dest.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn sha1_matches_known_vector() {
