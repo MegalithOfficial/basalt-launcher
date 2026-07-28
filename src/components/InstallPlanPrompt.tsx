@@ -11,7 +11,8 @@ import {
 
 import { cn } from "../lib/cn";
 import { useEscape } from "../lib/useEscape";
-import type { InstallPlan, PlannedFile } from "../lib/types";
+import type { InstallPlan, PlannedFile, Task } from "../lib/types";
+import { taskFraction } from "../lib/useTasks";
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "";
@@ -71,7 +72,7 @@ export function InstallPlanPrompt({
 }: {
   plan: InstallPlan | null;
   busy: boolean;
-  progress: { completed: number; total: number; current: string } | null;
+  progress: Task | null;
   onConfirm: () => void;
   onSkipDependencies: () => void;
   onCancel: () => void;
@@ -180,18 +181,29 @@ export function InstallPlanPrompt({
               )}
             </div>
 
-            {busy && progress && progress.total > 0 && (
+            {busy && progress && (
               <div className="border-t border-border-soft px-5 py-2.5">
                 <div className="mb-1.5 flex items-center justify-between text-[11px] text-content-muted">
-                  <span className="truncate">{progress.current}</span>
-                  <span className="shrink-0 tabular-nums">
-                    {progress.completed}/{progress.total}
-                  </span>
+                  <span className="truncate capitalize">{progress.stage}</span>
+                  {progress.total > 0 && (
+                    <span className="shrink-0 tabular-nums">
+                      {progress.completed}/{progress.total}
+                    </span>
+                  )}
                 </div>
                 <div className="h-1 overflow-hidden rounded-full bg-surface-3">
                   <div
-                    className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300"
-                    style={{ width: `${(progress.completed / progress.total) * 100}%` }}
+                    className={cn(
+                      "h-full rounded-full bg-[var(--accent)]",
+                      taskFraction(progress) == null
+                        ? "w-1/3 animate-pulse"
+                        : "transition-[width] duration-300",
+                    )}
+                    style={
+                      taskFraction(progress) == null
+                        ? undefined
+                        : { width: `${(taskFraction(progress) ?? 0) * 100}%` }
+                    }
                   />
                 </div>
               </div>

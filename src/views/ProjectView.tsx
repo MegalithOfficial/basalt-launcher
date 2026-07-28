@@ -18,6 +18,7 @@ import { ProjectGallery } from "../components/project/ProjectGallery";
 import { ProjectHero } from "../components/project/ProjectHero";
 import { ProjectSidebar } from "../components/project/ProjectSidebar";
 import { VersionBrowser } from "../components/project/VersionBrowser";
+import { useActiveProjectIds, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
 interface PendingInstall {
@@ -37,7 +38,8 @@ export function ProjectView() {
   );
   const instances = useStore((s) => s.instances);
   const setDiscoverTarget = useStore((s) => s.setDiscoverTarget);
-  const contentProgress = useStore((s) => (instance ? s.contentProgress[instance.id] : null));
+  const contentProgress = useInstanceTask(instance?.id);
+  const activeProjects = useActiveProjectIds();
   const goBack = useStore((s) => s.goBack);
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
@@ -47,7 +49,6 @@ export function ProjectView() {
       ? (s.instances.find((i) => i.pack_project_id === s.projectRef?.id) ?? null)
       : null,
   );
-  const installingContent = useStore((s) => s.installingContent);
   const sourcesMap = useStore((s) => s.contentSources[`${instance?.id}:${s.searchKind}`]);
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const installContentShared = useStore((s) => s.installContent);
@@ -137,15 +138,17 @@ export function ProjectView() {
     );
   }
 
-  const installedEntry = isPack
-    ? packInstance
-      ? { file_name: packInstance.name, version_id: packInstance.pack_version_id }
-      : null
-    : (sourcesMap?.[projectRef.id] ?? null);
+  const busyProject = installing !== null || activeProjects.has(projectRef.id);
 
-  const busyProject =
-    installing !== null ||
-    (!!instance && installingContent.includes(`${instance.id}:${kind}:${projectRef.id}`));
+  // An in flight install outranks the instance row, which for packs exists
+  // from the moment the download starts.
+  const installedEntry = busyProject
+    ? null
+    : isPack
+      ? packInstance
+        ? { file_name: packInstance.name, version_id: packInstance.pack_version_id }
+        : null
+      : (sourcesMap?.[projectRef.id] ?? null);
 
   const installPack = async (versionId: string | null) => {
     setInstalling(versionId ?? "latest");

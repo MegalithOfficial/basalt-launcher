@@ -22,6 +22,7 @@ import { loaderLabel } from "../lib/loader";
 import { logoSrc, mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { ContentItem, ContentKind, ContentUpdate } from "../lib/types";
+import { useActiveProjectIds } from "../lib/useTasks";
 import { useStore } from "../store";
 
 const TABS: Array<{ kind: ContentKind; label: string; extensions: string[] }> = [
@@ -78,7 +79,7 @@ export function InstanceView() {
   const applyUpdate = useStore((s) => s.applyUpdate);
   const storedUpdates = useStore((s) => (detailId ? s.updates[detailId] : undefined));
   const updates = storedUpdates ?? NO_UPDATES;
-  const installingContent = useStore((s) => s.installingContent);
+  const activeProjects = useActiveProjectIds();
 
   const [tab, setTab] = useState<ContentKind>("mods");
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -424,9 +425,7 @@ export function InstanceView() {
               const source = item.source;
               const displayName = source?.title ?? item.file_name;
               const linked = !!source?.provider && !!source.project_id;
-              const busy = installingContent.includes(
-                `${instance.id}:${tab}:${item.file_name}`,
-              );
+              const busy = !!source?.project_id && activeProjects.has(source.project_id);
               return (
                 <div
                   key={item.file_name}

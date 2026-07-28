@@ -36,6 +36,12 @@ import {
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
 import { InstanceTargetPicker } from "../components/InstanceTargetPicker";
 import { Select } from "../components/Select";
+import {
+  taskFraction,
+  useActiveProjectIds,
+  useActiveTasksByProject,
+  useInstanceTask,
+} from "../lib/useTasks";
 import { useStore } from "../store";
 
 const KINDS: Array<{ id: ContentKind; label: string }> = [
@@ -79,8 +85,9 @@ export function DiscoverView() {
   const openInstance = useStore((s) => s.openInstance);
   const installContent = useStore((s) => s.installContent);
   const installModpack = useStore((s) => s.installModpack);
-  const installingContent = useStore((s) => s.installingContent);
-  const contentProgress = useStore((s) => (targetId ? s.contentProgress[targetId] : null));
+  const contentProgress = useInstanceTask(targetId);
+  const activeProjects = useActiveProjectIds();
+  const activeTasks = useActiveTasksByProject();
   const sources = useStore((s) => s.contentSources[`${targetId}:${s.discoverKind}`]);
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
@@ -432,19 +439,30 @@ export function DiscoverView() {
                   const busy =
                     planning === project.id ||
                     installingPack === project.id ||
-                    (!!target &&
-                      installingContent.includes(`${target.id}:${kind}:${project.id}`));
-                  const done = isPack ? !!packInstance : !!installedFile;
+                    activeProjects.has(project.id);
+                  // A pack instance exists in the list from the moment the
+                  // download starts, so an in flight task outranks it. Without
+                  // this the card claims "Installed" at 3% downloaded.
+                  const done = !busy && (isPack ? !!packInstance : !!installedFile);
+                  const liveTask = activeTasks.get(project.id);
 
                   return {
                     project,
-                    subline: isPack
-                      ? packInstance
-                        ? `Installed as ${packInstance.name}`
-                        : undefined
-                      : installedFile
-                        ? `Installed · ${installedFile}`
-                        : undefined,
+                    subline: busy
+                      ? liveTask
+                        ? `${liveTask.stage}${
+                            liveTask.total > 0
+                              ? ` · ${liveTask.completed}/${liveTask.total}`
+                              : ""
+                          }`
+                        : "Preparing"
+                      : isPack
+                        ? packInstance
+                          ? `Installed as ${packInstance.name}`
+                          : undefined
+                        : installedFile
+                          ? `Installed · ${installedFile}`
+                          : undefined,
                     onOpen: () => openProject(provider, project.id, kind),
                     action: done ? (
                       <button
@@ -468,7 +486,12 @@ export function DiscoverView() {
                         className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
                       >
                         {busy ? (
-                          <Loader2 className="size-3.5 animate-spin" />
+                          <>
+                            <Loader2 className="size-3.5 animate-spin" />
+                            {liveTask && taskFraction(liveTask) != null
+                              ? `${Math.round((taskFraction(liveTask) ?? 0) * 100)}%`
+                              : "Installing"}
+                          </>
                         ) : (
                           <>
                             <Download className="size-3.5" />
@@ -511,11 +534,7 @@ export function DiscoverView() {
 
       <InstallPlanPrompt
         plan={pending?.plan ?? null}
-        busy={
-          !!target &&
-          !!pending &&
-          installingContent.includes(`${target.id}:${kind}:${pending.project.id}`)
-        }
+        busy={!!pending && activeProjects.has(pending.project.id)}
         progress={contentProgress ?? null}
         onConfirm={() => pending && runInstall(pending.project, true)}
         onSkipDependencies={() => pending && runInstall(pending.project, false)}

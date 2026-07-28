@@ -15,6 +15,7 @@ import { EditInstanceModal } from "../components/EditInstanceModal";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc, mediaSrc } from "../lib/media";
+import { taskFraction, useActiveTasksByInstance } from "../lib/useTasks";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance } from "../lib/types";
 import { PlayButton } from "../components/PlayButton";
@@ -23,6 +24,7 @@ import { useStore } from "../store";
 type ViewMode = "list" | "grid";
 
 export function InstancesView() {
+  const busyTasks = useActiveTasksByInstance();
   const instances = useStore((s) => s.instances);
   const deleteInstance = useStore((s) => s.deleteInstance);
   const mediaMap = useStore((s) => s.media);
@@ -204,11 +206,34 @@ export function InstancesView() {
                     </div>
                   </div>
                 </div>
+                {busyTasks.get(it.id) && (
+                  <div className="h-0.5 w-full overflow-hidden bg-surface-3">
+                    <div
+                      className={cn(
+                        "h-full bg-[var(--accent)]",
+                        taskFraction(busyTasks.get(it.id)!) == null
+                          ? "w-1/3 animate-pulse"
+                          : "transition-[width] duration-300",
+                      )}
+                      style={
+                        taskFraction(busyTasks.get(it.id)!) == null
+                          ? undefined
+                          : { width: `${(taskFraction(busyTasks.get(it.id)!) ?? 0) * 100}%` }
+                      }
+                    />
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <span className="truncate text-[11px] text-content-faint">
-                    {it.last_played_at
-                      ? `Played ${relativeTime(it.last_played_at)}`
-                      : "Never played"}
+                    {busyTasks.get(it.id) ? (
+                      <span className="capitalize text-[var(--accent)]">
+                        {busyTasks.get(it.id)!.stage}
+                      </span>
+                    ) : it.last_played_at ? (
+                      `Played ${relativeTime(it.last_played_at)}`
+                    ) : (
+                      "Never played"
+                    )}
                   </span>
                   <div className="flex shrink-0 items-center gap-1">
                     <PlayButton instance={it} compact onError={setLaunchError} />
