@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
-import { toast } from "sonner";
+import { notifySummary, notifyTaskFinished } from "./lib/notify";
 
 import { api } from "./lib/api";
 import { isInstanceInstalled } from "./lib/loader";
@@ -135,6 +135,7 @@ interface AppStore {
 
 let listenersBound = false;
 let batching = false;
+let unlisteners: Array<() => void> = [];
 
 export const useStore = create<AppStore>((set) => ({
   view: "home",
@@ -263,7 +264,7 @@ export const useStore = create<AppStore>((set) => ({
 
   endToastBatch: (summary) => {
     batching = false;
-    if (summary) toast.success(summary);
+    if (summary) notifySummary(summary);
   },
 
   clearFinishedTasks: async () => {
@@ -314,7 +315,8 @@ export const useStore = create<AppStore>((set) => ({
   init: async () => {
     if (!listenersBound) {
       listenersBound = true;
-      await listen<AuthPayload>("auth:state", (e) => {
+      const track = (fn: () => void) => unlisteners.push(fn);
+      track(await listen<AuthPayload>("auth:state", (e) => {
         const p = e.payload;
         if (p.status === "success") {
           set({ auth: { status: "idle" } });
@@ -322,8 +324,8 @@ export const useStore = create<AppStore>((set) => ({
         } else {
           set({ auth: { status: "error", message: p.message } });
         }
-      });
-      await listen<Task>("task:update", (e) => {
+      }));
+      track(await listen<Task>("task:update", (e) => {
         const task = e.payload;
         // A pack install creates its instance up front and only resolves when
         // the whole download finishes, so pull the row in as soon as a task
@@ -336,10 +338,10 @@ export const useStore = create<AppStore>((set) => ({
           task.state !== "queued";
 
         if (justFinished && !batching && task.state === "succeeded") {
-          toast.success(task.title, { description: task.subtitle ?? "Installed" });
+          notifyTaskFinished(task);
         }
         if (justFinished && task.state === "failed") {
-          toast.error(`${task.title} failed`, { description: task.error ?? undefined });
+          notifyTaskFinished(task);
         }
 
         const known = useStore.getState().instances;
@@ -365,8 +367,8 @@ export const useStore = create<AppStore>((set) => ({
                 : s.installedIds,
           };
         });
-      });
-      await listen<LogPayload>("process:log", (e) => {
+      }));
+      track(await listen<LogPayload>("process:log", (e) => {
         const p = e.payload;
         set((s) => {
           const prev = s.logs[p.running_id] ?? [];
@@ -374,14 +376,14 @@ export const useStore = create<AppStore>((set) => ({
           if (next.length > 6000) next.splice(0, next.length - 6000);
           return { logs: { ...s.logs, [p.running_id]: next } };
         });
-      });
-      await listen<RunningInfo>("process:state", (e) => {
+      }));
+      track(await listen<RunningInfo>("process:state", (e) => {
         const info = e.payload;
         set((s) => ({ running: { ...s.running, [info.running_id]: info } }));
         if (info.state !== "running") {
           void useStore.getState().refreshInstances();
         }
-      });
+      }));
     }
 
     try {
@@ -635,4 +637,12 @@ export const useStore = create<AppStore>((set) => ({
 
 if (import.meta.env.DEV) {
   (window as unknown as { __store: typeof useStore }).__store = useStore;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    unlisteners.forEach((fn) => fn());
+    unlisteners = [];
+    listenersBound = false;
+  });
 }
