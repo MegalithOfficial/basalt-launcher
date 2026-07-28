@@ -16,6 +16,7 @@ import type {
   Instance,
   JavaInfo,
   JavaStatus,
+  LaunchPreview,
   LauncherSettings,
   LogConfig,
   LogLine,
@@ -28,6 +29,8 @@ import type {
   SearchQuery,
   PendingOperation,
   SkinEntry,
+  SystemStats,
+  SystemUsage,
   Task,
   UpdateInfo,
   VersionEntry,
@@ -215,6 +218,10 @@ export const api = {
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
   checkForUpdates: () => call<UpdateInfo>("check_for_updates"),
   getAboutLinks: () => call<AboutLinks>("get_about_links"),
+  getSystemStats: () => call<SystemStats>("get_system_stats"),
+  getSystemUsage: () => call<SystemUsage>("get_system_usage"),
+  previewLaunchArgs: (settings: LauncherSettings) =>
+    call<LaunchPreview>("preview_launch_args", { settings }),
   getAppearance: () => call<Appearance>("get_appearance"),
   listSkins: () => call<SkinEntry[]>("list_skins"),
   addSkinFromFile: (path: string, name: string | null, variant: string) =>

@@ -90,14 +90,31 @@ pub async fn list_all() -> Vec<JavaInfo> {
     result
 }
 
-pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<JavaInfo> {
-    let found = candidates(explicit).await;
-    let picked = found
+pub fn pick(found: &[JavaInfo], required: u32) -> Option<JavaInfo> {
+    found
         .iter()
-        .find(|j| j.major == required)
-        .or_else(|| found.iter().find(|j| j.major > required))
-        .or_else(|| found.first())
-        .cloned();
+        .filter(|j| j.major >= required)
+        .min_by_key(|j| j.major)
+        .or_else(|| found.iter().max_by_key(|j| j.major))
+        .cloned()
+}
+
+pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<JavaInfo> {
+    if let Some(path) = explicit.map(str::trim).filter(|p| !p.is_empty()) {
+        match probe(path).await {
+            Some(info) => {
+                tracing::info!(path, major = info.major, required, "using the pinned java runtime");
+                return Some(info);
+            }
+            None => tracing::warn!(
+                path,
+                "the pinned java runtime could not be run, falling back to detection"
+            ),
+        }
+    }
+
+    let found = candidates(None).await;
+    let picked = pick(&found, required);
     match &picked {
         Some(java) => tracing::debug!(required, major = java.major, path = %java.path, "java selected"),
         None => tracing::warn!(required, "no java runtime found on this system"),
@@ -107,7 +124,42 @@ pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<Jav
 
 #[cfg(test)]
 mod tests {
-    use super::parse_major;
+    use super::{parse_major, pick, JavaInfo};
+
+    fn java(major: u32) -> JavaInfo {
+        JavaInfo {
+            path: format!("/usr/lib/jvm/java-{major}/bin/java"),
+            major,
+        }
+    }
+
+    #[test]
+    fn prefers_the_closest_runtime_that_meets_the_requirement() {
+        let found = vec![java(8), java(17), java(21), java(25)];
+        assert_eq!(pick(&found, 17).unwrap().major, 17);
+        assert_eq!(pick(&found, 18).unwrap().major, 21, "should not jump past 21 to 25");
+        assert_eq!(pick(&found, 8).unwrap().major, 8);
+        assert!(pick(&[], 21).is_none());
+    }
+
+    #[test]
+    fn falls_back_to_the_newest_when_nothing_is_new_enough() {
+        let found = vec![java(8), java(17)];
+        assert_eq!(pick(&found, 21).unwrap().major, 17);
+    }
+
+    #[test]
+    fn does_not_depend_on_the_order_runtimes_were_found() {
+        let ordered = vec![java(8), java(17), java(21), java(25)];
+        let shuffled = vec![java(25), java(8), java(21), java(17)];
+        for required in [8, 17, 18, 21, 26] {
+            assert_eq!(
+                pick(&ordered, required).unwrap().major,
+                pick(&shuffled, required).unwrap().major,
+                "required {required} depended on discovery order"
+            );
+        }
+    }
 
     #[test]
     fn parses_legacy_and_modern() {

@@ -6,6 +6,18 @@ export interface LauncherSettings {
   concurrent_downloads: number;
   curseforge_api_key: string | null;
   log_level: LogLevel;
+  jvm_args: string;
+  game_args: string;
+  window_width: number;
+  window_height: number;
+  fullscreen: boolean;
+  ignore_java_checks: boolean;
+  env_vars: EnvVar[];
+}
+
+export interface EnvVar {
+  key: string;
+  value: string;
 }
 
 export interface Instance {
@@ -307,6 +319,8 @@ export interface JavaInfo {
 export interface AppInfo {
   version: string;
   data_dir: string;
+  default_jvm_args: string;
+  jvm_placeholders: string[];
 }
 
 export interface JavaStatus {
@@ -429,4 +443,29 @@ export interface Appearance {
   capes: CapeEntry[];
   active_cape_id: string | null;
   library_id: string | null;
+}
+
+export interface SystemStats {
+  os: string;
+  kernel: string | null;
+  cpu: string;
+  cores: number;
+  total_memory_mb: number;
+  available_memory_mb: number;
+  data_dir_free_mb: number | null;
+  data_dir_total_mb: number | null;
+}
+
+export interface LaunchPreview {
+  java: string;
+  pinned: boolean;
+  jvm: string[];
+  game: string[];
+}
+
+export interface SystemUsage {
+  total_memory_mb: number;
+  available_memory_mb: number;
+  data_dir_free_mb: number | null;
+  data_dir_total_mb: number | null;
 }

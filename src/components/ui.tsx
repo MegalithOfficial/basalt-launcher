@@ -82,3 +82,39 @@ export function Button({
     </button>
   );
 }
+
+export function Toggle({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative h-6 w-11 shrink-0 rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        checked
+          ? "border-transparent [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))]"
+          : "border-border bg-surface-3",
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-1/2 size-4 -translate-y-1/2 rounded-full transition-all",
+          checked ? "left-[1.5rem] bg-black" : "left-1 bg-content-faint",
+        )}
+      />
+    </button>
+  );
+}

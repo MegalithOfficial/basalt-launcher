@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
@@ -9,23 +10,39 @@ import {
   Database,
   FolderOpen,
   KeyRound,
+  Plus,
   RefreshCw,
   ScrollText,
   Tag,
+  Trash2,
 } from "lucide-react";
 
 import { Select } from "../components/Select";
+import { Toggle } from "../components/ui";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
+import { log } from "../lib/log";
 import type {
   AboutLinks,
   AppInfo,
   JavaInfo,
+  EnvVar,
+  LaunchPreview,
   LauncherSettings,
   LogLevel,
+  SystemStats,
+  SystemUsage,
   UpdateInfo,
 } from "../lib/types";
 import { useStore } from "../store";
+
+const TABS = [
+  { id: "general", label: "General" },
+  { id: "java", label: "Java" },
+  { id: "game", label: "Game" },
+  { id: "integrations", label: "Integrations" },
+  { id: "diagnostics", label: "Diagnostics" },
+];
 
 const AUTO_DETECT = "Auto-detect";
 const CUSTOM_PATH = "Custom path";
@@ -72,21 +89,123 @@ function Section({
   );
 }
 
+function formatGb(mb?: number | null) {
+  if (mb == null) return "unknown";
+  if (mb < 1024) return `${mb} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+function StatTile({
+  label,
+  value,
+  hint,
+  children,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 bg-surface-2/60 px-5 py-4">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-content-faint">
+        {label}
+      </div>
+      <div className="truncate text-sm font-medium text-content" title={value}>
+        {value}
+      </div>
+      {hint && (
+        <div className="truncate text-xs text-content-faint" title={hint}>
+          {hint}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function SystemCard({
+  stats,
+  onRefresh,
+  refreshing,
+}: {
+  stats: SystemStats | null;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
+  return (
+    <section className="mt-6">
+      <div className="mb-2 flex items-end justify-between gap-4 px-1">
+        <div>
+          <h2 className="font-display text-sm font-semibold text-content">This system</h2>
+          <p className="mt-0.5 text-xs text-content-muted">
+            What Basalt sees. Useful when deciding how much memory to hand the game.
+          </p>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          title="Re-read memory and disk space"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-50"
+        >
+          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+          Refresh
+        </button>
+      </div>
+      <div className="grid gap-px overflow-hidden rounded-2xl border border-border-soft bg-border-soft sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label="Memory"
+          value={`${formatGb(stats?.total_memory_mb)} installed`}
+          hint={`${formatGb(stats?.available_memory_mb)} free right now`}
+        />
+        <StatTile
+          label="Processor"
+          value={stats?.cpu ?? "reading"}
+          hint={stats ? `${stats.cores} physical cores` : undefined}
+        />
+        <StatTile
+          label="Operating system"
+          value={stats?.os ?? "reading"}
+          hint={stats?.kernel ? `kernel ${stats.kernel}` : undefined}
+        />
+        <StatTile
+          label="Disk"
+          value={
+            stats?.data_dir_free_mb != null
+              ? `${formatGb(stats.data_dir_free_mb)} free`
+              : "unknown"
+          }
+          hint={
+            stats?.data_dir_total_mb != null
+              ? `of ${formatGb(stats.data_dir_total_mb)}, where instances live`
+              : "where instances live"
+          }
+        />
+      </div>
+    </section>
+  );
+}
+
 function Row({
   label,
   hint,
   children,
   stacked,
+  action,
 }: {
   label: string;
   hint?: string;
   children: React.ReactNode;
   stacked?: boolean;
+  action?: React.ReactNode;
 }) {
   if (stacked) {
     return (
       <div className="px-5 py-4">
-        <div className="text-sm font-medium text-content">{label}</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-content">{label}</div>
+          {action}
+        </div>
         {hint && (
           <div className="mt-0.5 break-words text-xs text-content-faint">{hint}</div>
         )}
@@ -116,6 +235,10 @@ export function SettingsView() {
   const [javas, setJavas] = useState<JavaInfo[]>([]);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [saved, setSaved] = useState(false);
+  const [stats, setStats] = useState<SystemStats | null>(null);
+  const [preview, setPreview] = useState<LaunchPreview | null>(null);
+  const [refreshingUsage, setRefreshingUsage] = useState(false);
+  const [tab, setTab] = useState(TABS[0].id);
   const [links, setLinks] = useState<AboutLinks | null>(null);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
@@ -126,10 +249,23 @@ export function SettingsView() {
   useEffect(() => setDraft(settings), [settings]);
 
   useEffect(() => {
-    api.listJavas().then(setJavas).catch(() => {});
+    api.listJavas().then((list) => setJavas(list ?? [])).catch(() => {});
     api.getAppInfo().then(setAppInfo).catch(() => {});
     api.getAboutLinks().then(setLinks).catch(() => {});
+    api.getSystemStats().then(setStats).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!draft) return;
+    let live = true;
+    api
+      .previewLaunchArgs(draft)
+      .then((next) => live && setPreview(next))
+      .catch(() => live && setPreview(null));
+    return () => {
+      live = false;
+    };
+  }, [draft]);
 
   useEffect(() => {
     if (!draft) return;
@@ -175,6 +311,39 @@ export function SettingsView() {
       setChecking(false);
     }
   };
+
+  const setEnvVar = (index: number, next: EnvVar) =>
+    setDraft({
+      ...draft,
+      env_vars: draft.env_vars.map((v, i) => (i === index ? next : v)),
+    });
+
+  const removeEnvVar = (index: number) =>
+    setDraft({ ...draft, env_vars: draft.env_vars.filter((_, i) => i !== index) });
+
+  const addEnvVar = () =>
+    setDraft({ ...draft, env_vars: [...draft.env_vars, { key: "", value: "" }] });
+
+  const refreshUsage = async () => {
+    setRefreshingUsage(true);
+    try {
+      const usage: SystemUsage = await api.getSystemUsage();
+      setStats((prev) => (prev ? { ...prev, ...usage } : prev));
+    } catch (e) {
+      log.warn("settings", `could not refresh system usage: ${String(e)}`);
+    } finally {
+      setRefreshingUsage(false);
+    }
+  };
+
+  const installedMb = stats?.total_memory_mb ?? 0;
+  const availableMb = stats?.available_memory_mb ?? 0;
+  const memoryHint =
+    installedMb > 0 && draft.max_memory_mb > installedMb
+      ? `more memory than this system has (${formatGb(installedMb)})`
+      : availableMb > 0 && draft.max_memory_mb > availableMb
+        ? `more than is free right now (${formatGb(availableMb)})`
+        : "JVM heap ceiling";
 
   const parseNum = (value: string, fallback: number) => {
     const n = Number(value);
@@ -297,7 +466,39 @@ export function SettingsView() {
           </div>
         </section>
 
-        <div className="gap-6 [column-fill:balance] lg:columns-2 2xl:columns-3">
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          className="mb-7 flex flex-wrap items-center gap-6 border-b border-border-soft"
+        >
+          {TABS.map((entry) => (
+            <button
+              key={entry.id}
+              role="tab"
+              aria-selected={tab === entry.id}
+              onClick={() => setTab(entry.id)}
+              className={cn(
+                "relative -mb-px pb-3 pt-1 text-sm font-medium transition-colors",
+                tab === entry.id
+                  ? "text-content"
+                  : "text-content-faint hover:text-content-muted",
+              )}
+            >
+              {entry.label}
+              {tab === entry.id && (
+                <motion.span
+                  layoutId="settings-tab-underline"
+                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--accent)]"
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {tab === "general" && (
+          <div>
+          <div className="gap-6 [column-fill:balance] lg:columns-2">
           <Section
             title="Game defaults"
             description="Applied to every launch unless an instance overrides them."
@@ -311,7 +512,7 @@ export function SettingsView() {
               />
               <span className="text-xs text-content-faint">MB</span>
             </Row>
-            <Row label="Maximum memory" hint="JVM heap ceiling">
+            <Row label="Maximum memory" hint={memoryHint}>
               <input
                 type="number"
                 value={draft.max_memory_mb}
@@ -331,7 +532,30 @@ export function SettingsView() {
               />
             </Row>
           </Section>
+          <Section title="Storage">
+            <Row label="Data directory" hint={appInfo?.data_dir ?? "resolving"} stacked>
+              <button
+                onClick={() => appInfo && openPath(appInfo.data_dir)}
+                className={actionCls}
+              >
+                <FolderOpen className="size-3.5" />
+                Open folder
+              </button>
+            </Row>
+          </Section>
+          </div>
 
+          <SystemCard
+            stats={stats}
+            onRefresh={() => void refreshUsage()}
+            refreshing={refreshingUsage}
+          />
+          </div>
+        )}
+
+        {tab === "java" && (
+          <div className="flex flex-wrap items-start gap-6">
+          <div className="min-w-[24rem] flex-1">
           <Section
             title="Java"
             description="Basalt picks a matching runtime per version automatically. Pin one here to override everywhere."
@@ -368,8 +592,195 @@ export function SettingsView() {
                 />
               </Row>
             )}
+            <Row
+              label="Java parameters"
+              hint="the full JVM command line. Placeholders are filled in at launch."
+              stacked
+              action={
+                appInfo && draft.jvm_args !== appInfo.default_jvm_args ? (
+                  <button
+                    onClick={() => set({ jvm_args: appInfo.default_jvm_args })}
+                    className="text-[11px] font-medium text-content-faint transition-colors hover:text-content"
+                  >
+                    Reset to default
+                  </button>
+                ) : undefined
+              }
+            >
+              <div className="w-full">
+                <textarea
+                  value={draft.jvm_args}
+                  onChange={(e) => set({ jvm_args: e.target.value })}
+                  spellCheck={false}
+                  rows={4}
+                  placeholder={appInfo?.default_jvm_args ?? ""}
+                  className={cn(inputCls, "w-full resize-y font-mono text-xs leading-relaxed")}
+                />
+                {(appInfo?.jvm_placeholders ?? []).length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-[11px] text-content-faint">Insert</span>
+                    {(appInfo?.jvm_placeholders ?? []).map((name) => (
+                      <button
+                        key={name}
+                        title={`Insert {{${name}}} at the end`}
+                        onClick={() =>
+                          set({ jvm_args: `${draft.jvm_args} {{${name}}}`.trim() })
+                        }
+                        className="rounded-md border border-border-soft bg-surface-2 px-2 py-1 font-mono text-[10px] text-content-muted transition-colors hover:border-border hover:bg-surface-3 hover:text-content"
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Row>
+            <Row
+              label="Ignore Java checks on launch"
+              hint="start anyway when the runtime is older than the version asks for"
+            >
+              <Toggle
+                label="Ignore Java checks on launch"
+                checked={draft.ignore_java_checks}
+                onChange={(ignore_java_checks) => set({ ignore_java_checks })}
+              />
+            </Row>
           </Section>
+          </div>
 
+          <div className="min-w-[24rem] flex-1 lg:sticky lg:top-2">
+            <Section
+              title="Resulting command"
+              description={
+                preview?.pinned
+                  ? "What Basalt will run. The pinned runtime above is used as is."
+                  : "What Basalt will run. With auto-detect, the runtime is chosen per version."
+              }
+            >
+              <div className="overflow-x-auto p-4">
+                {preview ? (
+                  <code className="block font-mono text-[11px] leading-relaxed">
+                    <span className="block whitespace-pre-wrap text-content">
+                      {preview.java} \
+                    </span>
+                    {preview.jvm.map((arg, i) => (
+                      <span key={`jvm-${i}`} className="block whitespace-pre pl-4 text-content">
+                        {arg} \
+                      </span>
+                    ))}
+                    <span className="block whitespace-pre-wrap py-1 pl-4 text-content-faint/70">
+                      classpath, natives path and main class are added here by Basalt
+                    </span>
+                    {preview.game.map((arg, i) => (
+                      <span key={`game-${i}`} className="block whitespace-pre pl-4 text-content">
+                        {arg}
+                        {i < preview.game.length - 1 ? " \\" : ""}
+                      </span>
+                    ))}
+                  </code>
+                ) : (
+                  <span className="font-mono text-[11px] text-content-faint">
+                    building preview
+                  </span>
+                )}
+              </div>
+            </Section>
+          </div>
+          </div>
+        )}
+
+        {tab === "game" && (
+          <div className="gap-6 [column-fill:balance] lg:columns-2">
+          <Section
+            title="Game window"
+            description="How Minecraft opens. Instances inherit these unless the pack overrides them."
+          >
+            <Row label="Window size" hint="width and height in pixels">
+              <input
+                type="number"
+                value={draft.window_width}
+                onChange={(e) => set({ window_width: parseNum(e.target.value, 854) })}
+                disabled={draft.fullscreen}
+                className={cn(inputCls, numberCls, "disabled:opacity-40")}
+              />
+              <span className="text-xs text-content-faint">x</span>
+              <input
+                type="number"
+                value={draft.window_height}
+                onChange={(e) => set({ window_height: parseNum(e.target.value, 480) })}
+                disabled={draft.fullscreen}
+                className={cn(inputCls, numberCls, "disabled:opacity-40")}
+              />
+            </Row>
+            <Row label="Start fullscreen" hint="ignores the window size above">
+              <Toggle
+                label="Start fullscreen"
+                checked={draft.fullscreen}
+                onChange={(fullscreen) => set({ fullscreen })}
+              />
+            </Row>
+            <Row
+              label="Extra game arguments"
+              hint="passed to Minecraft after the launcher's own arguments"
+              stacked
+            >
+              <input
+                value={draft.game_args}
+                onChange={(e) => set({ game_args: e.target.value })}
+                spellCheck={false}
+                placeholder="--demo"
+                className={cn(inputCls, "w-full font-mono text-xs")}
+              />
+            </Row>
+          </Section>
+          <Section
+            title="Environment variables"
+            description="Set on the game process only. Useful for driver and GPU switches."
+          >
+            <div className="flex flex-col gap-2 px-5 py-4">
+              {draft.env_vars.length === 0 && (
+                <p className="text-xs text-content-faint">Nothing set.</p>
+              )}
+              {draft.env_vars.map((entry, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    value={entry.key}
+                    onChange={(e) => setEnvVar(index, { ...entry, key: e.target.value })}
+                    placeholder="MESA_GL_VERSION_OVERRIDE"
+                    spellCheck={false}
+                    className={cn(inputCls, "min-w-0 flex-1 font-mono text-xs")}
+                  />
+                  <span className="text-xs text-content-faint">=</span>
+                  <input
+                    value={entry.value}
+                    onChange={(e) => setEnvVar(index, { ...entry, value: e.target.value })}
+                    placeholder="4.5"
+                    spellCheck={false}
+                    className={cn(inputCls, "min-w-0 flex-1 font-mono text-xs")}
+                  />
+                  <button
+                    onClick={() => removeEnvVar(index)}
+                    title={`Remove ${entry.key || "variable"}`}
+                    className="grid size-8 shrink-0 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={addEnvVar}
+                className={cn(actionCls, "mt-1 self-start")}
+              >
+                <Plus className="size-3.5" />
+                Add variable
+              </button>
+            </div>
+          </Section>
+          </div>
+        )}
+
+        {tab === "integrations" && (
+          <div>
           <Section
             title="Integrations"
             description="Modrinth works out of the box. CurseForge requires a personal key because their API is keyed per application."
@@ -395,7 +806,11 @@ export function SettingsView() {
               </button>
             </Row>
           </Section>
+          </div>
+        )}
 
+        {tab === "diagnostics" && (
+          <div>
           <Section
             title="Diagnostics"
             description="Logs are written to disk and kept for seven days. Raise the level before reproducing a problem."
@@ -430,19 +845,9 @@ export function SettingsView() {
               </button>
             </Row>
           </Section>
+          </div>
+        )}
 
-          <Section title="Storage">
-            <Row label="Data directory" hint={appInfo?.data_dir ?? "resolving"} stacked>
-              <button
-                onClick={() => appInfo && openPath(appInfo.data_dir)}
-                className={actionCls}
-              >
-                <FolderOpen className="size-3.5" />
-                Open folder
-              </button>
-            </Row>
-          </Section>
-        </div>
       </div>
     </div>
   );

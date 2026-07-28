@@ -356,10 +356,14 @@ impl Db {
                 row.get(0)
             })
             .optional()?;
-        Ok(match value {
+        let mut settings: LauncherSettings = match value {
             Some(json) => serde_json::from_str(&json)?,
             None => LauncherSettings::default(),
-        })
+        };
+        if settings.jvm_args.trim().is_empty() {
+            settings.jvm_args = crate::config::DEFAULT_JVM_ARGS.to_string();
+        }
+        Ok(settings)
     }
 
     pub fn save_settings(&self, settings: &LauncherSettings) -> Result<()> {

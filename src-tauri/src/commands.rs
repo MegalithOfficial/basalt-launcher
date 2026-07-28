@@ -20,6 +20,7 @@ use crate::meta::media::{self, VersionMedia};
 use crate::search;
 use crate::skin::{self, Appearance, SkinEntry};
 use crate::state::AppState;
+use crate::sysinfo_probe::{self, SystemStats, SystemUsage};
 use crate::update::{self, UpdateInfo};
 
 #[tauri::command]
@@ -32,6 +33,8 @@ pub fn get_settings(state: State<AppState>) -> Result<LauncherSettings> {
 pub struct AppInfo {
     pub version: String,
     pub data_dir: String,
+    pub default_jvm_args: String,
+    pub jvm_placeholders: Vec<String>,
 }
 
 #[tauri::command]
@@ -40,6 +43,11 @@ pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
     Ok(AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         data_dir: state.paths.root.display().to_string(),
+        default_jvm_args: crate::config::DEFAULT_JVM_ARGS.to_string(),
+        jvm_placeholders: crate::launch::PLACEHOLDERS
+            .iter()
+            .map(|p| p.to_string())
+            .collect(),
     })
 }
 
@@ -1147,4 +1155,25 @@ pub fn rename_skin(state: State<AppState>, skin_id: String, name: String) -> Res
 #[tracing::instrument(skip(state), err)]
 pub fn get_worn_skin(state: State<AppState>, uuid: String) -> Result<Option<SkinEntry>> {
     skin::worn_skin(&state, &uuid)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn get_system_stats(state: State<AppState>) -> Result<SystemStats> {
+    Ok(sysinfo_probe::collect(&state.paths))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn preview_launch_args(
+    state: State<AppState>,
+    settings: LauncherSettings,
+) -> Result<launch::LaunchPreview> {
+    Ok(launch::preview(&state.paths, &settings))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn get_system_usage(state: State<AppState>) -> Result<SystemUsage> {
+    Ok(sysinfo_probe::usage(&state.paths))
 }

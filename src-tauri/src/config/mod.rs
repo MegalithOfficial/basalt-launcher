@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_JVM_ARGS: &str = "-Xms{{min_ram}}M -Xmx{{max_ram}}M";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvVar {
+    pub key: String,
+    pub value: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LauncherSettings {
@@ -9,6 +17,13 @@ pub struct LauncherSettings {
     pub concurrent_downloads: usize,
     pub curseforge_api_key: Option<String>,
     pub log_level: String,
+    pub jvm_args: String,
+    pub game_args: String,
+    pub window_width: u32,
+    pub window_height: u32,
+    pub fullscreen: bool,
+    pub ignore_java_checks: bool,
+    pub env_vars: Vec<EnvVar>,
 }
 
 impl Default for LauncherSettings {
@@ -20,6 +35,13 @@ impl Default for LauncherSettings {
             concurrent_downloads: 16,
             curseforge_api_key: None,
             log_level: crate::logging::DEFAULT_LEVEL.to_string(),
+            jvm_args: DEFAULT_JVM_ARGS.to_string(),
+            game_args: String::new(),
+            window_width: 854,
+            window_height: 480,
+            fullscreen: false,
+            ignore_java_checks: false,
+            env_vars: Vec::new(),
         }
     }
 }

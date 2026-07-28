@@ -94,10 +94,12 @@ pub fn spawn_process(
     program: &str,
     args: Vec<String>,
     cwd: &std::path::Path,
+    env: Vec<(String, String)>,
 ) -> crate::error::Result<()> {
     let mut command = Command::new(program);
     command
         .args(&args)
+        .envs(env)
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -16,6 +16,7 @@ mod paths;
 mod search;
 mod skin;
 mod state;
+mod sysinfo_probe;
 mod tasks;
 mod update;
 
@@ -121,6 +122,9 @@ pub fn run() {
             commands::frontend_log,
             commands::check_for_updates,
             commands::get_about_links,
+            commands::get_system_stats,
+            commands::get_system_usage,
+            commands::preview_launch_args,
             commands::get_appearance,
             commands::list_skins,
             commands::add_skin_from_file,
