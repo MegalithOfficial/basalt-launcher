@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Boxes, Package, Play, ScrollText, Settings, UserCircle2 } from "lucide-react";
+import { Boxes, Compass, Play, ScrollText, Settings, UserCircle2 } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import type { View } from "../lib/types";
@@ -9,7 +9,7 @@ import { useStore } from "../store";
 const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
   { id: "home", label: "Play", icon: Play },
   { id: "instances", label: "Instances", icon: Boxes },
-  { id: "modpacks", label: "Modpacks", icon: Package },
+  { id: "discover", label: "Discover", icon: Compass },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 

@@ -242,7 +242,7 @@ export function CreateInstanceModal({
               <button
                 onClick={() => {
                   onClose();
-                  useStore.getState().openModpacks();
+                  useStore.getState().openDiscover("modpacks", null);
                 }}
                 className="mr-auto text-xs font-medium text-content-muted transition-colors hover:text-content"
               >

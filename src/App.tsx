@@ -11,9 +11,8 @@ import { ConsoleView } from "./views/ConsoleView";
 import { HomeView } from "./views/HomeView";
 import { InstanceView } from "./views/InstanceView";
 import { InstancesView } from "./views/InstancesView";
-import { ModpacksView } from "./views/ModpacksView";
+import { DiscoverView } from "./views/DiscoverView";
 import { ProjectView } from "./views/ProjectView";
-import { SearchView } from "./views/SearchView";
 import { SettingsView } from "./views/SettingsView";
 import { useStore } from "./store";
 import type { View } from "./lib/types";
@@ -25,9 +24,8 @@ const VIEWS: Record<View, React.ComponentType> = {
   settings: SettingsView,
   console: ConsoleView,
   instance: InstanceView,
-  search: SearchView,
+  discover: DiscoverView,
   project: ProjectView,
-  modpacks: ModpacksView,
 };
 
 function App() {
