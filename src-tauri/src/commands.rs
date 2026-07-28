@@ -151,9 +151,8 @@ pub fn update_instance(
 #[tauri::command]
 pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
     state.db.delete_instance(&instance_id)?;
-    let dir = state.paths.instance_dir(&instance_id);
-    if dir.exists() {
-        std::fs::remove_dir_all(dir)?;
+    if !state.paths.remove_instance_dir(&instance_id) {
+        return Err(Error::other("refusing to delete an instance with an invalid id"));
     }
     media::clear_custom_banner(&state.paths, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
@@ -268,6 +267,68 @@ pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Insta
     state.db.list_instances(&state.paths)
 }
 
+#[tauri::command]
+pub fn list_tasks(state: State<AppState>) -> Vec<crate::tasks::Task> {
+    state.tasks.list()
+}
+
+#[tauri::command]
+pub fn clear_finished_tasks(state: State<AppState>) {
+    state.tasks.clear_finished();
+}
+
+#[tauri::command]
+pub fn cancel_task(state: State<AppState>, task_id: String) -> bool {
+    state.tasks.cancel(&task_id)
+}
+
+fn sweep_partials(dir: &std::path::Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            removed += sweep_partials(&path);
+        } else if path.extension().is_some_and(|e| e == "part") {
+            if std::fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
+/// Rows left in pending_operations mean the app died mid download. Clean up
+/// per kind, then hand the list to the UI so it can offer a restart.
+#[tauri::command]
+pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::PendingOperation>> {
+    let pending = state.db.pending_operations()?;
+    if pending.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    for op in &pending {
+        let Some(instance_id) = op.instance_id.as_deref() else {
+            continue;
+        };
+        if op.kind == "ModpackInstall" {
+            // A half built pack instance is not usable, so it goes entirely.
+            let _ = state.db.delete_instance_content_files(instance_id);
+            let _ = state.db.delete_instance(instance_id);
+            state.paths.remove_instance_dir(instance_id);
+        } else {
+            // Completed files are hash verified and fine to keep. Only the
+            // aborted transfer leaves a .part behind.
+            sweep_partials(&state.paths.instance_dir(instance_id));
+        }
+    }
+
+    state.db.clear_pending_operations()?;
+    Ok(pending)
+}
+
 fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {
     if state.paths.version_jar(id).is_file() {
         return true;
@@ -338,16 +399,41 @@ pub async fn install_instance(
     instance_id: String,
 ) -> Result<()> {
     let instance = find_instance(&state, &instance_id)?;
-    let launch_id = match (&instance.loader, &instance.launch_version_id) {
-        (Some(_), None) => {
-            let id = loaders::install_loader(&app, &state, &instance).await?;
-            state.db.set_launch_version(&instance.id, &id)?;
-            id
-        }
-        (_, Some(id)) => id.clone(),
-        (None, None) => instance.version_id.clone(),
-    };
-    install::install_version(&app, &state, &instance.id, &launch_id).await
+    let task = state.tasks.start(
+        &app,
+        crate::tasks::TaskKind::GameInstall,
+        crate::tasks::TaskSpec {
+            title: instance.name.clone(),
+            subtitle: Some(format!(
+                "{}{}",
+                instance.version_id,
+                instance
+                    .loader
+                    .as_deref()
+                    .map(|l| format!(" · {l}"))
+                    .unwrap_or_default()
+            )),
+            instance_id: Some(instance.id.clone()),
+            ..Default::default()
+        },
+    );
+
+    let result = async {
+        let launch_id = match (&instance.loader, &instance.launch_version_id) {
+            (Some(_), None) => {
+                let id = loaders::install_loader(&app, &state, &instance, &task).await?;
+                state.db.set_launch_version(&instance.id, &id)?;
+                id
+            }
+            (_, Some(id)) => id.clone(),
+            (None, None) => instance.version_id.clone(),
+        };
+        install::install_version(&app, &state, &instance.id, &launch_id, &task).await
+    }
+    .await;
+
+    task.finish(&result);
+    result
 }
 
 #[tauri::command]

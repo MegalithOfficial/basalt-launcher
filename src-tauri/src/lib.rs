@@ -14,6 +14,7 @@ mod modpack;
 mod paths;
 mod search;
 mod state;
+mod tasks;
 
 use paths::Paths;
 use state::AppState;
@@ -53,6 +54,10 @@ pub fn run() {
             commands::set_instance_logo,
             commands::clear_instance_logo,
             commands::backfill_pack_logos,
+            commands::list_tasks,
+            commands::clear_finished_tasks,
+            commands::cancel_task,
+            commands::recover_interrupted,
             commands::install_instance,
             commands::get_java_status,
             commands::auth_begin,

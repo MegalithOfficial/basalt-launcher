@@ -112,6 +112,16 @@ pub struct ContentFile {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct PendingOperation {
+    pub id: String,
+    pub kind: String,
+    pub instance_id: Option<String>,
+    pub title: String,
+    pub payload: Option<String>,
+    pub started_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ContentUpdate {
     pub kind: String,
     pub file_name: String,
@@ -126,7 +136,7 @@ pub struct CachedResponse {
     pub fresh: bool,
 }
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -221,6 +231,14 @@ fn migrate(conn: &Connection) -> Result<()> {
             checked_at INTEGER NOT NULL,
             PRIMARY KEY (instance_id, kind, file_name)
         );
+        CREATE TABLE IF NOT EXISTS pending_operations(
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            instance_id TEXT,
+            title TEXT NOT NULL,
+            payload TEXT,
+            started_at INTEGER NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS api_cache(
             key TEXT PRIMARY KEY,
             body TEXT NOT NULL,
@@ -265,6 +283,13 @@ impl Db {
         let db = Db(Arc::new(Mutex::new(conn)));
         db.import_legacy_json(paths)?;
         Ok(db)
+    }
+
+    #[cfg(test)]
+    pub fn open_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        migrate(&conn)?;
+        Ok(Db(Arc::new(Mutex::new(conn))))
     }
 
     fn import_legacy_json(&self, paths: &Paths) -> Result<()> {
@@ -715,6 +740,48 @@ impl Db {
             )
             .optional()?;
         Ok(result.flatten())
+    }
+
+    pub fn begin_operation(&self, op: &PendingOperation) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO pending_operations
+                (id, kind, instance_id, title, payload, started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![op.id, op.kind, op.instance_id, op.title, op.payload, op.started_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn end_operation(&self, id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM pending_operations WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn pending_operations(&self) -> Result<Vec<PendingOperation>> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, kind, instance_id, title, payload, started_at
+             FROM pending_operations ORDER BY started_at",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(PendingOperation {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                instance_id: row.get(2)?,
+                title: row.get(3)?,
+                payload: row.get(4)?,
+                started_at: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    pub fn clear_pending_operations(&self) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM pending_operations", [])?;
+        Ok(())
     }
 
     pub fn cache_get(&self, key: &str, now: i64) -> Result<Option<CachedResponse>> {
