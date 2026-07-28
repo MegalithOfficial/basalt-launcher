@@ -165,10 +165,6 @@ fn planned_from(
     })
 }
 
-/// Mods and pack files live inside a single instance, so removing the ones a
-/// cancelled task created is safe. Shared caches (libraries, assets, version
-/// jars) are deliberately never rolled back: they are content addressed and
-/// reused by every other instance on that game version.
 pub fn rollback_written(task: &crate::tasks::TaskHandle) {
     let paths = std::mem::take(&mut *task.written().lock().unwrap());
     for path in paths {

@@ -1,4 +1,4 @@
-use reqwest::header::{ETAG, IF_NONE_MATCH};
+use reqwest::header::IF_NONE_MATCH;
 use reqwest::{RequestBuilder, StatusCode};
 use serde::de::DeserializeOwned;
 
@@ -36,34 +36,45 @@ pub async fn fetch<T: DeserializeOwned>(
         None => request,
     };
 
-    let response = match http::send(&state.limiter, request).await {
-        Ok(response) => response,
+    let fetched = match http::fetch_body(&state.limiter, request).await {
+        Ok(fetched) => fetched,
         Err(e) => match cached {
             Some(entry) => return Ok(serde_json::from_str(&entry.body)?),
             None => return Err(e),
         },
     };
 
-    if response.status() == StatusCode::NOT_MODIFIED {
+    if fetched.status == StatusCode::NOT_MODIFIED {
         if let Some(entry) = cached {
             let _ = state.db.cache_touch(key, now());
             return Ok(serde_json::from_str(&entry.body)?);
         }
     }
 
-    let response = response.error_for_status()?;
-    let etag = response
-        .headers()
-        .get(ETAG)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
-    let body = response.text().await?;
-    let value = serde_json::from_str(&body)?;
-    let _ = state.db.cache_put(key, &body, etag.as_deref(), now(), ttl_secs);
+    if !fetched.status.is_success() {
+        return match cached {
+            Some(entry) => Ok(serde_json::from_str(&entry.body)?),
+            None => Err(crate::error::Error::other(format!(
+                "request failed with {}",
+                fetched.status
+            ))),
+        };
+    }
+
+    let value = serde_json::from_str(&fetched.body)?;
+    let _ = state
+        .db
+        .cache_put(key, &fetched.body, fetched.etag.as_deref(), now(), ttl_secs);
     Ok(value)
 }
 
 pub async fn post<T: DeserializeOwned>(state: &AppState, request: RequestBuilder) -> Result<T> {
-    let response = http::send(&state.limiter, request).await?.error_for_status()?;
-    Ok(response.json().await?)
+    let fetched = http::fetch_body(&state.limiter, request).await?;
+    if !fetched.status.is_success() {
+        return Err(crate::error::Error::other(format!(
+            "request failed with {}",
+            fetched.status
+        )));
+    }
+    Ok(serde_json::from_str(&fetched.body)?)
 }

@@ -333,7 +333,6 @@ pub async fn install_modpack(
     .await;
 
     if let Err(e) = outcome {
-        // A half built pack instance is unusable, so it goes entirely.
         let _ = state.db.delete_instance_content_files(&instance.id);
         let _ = state.db.delete_instance(&instance.id);
         state.paths.remove_instance_dir(&instance.id);

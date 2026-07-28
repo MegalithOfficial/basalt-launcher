@@ -70,9 +70,6 @@ pub struct TaskSpec {
     pub total_bytes: u64,
 }
 
-/// Only these leave a half applied result behind, so only these get a
-/// pending_operations row for crash recovery. A game install is resumable and
-/// needs no cleanup.
 fn is_recoverable(kind: TaskKind) -> bool {
     matches!(
         kind,
@@ -95,8 +92,6 @@ impl Tasks {
         }
     }
 
-    /// Signals the running download to stop. Rollback is the task owner's job,
-    /// since only it knows whether the files are instance-scoped or shared.
     pub fn cancel(&self, id: &str) -> bool {
         let token = self.tokens.lock().unwrap().get(id).cloned();
         match token {
@@ -236,8 +231,6 @@ impl TaskHandle {
         self.token.is_cancelled()
     }
 
-    /// Files this task actually created, so rollback never deletes something
-    /// that was already on disk before the task started.
     pub fn written(&self) -> &Mutex<Vec<PathBuf>> {
         &self.written
     }

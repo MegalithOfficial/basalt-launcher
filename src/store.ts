@@ -201,8 +201,6 @@ export const useStore = create<AppStore>((set) => ({
     const instance = await api.installModpack(provider, projectId, versionId);
     const installedVersions = await api.listInstalledVersions();
     set((s) => {
-      // The task listener already pulls this row in when the download starts,
-      // so appending blindly would show the pack twice.
       const instances = s.instances.some((i) => i.id === instance.id)
         ? s.instances.map((i) => (i.id === instance.id ? instance : i))
         : [...s.instances, instance];
@@ -327,9 +325,6 @@ export const useStore = create<AppStore>((set) => ({
       }));
       track(await listen<Task>("task:update", (e) => {
         const task = e.payload;
-        // A pack install creates its instance up front and only resolves when
-        // the whole download finishes, so pull the row in as soon as a task
-        // references an instance we do not know about yet.
         const previous = useStore.getState().tasks[task.id];
         const justFinished =
           previous &&
@@ -415,8 +410,6 @@ export const useStore = create<AppStore>((set) => ({
       if (instances.some((i) => i.pack_project_id && !i.logo)) {
         api
           .backfillPackLogos()
-          // A missing or skewed command resolves to null, and assigning that
-          // would blank the instance list and take the whole app down with it.
           .then((updated) => {
             if (Array.isArray(updated)) set({ instances: updated });
           })

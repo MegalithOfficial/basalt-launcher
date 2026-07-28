@@ -3,12 +3,6 @@ import { useMemo } from "react";
 import type { Task } from "./types";
 import { useStore } from "../store";
 
-// Selectors must never build a new array or object. zustand compares snapshots
-// with Object.is, so a selector like `(s) => s.tasks[id] ?? []` returns a fresh
-// reference on every call, React throws "The result of getSnapshot should be
-// cached to avoid an infinite loop", and the page renders blank. Select the raw
-// record, then derive with useMemo.
-
 const NO_TASKS: Task[] = [];
 
 export function isActive(task: Task): boolean {

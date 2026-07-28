@@ -1,4 +1,3 @@
-// Mirrors the Rust models exposed over Tauri commands.
 
 export interface LauncherSettings {
   min_memory_mb: number;

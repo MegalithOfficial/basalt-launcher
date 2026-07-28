@@ -300,8 +300,6 @@ fn sweep_partials(dir: &std::path::Path) -> usize {
     removed
 }
 
-/// Rows left in pending_operations mean the app died mid download. Clean up
-/// per kind, then hand the list to the UI so it can offer a restart.
 #[tauri::command]
 pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::PendingOperation>> {
     let pending = state.db.pending_operations()?;
@@ -314,13 +312,10 @@ pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::Pend
             continue;
         };
         if op.kind == "ModpackInstall" {
-            // A half built pack instance is not usable, so it goes entirely.
             let _ = state.db.delete_instance_content_files(instance_id);
             let _ = state.db.delete_instance(instance_id);
             state.paths.remove_instance_dir(instance_id);
         } else {
-            // Completed files are hash verified and fine to keep. Only the
-            // aborted transfer leaves a .part behind.
             sweep_partials(&state.paths.instance_dir(instance_id));
         }
     }
@@ -813,7 +808,6 @@ pub async fn install_modpack(
     let provider = search::Provider::parse(&provider)?;
     crate::modpack::install_modpack(&app, &state, provider, &project_id, &version_id).await
 }
-
 
 #[derive(Serialize)]
 pub struct DeviceCodeInfo {

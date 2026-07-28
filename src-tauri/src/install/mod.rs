@@ -152,9 +152,6 @@ pub async fn install_version(
 
     task.stage("downloading");
     task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
-    // No `written` sink and no rollback here on purpose. Libraries, assets and
-    // version jars are shared across every instance on this game version, so a
-    // cancelled game install keeps what it fetched and the next attempt resumes.
     download::download_many_cancellable(
         &state.http,
         specs,

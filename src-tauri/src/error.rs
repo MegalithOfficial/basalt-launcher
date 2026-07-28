@@ -2,8 +2,6 @@ use serde::{Serialize, Serializer};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Unified error type for the launcher backend. Implements `Serialize` so it can be
-/// returned directly from Tauri commands and surfaced to the frontend as a string.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("io error: {0}")]

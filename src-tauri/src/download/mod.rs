@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use futures::stream::{self, StreamExt};
@@ -47,7 +48,50 @@ async fn already_valid(spec: &DownloadSpec) -> bool {
     true
 }
 
+const DOWNLOAD_ATTEMPTS: u32 = 4;
+const RETRY_BASE: Duration = Duration::from_millis(300);
+const RETRY_CEILING: Duration = Duration::from_secs(8);
+
+pub fn is_retryable(error: &Error) -> bool {
+    match error {
+        Error::Cancelled => false,
+        Error::Checksum { .. } => true,
+        Error::Http(e) => {
+            if let Some(status) = e.status() {
+                return status.is_server_error()
+                    || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                    || status == reqwest::StatusCode::REQUEST_TIMEOUT;
+            }
+            e.is_timeout() || e.is_connect() || e.is_body() || e.is_decode() || e.is_request()
+        }
+        _ => false,
+    }
+}
+
+pub fn retry_delay(attempt: u32) -> Duration {
+    Duration::from_millis(RETRY_BASE.as_millis() as u64 * 2u64.pow(attempt.min(6))).min(RETRY_CEILING)
+}
+
 pub async fn download_one(client: &reqwest::Client, spec: &DownloadSpec) -> Result<bool> {
+    let mut attempt = 0;
+    loop {
+        match download_once(client, spec).await {
+            Ok(created) => return Ok(created),
+            Err(e) => {
+                attempt += 1;
+                if attempt >= DOWNLOAD_ATTEMPTS || !is_retryable(&e) {
+                    return Err(match attempt {
+                        1 => e,
+                        n => Error::other(format!("{e} (after {n} attempts)")),
+                    });
+                }
+                tokio::time::sleep(retry_delay(attempt)).await;
+            }
+        }
+    }
+}
+
+async fn download_once(client: &reqwest::Client, spec: &DownloadSpec) -> Result<bool> {
     if already_valid(spec).await {
         return Ok(false);
     }
@@ -97,8 +141,6 @@ where
     download_many_cancellable(client, specs, concurrency, on_progress, None, None).await
 }
 
-/// `written` collects the files this call actually created, so a rollback can
-/// remove those without touching files that were already present and valid.
 pub async fn download_many_cancellable<F>(
     client: &reqwest::Client,
     specs: Vec<DownloadSpec>,
@@ -201,13 +243,58 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn cancellation_is_never_retried() {
+        assert!(!is_retryable(&Error::Cancelled));
+    }
+
+    #[test]
+    fn corrupt_bodies_are_retried_but_disk_errors_are_not() {
+        assert!(is_retryable(&Error::Checksum {
+            path: "a.jar".into(),
+            expected: "x".into(),
+            actual: "y".into(),
+        }));
+        assert!(!is_retryable(&Error::Io(std::io::Error::other("disk full"))));
+        assert!(!is_retryable(&Error::other("nope")));
+    }
+
+    #[test]
+    fn retry_delay_grows_then_settles() {
+        assert!(retry_delay(1) < retry_delay(2));
+        assert!(retry_delay(2) < retry_delay(3));
+        assert_eq!(retry_delay(30), RETRY_CEILING);
+    }
+
+    #[tokio::test]
+    async fn a_dead_host_is_retried_before_giving_up() {
+        let started = std::time::Instant::now();
+        let spec = DownloadSpec {
+            url: "http://127.0.0.1:1/gone".into(),
+            dest: std::env::temp_dir().join("basalt-retry-probe.jar"),
+            sha1: None,
+            size: None,
+        };
+        let result = download_one(&reqwest::Client::new(), &spec).await;
+        let message = result.unwrap_err().to_string();
+
+        assert!(
+            message.contains(&format!("after {DOWNLOAD_ATTEMPTS} attempts")),
+            "error should report the retries, got: {message}"
+        );
+        assert!(
+            started.elapsed() >= Duration::from_millis(4000),
+            "should have backed off between attempts, took {:?}",
+            started.elapsed()
+        );
+    }
+
     #[tokio::test]
     async fn cancelling_mid_flight_aborts_the_remaining_queue() {
         let dir = std::env::temp_dir().join(format!("basalt-midflight-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let token = CancellationToken::new();
 
-        // 10.255.255.1 is non routable, so each request hangs until cancelled
         let specs: Vec<DownloadSpec> = (0..8)
             .map(|i| DownloadSpec {
                 url: "http://10.255.255.1/hang".into(),
@@ -256,8 +343,6 @@ mod tests {
             sha1: Some(sha1_hex(b"abc")),
             size: None,
         };
-        // already_valid short circuits, so no request is made and nothing is
-        // recorded, which is what keeps rollback from deleting pre-existing files
         assert!(!download_one(&reqwest::Client::new(), &spec).await.unwrap());
 
         let written = std::sync::Mutex::new(Vec::new());

@@ -440,9 +440,6 @@ export function DiscoverView() {
                     planning === project.id ||
                     installingPack === project.id ||
                     activeProjects.has(project.id);
-                  // A pack instance exists in the list from the moment the
-                  // download starts, so an in flight task outranks it. Without
-                  // this the card claims "Installed" at 3% downloaded.
                   const done = !busy && (isPack ? !!packInstance : !!installedFile);
                   const liveTask = activeTasks.get(project.id);
 

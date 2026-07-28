@@ -79,6 +79,60 @@ fn should_retry(status: StatusCode) -> bool {
     status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
+pub struct Fetched {
+    pub status: reqwest::StatusCode,
+    pub etag: Option<String>,
+    pub body: String,
+}
+
+pub async fn fetch_body(limiter: &RateLimiter, request: RequestBuilder) -> Result<Fetched> {
+    let mut attempt = 0;
+    loop {
+        let attempt_request = request
+            .try_clone()
+            .ok_or_else(|| Error::other("request body cannot be retried"))?;
+
+        let outcome = async {
+            let _lease = limiter.acquire().await;
+            let response = match attempt_request.send().await {
+                Ok(response) => response,
+                Err(e) => return Err((None, Some(e))),
+            };
+            let status = response.status();
+            let etag = response
+                .headers()
+                .get(reqwest::header::ETAG)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned);
+            if should_retry(status) {
+                return Err((Some(status), None));
+            }
+            match response.text().await {
+                Ok(body) => Ok(Fetched { status, etag, body }),
+                Err(e) => Err((None, Some(e))),
+            }
+        }
+        .await;
+
+        match outcome {
+            Ok(fetched) => return Ok(fetched),
+            Err((status, error)) => {
+                attempt += 1;
+                if attempt >= MAX_ATTEMPTS {
+                    return match error {
+                        Some(e) => Err(e.into()),
+                        None => Err(Error::other(format!(
+                            "request failed after {attempt} attempts{}",
+                            status.map(|s| format!(" ({s})")).unwrap_or_default()
+                        ))),
+                    };
+                }
+                tokio::time::sleep(backoff(attempt)).await;
+            }
+        }
+    }
+}
+
 pub async fn send(limiter: &RateLimiter, request: RequestBuilder) -> Result<Response> {
     let mut attempt = 0;
     loop {

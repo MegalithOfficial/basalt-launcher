@@ -140,8 +140,6 @@ export function ProjectView() {
 
   const busyProject = installing !== null || activeProjects.has(projectRef.id);
 
-  // An in flight install outranks the instance row, which for packs exists
-  // from the moment the download starts.
   const installedEntry = busyProject
     ? null
     : isPack

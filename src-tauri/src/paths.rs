@@ -4,21 +4,17 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::Result;
 
-/// Resolves and owns the launcher's on-disk directory layout. Mirrors the standard
-/// Mojang layout so the data dir interops with the wider ecosystem (and future modpacks).
 #[derive(Debug, Clone)]
 pub struct Paths {
     pub root: PathBuf,
 }
 
 impl Paths {
-    /// Resolve the launcher root from the platform app-data directory.
     pub fn resolve(app: &AppHandle) -> Result<Self> {
         let root = app.path().app_data_dir()?;
         Ok(Self { root })
     }
 
-    /// Create every directory the launcher expects. Idempotent.
     pub fn ensure_dirs(&self) -> Result<()> {
         for dir in [
             self.versions(),
@@ -74,8 +70,6 @@ impl Paths {
         self.instances().join(id)
     }
 
-    /// An empty or traversing id would make `instance_dir` resolve to the
-    /// instances root, so anything destructive must go through this instead.
     pub fn instance_dir_checked(&self, id: &str) -> Option<PathBuf> {
         let id = id.trim();
         if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") {
@@ -88,9 +82,6 @@ impl Paths {
         Some(dir)
     }
 
-    /// Recursively removes a single instance directory. Refuses anything that
-    /// is not a direct child of the instances root, so a blank id can never
-    /// wipe every instance.
     pub fn remove_instance_dir(&self, id: &str) -> bool {
         match self.instance_dir_checked(id) {
             Some(dir) => {
