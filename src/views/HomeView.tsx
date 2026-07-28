@@ -18,7 +18,7 @@ import { formatPlaytime, relativeTime } from "../lib/time";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { InstanceSheet } from "../components/InstanceSheet";
-import { useInstanceTask } from "../lib/useTasks";
+import { taskFraction, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
 const gridStyle: React.CSSProperties = {
@@ -124,8 +124,7 @@ export function HomeView() {
     };
   }, [selected?.id]);
 
-  const percent =
-    install && install.total > 0 ? Math.round((install.completed / install.total) * 100) : 0;
+  const percent = install ? Math.round((taskFraction(install) ?? 0) * 100) : 0;
 
   const activeRun = selected
     ? Object.values(running).find(
