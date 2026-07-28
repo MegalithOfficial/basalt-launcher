@@ -7,9 +7,9 @@ import { isInstanceInstalled } from "./lib/loader";
 import type {
   AccountView,
   ContentKind,
-  ContentProgress,
   ContentUpdate,
-  InstallState,
+  PendingOperation,
+  Task,
   Instance,
   LauncherSettings,
   LogLine,
@@ -18,28 +18,6 @@ import type {
   VersionMedia,
   View,
 } from "./lib/types";
-
-interface StagePayload {
-  instance_id: string;
-  stage: string;
-}
-
-interface ProgressPayload {
-  instance_id: string;
-  completed: number;
-  total: number;
-  downloaded_bytes: number;
-  total_bytes: number;
-  current: string;
-}
-
-const blankInstall: InstallState = {
-  stage: "metadata",
-  completed: 0,
-  total: 0,
-  downloadedBytes: 0,
-  totalBytes: 0,
-};
 
 interface AuthPayload {
   status: "success" | "error";
@@ -66,7 +44,6 @@ interface AppStore {
   error: string | null;
   settings: LauncherSettings | null;
   instances: Instance[];
-  installs: Record<string, InstallState>;
   installedIds: string[];
   accounts: AccountView[];
   auth: AuthFlow;
@@ -81,9 +58,10 @@ interface AppStore {
   discoverTargetId: string | null;
   projectRef: { provider: SearchProvider; id: string } | null;
   contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
-  installingContent: string[];
-  contentProgress: Record<string, ContentProgress>;
   updates: Record<string, ContentUpdate[]>;
+  interrupted: PendingOperation[];
+  tasks: Record<string, Task>;
+  taskOrder: string[];
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
@@ -142,6 +120,9 @@ interface AppStore {
     withDependencies?: boolean;
   }) => Promise<string[]>;
   refreshUpdates: (instanceId: string, force?: boolean) => Promise<void>;
+  clearFinishedTasks: () => Promise<void>;
+  cancelTask: (taskId: string) => Promise<void>;
+  dismissInterrupted: () => void;
   applyUpdate: (instanceId: string, kind: string, fileName: string) => Promise<void>;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
@@ -157,7 +138,6 @@ export const useStore = create<AppStore>((set) => ({
   error: null,
   settings: null,
   instances: [],
-  installs: {},
   installedIds: [],
   accounts: [],
   auth: { status: "idle" },
@@ -173,9 +153,10 @@ export const useStore = create<AppStore>((set) => ({
   discoverTargetId: null,
   projectRef: null,
   contentSources: {},
-  installingContent: [],
-  contentProgress: {},
   updates: {},
+  interrupted: [],
+  tasks: {},
+  taskOrder: [],
 
   setView: (view) =>
     set((s) => ({
@@ -215,7 +196,11 @@ export const useStore = create<AppStore>((set) => ({
     const instance = await api.installModpack(provider, projectId, versionId);
     const installedVersions = await api.listInstalledVersions();
     set((s) => {
-      const instances = [...s.instances, instance];
+      // The task listener already pulls this row in when the download starts,
+      // so appending blindly would show the pack twice.
+      const instances = s.instances.some((i) => i.id === instance.id)
+        ? s.instances.map((i) => (i.id === instance.id ? instance : i))
+        : [...s.instances, instance];
       return {
         instances,
         selectedInstanceId: instance.id,
@@ -248,31 +233,33 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   installContent: async (params) => {
-    const key = `${params.instanceId}:${params.kind}:${params.projectId}`;
-    set((s) => ({ installingContent: [...s.installingContent, key] }));
-    try {
-      const files = await api.installContent(
-        params.provider,
-        params.projectId,
-        params.instanceId,
-        params.kind,
-        params.gameVersion,
-        params.loader,
-        params.versionId ?? null,
-        params.withDependencies ?? true,
-      );
-      await useStore.getState().refreshContentSources(params.instanceId, params.kind);
-      return files;
-    } finally {
-      set((s) => {
-        const progress = { ...s.contentProgress };
-        delete progress[params.instanceId];
-        return {
-          installingContent: s.installingContent.filter((k) => k !== key),
-          contentProgress: progress,
-        };
-      });
-    }
+    const files = await api.installContent(
+      params.provider,
+      params.projectId,
+      params.instanceId,
+      params.kind,
+      params.gameVersion,
+      params.loader,
+      params.versionId ?? null,
+      params.withDependencies ?? true,
+    );
+    await useStore.getState().refreshContentSources(params.instanceId, params.kind);
+    return files;
+  },
+
+  cancelTask: async (taskId) => {
+    await api.cancelTask(taskId);
+  },
+
+  dismissInterrupted: () => set({ interrupted: [] }),
+
+  clearFinishedTasks: async () => {
+    await api.clearFinishedTasks();
+    const remaining = await api.listTasks();
+    set({
+      tasks: Object.fromEntries(remaining.map((t) => [t.id, t])),
+      taskOrder: remaining.map((t) => t.id),
+    });
   },
 
   refreshUpdates: async (instanceId, force = false) => {
@@ -291,24 +278,16 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   applyUpdate: async (instanceId, kind, fileName) => {
-    const key = `${instanceId}:${kind}:${fileName}`;
-    set((s) => ({ installingContent: [...s.installingContent, key] }));
-    try {
-      await api.applyContentUpdate(instanceId, kind, fileName);
-      set((s) => ({
-        updates: {
-          ...s.updates,
-          [instanceId]: (s.updates[instanceId] ?? []).filter(
-            (u) => !(u.kind === kind && u.file_name === fileName),
-          ),
-        },
-      }));
-      await useStore.getState().refreshContentSources(instanceId, kind);
-    } finally {
-      set((s) => ({
-        installingContent: s.installingContent.filter((k) => k !== key),
-      }));
-    }
+    await api.applyContentUpdate(instanceId, kind, fileName);
+    set((s) => ({
+      updates: {
+        ...s.updates,
+        [instanceId]: (s.updates[instanceId] ?? []).filter(
+          (u) => !(u.kind === kind && u.file_name === fileName),
+        ),
+      },
+    }));
+    await useStore.getState().refreshContentSources(instanceId, kind);
   },
 
   openProject: (provider, id, kind) =>
@@ -331,52 +310,34 @@ export const useStore = create<AppStore>((set) => ({
           set({ auth: { status: "error", message: p.message } });
         }
       });
-      await listen<StagePayload>("install:stage", (e) => {
-        const { instance_id, stage } = e.payload;
-        set((s) => ({
-          installs: {
-            ...s.installs,
-            [instance_id]: { ...(s.installs[instance_id] ?? blankInstall), stage },
-          },
-        }));
-        if (stage === "done") {
-          set((s) => ({
-            installedIds: s.installedIds.includes(instance_id)
-              ? s.installedIds
-              : [...s.installedIds, instance_id],
-          }));
-          setTimeout(() => {
-            set((s) => {
-              const next = { ...s.installs };
-              delete next[instance_id];
-              return { installs: next };
-            });
-          }, 1400);
+      await listen<Task>("task:update", (e) => {
+        const task = e.payload;
+        // A pack install creates its instance up front and only resolves when
+        // the whole download finishes, so pull the row in as soon as a task
+        // references an instance we do not know about yet.
+        const known = useStore.getState().instances;
+        if (task.instance_id && !known.some((i) => i.id === task.instance_id)) {
+          void useStore.getState().refreshInstances();
         }
-      });
-      await listen<ProgressPayload>("install:progress", (e) => {
-        const p = e.payload;
-        set((s) => ({
-          installs: {
-            ...s.installs,
-            [p.instance_id]: {
-              stage: s.installs[p.instance_id]?.stage ?? "downloading",
-              completed: p.completed,
-              total: p.total,
-              downloadedBytes: p.downloaded_bytes,
-              totalBytes: p.total_bytes,
-            },
-          },
-        }));
-      });
-      await listen<ContentProgress & { instance_id: string }>("content:progress", (e) => {
-        const { instance_id, completed, total, current } = e.payload;
-        set((s) => ({
-          contentProgress: {
-            ...s.contentProgress,
-            [instance_id]: { completed, total, current },
-          },
-        }));
+        if (task.state === "cancelled" || task.state === "failed") {
+          void useStore.getState().refreshInstances();
+        }
+        set((s) => {
+          const marksInstalled =
+            task.state === "succeeded" &&
+            (task.kind === "game_install" || task.kind === "modpack_install") &&
+            !!task.instance_id;
+          return {
+            tasks: { ...s.tasks, [task.id]: task },
+            taskOrder: s.taskOrder.includes(task.id)
+              ? s.taskOrder
+              : [...s.taskOrder, task.id],
+            installedIds:
+              marksInstalled && !s.installedIds.includes(task.instance_id!)
+                ? [...s.installedIds, task.instance_id!]
+                : s.installedIds,
+          };
+        });
       });
       await listen<LogPayload>("process:log", (e) => {
         const p = e.payload;
@@ -397,11 +358,13 @@ export const useStore = create<AppStore>((set) => ({
     }
 
     try {
-      const [settings, instances, accounts, installedVersions] = await Promise.all([
+      const [settings, instances, accounts, installedVersions, tasks, interrupted] = await Promise.all([
         api.getSettings(),
         api.listInstances(),
         api.listAccounts(),
         api.listInstalledVersions(),
+        api.listTasks().catch(() => [] as Task[]),
+        api.recoverInterrupted().catch(() => [] as PendingOperation[]),
       ]);
       const installedIds = instances
         .filter((i) => isInstanceInstalled(i, installedVersions))
@@ -415,12 +378,19 @@ export const useStore = create<AppStore>((set) => ({
         error: null,
         selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
         discoverTargetId: s.discoverTargetId ?? instances[0]?.id ?? null,
+        tasks: Object.fromEntries(tasks.map((t) => [t.id, t])),
+        taskOrder: tasks.map((t) => t.id),
+        interrupted,
       }));
 
       if (instances.some((i) => i.pack_project_id && !i.logo)) {
         api
           .backfillPackLogos()
-          .then((updated) => set({ instances: updated }))
+          // A missing or skewed command resolves to null, and assigning that
+          // would blank the instance list and take the whole app down with it.
+          .then((updated) => {
+            if (Array.isArray(updated)) set({ instances: updated });
+          })
           .catch((e) => console.error("pack logo backfill failed:", e));
       }
     } catch (e) {
@@ -628,15 +598,10 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   installInstance: async (id) => {
-    set((s) => ({ installs: { ...s.installs, [id]: { ...blankInstall } } }));
     try {
       await api.installInstance(id);
     } catch (e) {
-      set((s) => {
-        const next = { ...s.installs };
-        delete next[id];
-        return { installs: next, error: String(e) };
-      });
+      set({ error: String(e) });
     }
   },
 }));

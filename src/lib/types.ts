@@ -198,6 +198,43 @@ export interface InstallPlan {
   total_bytes: number;
 }
 
+export type TaskKind =
+  | "game_install"
+  | "loader_install"
+  | "modpack_install"
+  | "content_install"
+  | "content_update";
+
+export type TaskState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export interface Task {
+  id: string;
+  kind: TaskKind;
+  title: string;
+  subtitle: string | null;
+  icon_url: string | null;
+  instance_id: string | null;
+  project_id: string | null;
+  state: TaskState;
+  stage: string;
+  completed: number;
+  total: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  error: string | null;
+  started_at: number;
+  finished_at: number | null;
+}
+
+export interface PendingOperation {
+  id: string;
+  kind: string;
+  instance_id: string | null;
+  title: string;
+  payload: string | null;
+  started_at: number;
+}
+
 export interface ContentProgress {
   completed: number;
   total: number;

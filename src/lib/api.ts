@@ -21,6 +21,8 @@ import type {
   RunningInfo,
   SearchPage,
   SearchQuery,
+  PendingOperation,
+  Task,
   VersionEntry,
   VersionMedia,
 } from "./types";
@@ -163,6 +165,10 @@ export const api = {
   clearInstanceLogo: (instanceId: string) =>
     invoke<void>("clear_instance_logo", { instanceId }),
   backfillPackLogos: () => invoke<Instance[]>("backfill_pack_logos"),
+  listTasks: () => invoke<Task[]>("list_tasks"),
+  clearFinishedTasks: () => invoke<void>("clear_finished_tasks"),
+  cancelTask: (taskId: string) => invoke<boolean>("cancel_task", { taskId }),
+  recoverInterrupted: () => invoke<PendingOperation[]>("recover_interrupted"),
   installInstance: (instanceId: string) =>
     invoke<void>("install_instance", { instanceId }),
   getJavaStatus: (instanceId: string) =>
