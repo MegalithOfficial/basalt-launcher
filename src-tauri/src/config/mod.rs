@@ -38,6 +38,8 @@ pub struct Instance {
     #[serde(default)]
     pub dir: String,
     #[serde(default)]
+    pub logo: Option<String>,
+    #[serde(default)]
     pub loader: Option<String>,
     #[serde(default)]
     pub loader_version: Option<String>,

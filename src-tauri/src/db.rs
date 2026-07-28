@@ -333,6 +333,7 @@ impl Db {
             let created_at: String = row.get(3)?;
             Ok(Instance {
                 dir: paths.instance_dir(&id).display().to_string(),
+                logo: crate::meta::media::instance_logo(paths, &id),
                 id,
                 name: row.get(1)?,
                 version_id: row.get(2)?,

@@ -70,6 +70,7 @@ pub fn create_instance(
     let id = uuid::Uuid::new_v4().to_string();
     let instance = Instance {
         dir: state.paths.instance_dir(&id).display().to_string(),
+        logo: None,
         id,
         name,
         version_id,
@@ -220,6 +221,51 @@ pub async fn clear_instance_banner(
     media::clear_custom_banner(&state.paths, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn set_instance_logo(
+    state: State<'_, AppState>,
+    instance_id: String,
+    source_path: String,
+) -> Result<String> {
+    find_instance(&state, &instance_id)?;
+    media::set_instance_logo(&state.paths, &instance_id, &source_path).await
+}
+
+#[tauri::command]
+pub async fn clear_instance_logo(state: State<'_, AppState>, instance_id: String) -> Result<()> {
+    media::clear_instance_logo(&state.paths, &instance_id).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Instance>> {
+    let instances = state.db.list_instances(&state.paths)?;
+
+    for instance in &instances {
+        if instance.logo.is_some() {
+            continue;
+        }
+        let (Some(provider), Some(project_id)) =
+            (instance.pack_provider.as_deref(), instance.pack_project_id.as_deref())
+        else {
+            continue;
+        };
+        let Ok(provider) = search::Provider::parse(provider) else {
+            continue;
+        };
+        let icon = search::resolve_projects(&state, provider, &[project_id.to_string()])
+            .await
+            .ok()
+            .and_then(|mut list| list.pop())
+            .and_then(|summary| summary.icon_url);
+        if let Some(icon) = icon {
+            media::fetch_instance_logo(&state.http, &state.paths, &instance.id, &icon).await;
+        }
+    }
+
+    state.db.list_instances(&state.paths)
 }
 
 fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {

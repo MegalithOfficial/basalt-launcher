@@ -278,6 +278,7 @@ pub async fn install_modpack(
     let id = uuid::Uuid::new_v4().to_string();
     let instance = Instance {
         dir: state.paths.instance_dir(&id).display().to_string(),
+        logo: None,
         id,
         name,
         version_id: game_version.clone(),
@@ -362,6 +363,21 @@ pub async fn install_modpack(
     }
 
     link_pack_files(state, &instance.id, &linkable).await;
+
+    if let Some(icon_url) = search::resolve_projects(state, provider, &[project_id.to_string()])
+        .await
+        .ok()
+        .and_then(|mut list| list.pop())
+        .and_then(|summary| summary.icon_url)
+    {
+        crate::meta::media::fetch_instance_logo(
+            &state.http,
+            &state.paths,
+            &instance.id,
+            &icon_url,
+        )
+        .await;
+    }
 
     install::emit_stage(app, &instance.id, "done");
     state
