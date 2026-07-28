@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
@@ -18,9 +19,9 @@ import { PlayButton } from "../components/PlayButton";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { loaderLabel } from "../lib/loader";
-import { mediaSrc } from "../lib/media";
+import { logoSrc, mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
-import type { ContentItem, ContentKind } from "../lib/types";
+import type { ContentItem, ContentKind, ContentUpdate } from "../lib/types";
 import { useStore } from "../store";
 
 const TABS: Array<{ kind: ContentKind; label: string; extensions: string[] }> = [
@@ -36,6 +37,8 @@ const SCHEMATICS_TAB = {
 };
 
 const SCHEMATIC_MOD_MARKERS = ["litematica", "worldedit", "schematica", "axiom", "schematic"];
+
+const NO_UPDATES: ContentUpdate[] = [];
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -73,7 +76,8 @@ export function InstanceView() {
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const refreshUpdates = useStore((s) => s.refreshUpdates);
   const applyUpdate = useStore((s) => s.applyUpdate);
-  const updates = useStore((s) => (detailId ? (s.updates[detailId] ?? []) : []));
+  const storedUpdates = useStore((s) => (detailId ? s.updates[detailId] : undefined));
+  const updates = storedUpdates ?? NO_UPDATES;
   const installingContent = useStore((s) => s.installingContent);
 
   const [tab, setTab] = useState<ContentKind>("mods");
@@ -82,6 +86,7 @@ export function InstanceView() {
   const [editOpen, setEditOpen] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [hasSchematicMod, setHasSchematicMod] = useState(false);
+  const [filter, setFilter] = useState("");
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -151,6 +156,15 @@ export function InstanceView() {
   const allTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
   const tabUpdates = updates.filter((u) => u.kind === tab);
+  const query = filter.trim().toLowerCase();
+  const shownItems = query
+    ? items.filter(
+        (i) =>
+          i.file_name.toLowerCase().includes(query) ||
+          (i.source?.title ?? "").toLowerCase().includes(query),
+      )
+    : items;
+  const enabledCount = items.filter((i) => i.enabled).length;
 
   const addContent = async () => {
     if (tab !== "schematics") {
@@ -219,7 +233,7 @@ export function InstanceView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="relative h-40 shrink-0 overflow-hidden">
+      <div className="relative h-68 shrink-0 overflow-hidden">
         {media ? (
           <img
             src={mediaSrc(media)}
@@ -232,17 +246,27 @@ export function InstanceView() {
         ) : (
           <div className="absolute inset-0 bg-surface-2" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-base via-black/50 to-black/20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-base via-base/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent" />
 
         <button
           onClick={() => setView("instances")}
-          className="absolute left-4 top-4 grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/80 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+          className="absolute left-4 top-12 grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/80 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
         >
           <ArrowLeft className="size-4" />
         </button>
 
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 px-6 pb-4">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-end gap-4">
+            {logoSrc(instance.logo) && (
+              <img
+                src={logoSrc(instance.logo)!}
+                alt=""
+                className="size-16 shrink-0 rounded-2xl border border-white/10 bg-black/40 object-cover shadow-lg backdrop-blur"
+                draggable={false}
+              />
+            )}
+            <div className="min-w-0">
             <h1 className="truncate font-display text-3xl font-bold tracking-tight text-white drop-shadow">
               {instance.name}
             </h1>
@@ -258,6 +282,7 @@ export function InstanceView() {
                     ` · ${formatPlaytime(instance.playtime_secs)}`}
                 </span>
               )}
+            </div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -343,14 +368,35 @@ export function InstanceView() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="px-6 py-5">
+        {items.length > 0 && (
+          <div className="mb-4 flex items-center gap-3">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-content-faint" />
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder={`Filter ${tabMeta.label.toLowerCase()}`}
+                className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]"
+              />
+            </div>
+            <span className="ml-auto shrink-0 text-xs tabular-nums text-content-faint">
+              {shownItems.length === items.length
+                ? `${items.length} ${items.length === 1 ? "file" : "files"}`
+                : `${shownItems.length} of ${items.length}`}
+              {enabledCount < items.length && ` · ${items.length - enabledCount} disabled`}
+            </span>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-content-muted">
             <Loader2 className="size-4 animate-spin" />
             Loading
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-14 text-center">
+          <div className="flex flex-col items-center gap-3 py-20 text-center">
             <div className="grid size-12 place-items-center rounded-2xl border border-border-soft bg-surface-2 text-content-faint">
               <Package className="size-6" />
             </div>
@@ -360,10 +406,21 @@ export function InstanceView() {
             <p className="max-w-sm text-xs text-content-faint">
               Browse Modrinth and CurseForge with Add content, or drop in your own files.
             </p>
+            <button
+              onClick={addContent}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+            >
+              <Plus className="size-3.5" />
+              Add content
+            </button>
+          </div>
+        ) : shownItems.length === 0 ? (
+          <div className="py-16 text-center text-sm text-content-faint">
+            Nothing matches “{filter}”.
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {items.map((item) => {
+            {shownItems.map((item) => {
               const source = item.source;
               const displayName = source?.title ?? item.file_name;
               const linked = !!source?.provider && !!source.project_id;
@@ -465,6 +522,7 @@ export function InstanceView() {
             })}
           </div>
         )}
+        </div>
       </div>
 
       {confirmDelete && (
