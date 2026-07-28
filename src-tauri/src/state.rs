@@ -7,6 +7,7 @@ use crate::launch::process::RunningHandle;
 use crate::meta::media::{PatchNotes, VersionMedia};
 use crate::paths::Paths;
 use crate::search::http::RateLimiter;
+use crate::tasks::Tasks;
 
 const USER_AGENT: &str = concat!(
     "MegalithOfficial/basalt-launcher/",
@@ -25,10 +26,12 @@ pub struct AppState {
     pub running: Mutex<HashMap<String, RunningHandle>>,
     pub patch_notes: Mutex<Option<PatchNotes>>,
     pub media_cache: Mutex<HashMap<String, Option<VersionMedia>>>,
+    pub tasks: std::sync::Arc<Tasks>,
 }
 
 impl AppState {
     pub fn new(paths: Paths, db: Db) -> Self {
+        let tasks = std::sync::Arc::new(Tasks::new(db.clone()));
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .timeout(Duration::from_secs(45))
@@ -46,6 +49,7 @@ impl AppState {
             running: Mutex::new(HashMap::new()),
             patch_notes: Mutex::new(None),
             media_cache: Mutex::new(HashMap::new()),
+            tasks,
         }
     }
 }
