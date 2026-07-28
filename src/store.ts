@@ -7,6 +7,8 @@ import { isInstanceInstalled } from "./lib/loader";
 import type {
   AccountView,
   ContentKind,
+  ContentProgress,
+  ContentUpdate,
   InstallState,
   Instance,
   LauncherSettings,
@@ -75,9 +77,13 @@ interface AppStore {
   detailInstanceId: string | null;
   viewStack: View[];
   searchKind: ContentKind | null;
+  discoverKind: ContentKind;
+  discoverTargetId: string | null;
   projectRef: { provider: SearchProvider; id: string } | null;
   contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
   installingContent: string[];
+  contentProgress: Record<string, ContentProgress>;
+  updates: Record<string, ContentUpdate[]>;
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
@@ -115,7 +121,9 @@ interface AppStore {
   openInstance: (id: string) => void;
   openSearch: (kind: ContentKind) => void;
   openProject: (provider: SearchProvider, id: string, kind?: ContentKind) => void;
-  openModpacks: () => void;
+  openDiscover: (kind?: ContentKind, targetInstanceId?: string | null) => void;
+  setDiscoverKind: (kind: ContentKind) => void;
+  setDiscoverTarget: (instanceId: string | null) => void;
   installModpack: (
     provider: SearchProvider,
     projectId: string,
@@ -131,10 +139,10 @@ interface AppStore {
     gameVersion: string;
     loader: string | null;
     versionId?: string | null;
-    title?: string | null;
-    iconUrl?: string | null;
     withDependencies?: boolean;
   }) => Promise<string[]>;
+  refreshUpdates: (instanceId: string, force?: boolean) => Promise<void>;
+  applyUpdate: (instanceId: string, kind: string, fileName: string) => Promise<void>;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
 }
@@ -159,9 +167,13 @@ export const useStore = create<AppStore>((set) => ({
   detailInstanceId: null,
   viewStack: [],
   searchKind: null,
+  discoverKind: "mods",
+  discoverTargetId: null,
   projectRef: null,
   contentSources: {},
   installingContent: [],
+  contentProgress: {},
+  updates: {},
 
   setView: (view) =>
     set((s) => ({
@@ -178,15 +190,24 @@ export const useStore = create<AppStore>((set) => ({
   openSearch: (kind) =>
     set((s) => ({
       searchKind: kind,
-      view: "search",
-      viewStack: s.view !== "search" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      discoverKind: kind,
+      discoverTargetId: s.detailInstanceId,
+      view: "discover",
+      viewStack: s.view !== "discover" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
 
-  openModpacks: () =>
+  openDiscover: (kind, targetInstanceId) =>
     set((s) => ({
-      view: "modpacks",
-      viewStack: s.view !== "modpacks" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      discoverKind: kind ?? s.discoverKind,
+      searchKind: kind ?? s.discoverKind,
+      discoverTargetId: targetInstanceId !== undefined ? targetInstanceId : s.discoverTargetId,
+      view: "discover",
+      viewStack: s.view !== "discover" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
+
+  setDiscoverKind: (kind) => set({ discoverKind: kind, searchKind: kind }),
+
+  setDiscoverTarget: (instanceId) => set({ discoverTargetId: instanceId }),
 
   installModpack: async (provider, projectId, versionId) => {
     const instance = await api.installModpack(provider, projectId, versionId);
@@ -206,10 +227,15 @@ export const useStore = create<AppStore>((set) => ({
 
   refreshContentSources: async (instanceId, kind) => {
     try {
-      const entries = await api.listContentSources(instanceId, kind);
+      const items = await api.listInstanceContent(instanceId, kind);
       const map: Record<string, { file_name: string; version_id: string | null }> = {};
-      entries.forEach((e) => {
-        map[e.project_id] = { file_name: e.file_name, version_id: e.version_id };
+      items.forEach((item) => {
+        if (item.source?.project_id) {
+          map[item.source.project_id] = {
+            file_name: item.file_name,
+            version_id: item.source.version_id,
+          };
+        }
       });
       set((s) => ({
         contentSources: { ...s.contentSources, [`${instanceId}:${kind}`]: map },
@@ -231,12 +257,51 @@ export const useStore = create<AppStore>((set) => ({
         params.gameVersion,
         params.loader,
         params.versionId ?? null,
-        params.title ?? null,
-        params.iconUrl ?? null,
         params.withDependencies ?? true,
       );
       await useStore.getState().refreshContentSources(params.instanceId, params.kind);
       return files;
+    } finally {
+      set((s) => {
+        const progress = { ...s.contentProgress };
+        delete progress[params.instanceId];
+        return {
+          installingContent: s.installingContent.filter((k) => k !== key),
+          contentProgress: progress,
+        };
+      });
+    }
+  },
+
+  refreshUpdates: async (instanceId, force = false) => {
+    try {
+      const list = force
+        ? await api.checkContentUpdates(instanceId, true)
+        : await api.getContentUpdates(instanceId);
+      set((s) => ({ updates: { ...s.updates, [instanceId]: list } }));
+      if (!force) {
+        const fresh = await api.checkContentUpdates(instanceId, false);
+        set((s) => ({ updates: { ...s.updates, [instanceId]: fresh } }));
+      }
+    } catch {
+      return;
+    }
+  },
+
+  applyUpdate: async (instanceId, kind, fileName) => {
+    const key = `${instanceId}:${kind}:${fileName}`;
+    set((s) => ({ installingContent: [...s.installingContent, key] }));
+    try {
+      await api.applyContentUpdate(instanceId, kind, fileName);
+      set((s) => ({
+        updates: {
+          ...s.updates,
+          [instanceId]: (s.updates[instanceId] ?? []).filter(
+            (u) => !(u.kind === kind && u.file_name === fileName),
+          ),
+        },
+      }));
+      await useStore.getState().refreshContentSources(instanceId, kind);
     } finally {
       set((s) => ({
         installingContent: s.installingContent.filter((k) => k !== key),
@@ -302,6 +367,15 @@ export const useStore = create<AppStore>((set) => ({
           },
         }));
       });
+      await listen<ContentProgress & { instance_id: string }>("content:progress", (e) => {
+        const { instance_id, completed, total, current } = e.payload;
+        set((s) => ({
+          contentProgress: {
+            ...s.contentProgress,
+            [instance_id]: { completed, total, current },
+          },
+        }));
+      });
       await listen<LogPayload>("process:log", (e) => {
         const p = e.payload;
         set((s) => {
@@ -338,6 +412,7 @@ export const useStore = create<AppStore>((set) => ({
         ready: true,
         error: null,
         selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
+        discoverTargetId: s.discoverTargetId ?? instances[0]?.id ?? null,
       }));
     } catch (e) {
       set({ error: String(e), ready: true });
@@ -466,6 +541,7 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       instances: [...s.instances, instance],
       selectedInstanceId: instance.id,
+      discoverTargetId: s.discoverTargetId ?? instance.id,
       installedIds: isInstanceInstalled(instance, installedVersions)
         ? [...s.installedIds, instance.id]
         : s.installedIds,
