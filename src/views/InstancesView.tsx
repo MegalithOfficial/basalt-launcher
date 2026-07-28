@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Boxes,
   LayoutGrid,
@@ -9,7 +9,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
-import { Button, EmptyState, PageHeader } from "../components/ui";
+import { Button, EmptyState } from "../components/ui";
+import { Select } from "../components/Select";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { cn } from "../lib/cn";
@@ -17,11 +18,126 @@ import { loaderLabel } from "../lib/loader";
 import { logoSrc, mediaSrc } from "../lib/media";
 import { taskFraction, useActiveTasksByInstance } from "../lib/useTasks";
 import { formatPlaytime, relativeTime } from "../lib/time";
-import type { Instance } from "../lib/types";
+import type { Instance, Task, VersionMedia } from "../lib/types";
 import { PlayButton } from "../components/PlayButton";
 import { useStore } from "../store";
 
 type ViewMode = "list" | "grid";
+
+const SORTS = ["Last played", "Most played", "Name", "Recently added"] as const;
+type SortMode = (typeof SORTS)[number];
+
+function sortInstances(list: Instance[], mode: SortMode): Instance[] {
+  const sorted = [...list];
+  switch (mode) {
+    case "Name":
+      return sorted.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      );
+    case "Recently added":
+      return sorted.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+    case "Most played":
+      return sorted.sort((a, b) => b.playtime_secs - a.playtime_secs);
+    default:
+      return sorted.sort((a, b) => (b.last_played_at ?? 0) - (a.last_played_at ?? 0));
+  }
+}
+
+function Artwork({ media, className }: { media: VersionMedia | null; className?: string }) {
+  if (!media) {
+    return (
+      <div className={cn("grid place-items-center bg-surface-3 text-content-faint", className)}>
+        <Boxes className="size-6" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={mediaSrc(media)}
+      alt=""
+      draggable={false}
+      className={cn("object-cover", !media.local && "[image-rendering:pixelated]", className)}
+    />
+  );
+}
+
+function ProgressStrip({ task }: { task: Task }) {
+  const fraction = taskFraction(task);
+  return (
+    <div className="h-0.5 w-full overflow-hidden bg-surface-3">
+      <div
+        className={cn(
+          "h-full",
+          task.retry_note ? "bg-warn" : "bg-[var(--accent)]",
+          fraction == null ? "w-1/3 animate-pulse" : "transition-[width] duration-300",
+        )}
+        style={fraction == null ? undefined : { width: `${fraction * 100}%` }}
+      />
+    </div>
+  );
+}
+
+function StatusLine({ instance, task }: { instance: Instance; task?: Task }) {
+  if (task) {
+    return task.retry_note ? (
+      <span className="text-warn">Retrying</span>
+    ) : (
+      <span className="capitalize text-[var(--accent)]">{task.stage}</span>
+    );
+  }
+  const played = formatPlaytime(instance.playtime_secs);
+  if (instance.last_played_at) {
+    return (
+      <span>
+        Played {relativeTime(instance.last_played_at)}
+        {played ? ` · ${played}` : ""}
+      </span>
+    );
+  }
+  return <span>Never played</span>;
+}
+
+function RowActions({
+  onEdit,
+  onDelete,
+  floating,
+}: {
+  onEdit: () => void;
+  onDelete: () => void;
+  floating?: boolean;
+}) {
+  const base = "grid size-8 place-items-center rounded-lg transition-colors";
+  return (
+    <>
+      <button
+        onClick={onEdit}
+        title="Edit instance"
+        className={cn(
+          base,
+          floating
+            ? "bg-black/55 text-white/80 backdrop-blur hover:bg-black/75 hover:text-white"
+            : "text-content-faint hover:bg-surface-3 hover:text-content",
+        )}
+      >
+        <Pencil className="size-4" />
+      </button>
+      <button
+        onClick={onDelete}
+        title="Delete instance"
+        className={cn(
+          base,
+          floating
+            ? "bg-black/55 text-white/80 backdrop-blur hover:bg-danger hover:text-white"
+            : "text-content-faint hover:bg-danger/15 hover:text-danger",
+        )}
+      >
+        <Trash2 className="size-4" />
+      </button>
+    </>
+  );
+}
 
 export function InstancesView() {
   const busyTasks = useActiveTasksByInstance();
@@ -35,8 +151,19 @@ export function InstancesView() {
   const [editing, setEditing] = useState<Instance | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(
-    () => (localStorage.getItem("instances-view") as ViewMode) ?? "list",
+    () => (localStorage.getItem("instances-view") as ViewMode) ?? "grid",
   );
+  const [sort, setSort] = useState<SortMode>(() => {
+    const stored = localStorage.getItem("instances-sort") as SortMode | null;
+    return stored && SORTS.includes(stored) ? stored : "Last played";
+  });
+
+  const ordered = useMemo(() => sortInstances(instances, sort), [instances, sort]);
+
+  const switchSort = (mode: SortMode) => {
+    setSort(mode);
+    localStorage.setItem("instances-sort", mode);
+  };
 
   const switchView = (mode: ViewMode) => {
     setViewMode(mode);
@@ -48,44 +175,60 @@ export function InstancesView() {
   }, [instances, loadMedia]);
 
   return (
-    <div className="flex flex-1 flex-col">
-      <PageHeader
-        title="Instances"
-        subtitle="Each instance is a version with its own game directory."
-        actions={
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
-              {(
-                [
-                  { mode: "list", icon: List },
-                  { mode: "grid", icon: LayoutGrid },
-                ] as const
-              ).map(({ mode, icon: Icon }) => (
-                <button
-                  key={mode}
-                  onClick={() => switchView(mode)}
-                  aria-label={`${mode} view`}
-                  className={cn(
-                    "grid size-8 place-items-center rounded-md transition-colors",
-                    viewMode === mode
-                      ? "bg-surface-3 text-content"
-                      : "text-content-faint hover:text-content-muted",
-                  )}
-                >
-                  <Icon className="size-4" />
-                </button>
-              ))}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between gap-4 border-b border-border-soft px-8 py-3.5">
+        <div className="flex items-baseline gap-3">
+          <h1 className="font-display text-base font-semibold tracking-tight text-content">
+            Instances
+          </h1>
+          {instances.length > 0 && (
+            <span className="text-xs text-content-faint">
+              {instances.length} {instances.length === 1 ? "instance" : "instances"}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {instances.length > 1 && (
+            <div className="w-44">
+              <Select
+                value={sort}
+                options={[...SORTS]}
+                onChange={(value) => switchSort(value as SortMode)}
+              />
             </div>
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus className="size-4" />
-              New instance
-            </Button>
+          )}
+          <div className="flex rounded-lg border border-border-soft bg-surface-2/60 p-0.5">
+            {(
+              [
+                { mode: "grid", icon: LayoutGrid },
+                { mode: "list", icon: List },
+              ] as const
+            ).map(({ mode, icon: Icon }) => (
+              <button
+                key={mode}
+                onClick={() => switchView(mode)}
+                aria-label={`${mode} view`}
+                aria-pressed={viewMode === mode}
+                className={cn(
+                  "grid size-8 place-items-center rounded-md transition-colors",
+                  viewMode === mode
+                    ? "bg-surface-3 text-content"
+                    : "text-content-faint hover:text-content-muted",
+                )}
+              >
+                <Icon className="size-4" />
+              </button>
+            ))}
           </div>
-        }
-      />
+          <Button onClick={() => setModalOpen(true)}>
+            <Plus className="size-4" />
+            New instance
+          </Button>
+        </div>
+      </div>
 
       {launchError && (
-        <div className="mx-6 mt-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+        <div className="mx-8 mt-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           <span className="break-words">{launchError}</span>
         </div>
@@ -104,167 +247,152 @@ export function InstancesView() {
           }
         />
       ) : viewMode === "list" ? (
-        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-6">
-          {instances.map((it) => (
-            <div
-              key={it.id}
-              className="flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-3"
-            >
-              {logoSrc(it.logo) ? (
-                <img
-                  src={logoSrc(it.logo)!}
-                  className="size-10 shrink-0 cursor-pointer rounded-lg border border-border-soft object-cover"
-                  onClick={() => openInstance(it.id)}
-                  draggable={false}
-                />
-              ) : mediaMap[it.id] ? (
-                <img
-                  src={mediaSrc(mediaMap[it.id]!)}
-                  className="size-10 shrink-0 cursor-pointer rounded-lg object-cover"
-                  onClick={() => openInstance(it.id)}
-                  draggable={false}
-                />
-              ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
+          <div className="flex flex-col gap-2">
+            {ordered.map((it) => {
+              const task = busyTasks.get(it.id);
+              return (
                 <div
-                  onClick={() => openInstance(it.id)}
-                  className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg bg-surface-3 text-content-muted"
+                  key={it.id}
+                  className="flex items-center gap-4 overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 p-3 transition-colors hover:border-border"
                 >
-                  <Boxes className="size-5" />
-                </div>
-              )}
-              <div
-                className="min-w-0 flex-1 cursor-pointer"
-                onClick={() => openInstance(it.id)}
-              >
-                <div className="truncate font-display font-semibold text-content">{it.name}</div>
-                <div className="truncate text-xs text-content-muted">
-                  {it.version_id}
-                  {it.loader && ` · ${loaderLabel(it)}`}
-                  {it.last_played_at && ` · played ${relativeTime(it.last_played_at)}`}
-                  {formatPlaytime(it.playtime_secs) && ` · ${formatPlaytime(it.playtime_secs)}`}
-                </div>
-              </div>
+                  <button
+                    onClick={() => openInstance(it.id)}
+                    aria-label={`Open ${it.name}`}
+                    className="relative size-16 shrink-0 overflow-hidden rounded-xl"
+                  >
+                    <Artwork media={mediaMap[it.id] ?? null} className="size-full" />
+                    {logoSrc(it.logo) && (
+                      <img
+                        src={logoSrc(it.logo)!}
+                        alt=""
+                        draggable={false}
+                        className="absolute inset-0 size-full object-cover"
+                      />
+                    )}
+                  </button>
 
-              <PlayButton instance={it} onError={setLaunchError} />
-              <button
-                onClick={() => setEditing(it)}
-                title="Edit instance"
-                className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
-              >
-                <Pencil className="size-4" />
-              </button>
-              <button
-                onClick={() => deleteInstance(it.id)}
-                title="Delete instance"
-                className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </div>
-          ))}
+                  <button
+                    onClick={() => openInstance(it.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="truncate font-display font-semibold text-content">
+                      {it.name}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded border border-border-soft bg-surface-2 px-1.5 py-0.5 font-pixel text-[10px] text-content-muted">
+                        {it.version_id}
+                      </span>
+                      {it.loader && (
+                        <span className="rounded border border-border-soft bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-content-muted">
+                          {loaderLabel(it)}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-content-faint">
+                        <StatusLine instance={it} task={task} />
+                      </span>
+                    </div>
+                  </button>
+
+                  <div className="flex shrink-0 items-center gap-1">
+                    <PlayButton instance={it} onError={setLaunchError} />
+                    <RowActions
+                      onEdit={() => setEditing(it)}
+                      onDelete={() => deleteInstance(it.id)}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
-        <div className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(250px,1fr))] content-start gap-4 overflow-y-auto p-6">
-          {instances.map((it) => {
-            const media = mediaMap[it.id] ?? null;
-            return (
-              <div
-                key={it.id}
-                className="group overflow-hidden rounded-2xl border border-border bg-surface-2 transition-colors hover:border-content-faint/30"
-              >
+        <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
+          <div className="grid auto-rows-min grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] content-start gap-4">
+            {ordered.map((it) => {
+              const task = busyTasks.get(it.id);
+              return (
                 <div
-                  className="relative aspect-[16/9] cursor-pointer"
-                  onClick={() => openInstance(it.id)}
+                  key={it.id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 transition-colors hover:border-border"
                 >
-                  {media ? (
-                    <img
-                      src={mediaSrc(media)}
-                      className={cn(
-                        "absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]",
-                        !media.local && "[image-rendering:pixelated]",
-                      )}
-                      draggable={false}
+                  <div className="relative aspect-[16/10] w-full overflow-hidden">
+                    <Artwork
+                      media={mediaMap[it.id] ?? null}
+                      className="absolute inset-0 size-full transition-transform duration-500 group-hover:scale-105"
                     />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center bg-surface-3 text-content-faint">
-                      <Boxes className="size-7" />
-                    </div>
-                  )}
-                  {logoSrc(it.logo) && (
-                    <img
-                      src={logoSrc(it.logo)!}
-                      alt=""
-                      className="absolute left-3 top-3 size-10 rounded-xl border border-white/15 bg-black/40 object-cover shadow-lg backdrop-blur"
-                      draggable={false}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+
+                    <button
+                      onClick={() => openInstance(it.id)}
+                      aria-label={`Open ${it.name}`}
+                      className="absolute inset-0"
                     />
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-4 pb-2.5 pt-8">
-                    <div className="truncate font-display font-semibold text-white">{it.name}</div>
-                    <div className="truncate font-pixel text-[10px] text-white/60">
-                      {it.version_id}
-                      {it.loader && ` · ${loaderLabel(it)}`}
-                    </div>
-                  </div>
-                </div>
-                {busyTasks.get(it.id) && (
-                  <div className="h-0.5 w-full overflow-hidden bg-surface-3">
-                    <div
-                      className={cn(
-                        "h-full",
-                        busyTasks.get(it.id)!.retry_note ? "bg-warn" : "bg-[var(--accent)]",
-                        taskFraction(busyTasks.get(it.id)!) == null
-                          ? "w-1/3 animate-pulse"
-                          : "transition-[width] duration-300",
-                      )}
-                      style={
-                        taskFraction(busyTasks.get(it.id)!) == null
-                          ? undefined
-                          : { width: `${(taskFraction(busyTasks.get(it.id)!) ?? 0) * 100}%` }
-                      }
-                    />
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                  <span className="truncate text-[11px] text-content-faint">
-                    {busyTasks.get(it.id) ? (
-                      busyTasks.get(it.id)!.retry_note ? (
-                        <span className="text-warn">Retrying</span>
-                      ) : (
-                        <span className="capitalize text-[var(--accent)]">
-                          {busyTasks.get(it.id)!.stage}
-                        </span>
-                      )
-                    ) : it.last_played_at ? (
-                      `Played ${relativeTime(it.last_played_at)}`
-                    ) : (
-                      "Never played"
+
+                    {logoSrc(it.logo) && (
+                      <img
+                        src={logoSrc(it.logo)!}
+                        alt=""
+                        draggable={false}
+                        className="pointer-events-none absolute left-3 top-3 size-10 rounded-xl border border-white/15 bg-black/40 object-cover shadow-lg backdrop-blur"
+                      />
                     )}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-1">
+
+                    <div className="pointer-events-none absolute inset-x-3 bottom-3">
+                      <div className="truncate font-display text-base font-semibold text-white drop-shadow">
+                        {it.name}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="rounded bg-black/55 px-1.5 py-0.5 font-pixel text-[10px] text-white/80 backdrop-blur">
+                          {it.version_id}
+                        </span>
+                        {it.loader && (
+                          <span className="rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white/80 backdrop-blur">
+                            {loaderLabel(it)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                      <RowActions
+                        floating
+                        onEdit={() => setEditing(it)}
+                        onDelete={() => deleteInstance(it.id)}
+                      />
+                    </div>
+                  </div>
+
+                  {task && <ProgressStrip task={task} />}
+
+                  <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                    <span className="min-w-0 truncate text-[11px] text-content-faint">
+                      <StatusLine instance={it} task={task} />
+                    </span>
                     <PlayButton instance={it} compact onError={setLaunchError} />
-                    <button
-                      onClick={() => setEditing(it)}
-                      title="Edit instance"
-                      className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteInstance(it.id)}
-                      title="Delete instance"
-                      className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+
+            <button
+              onClick={() => setModalOpen(true)}
+              className="group flex min-h-[13rem] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border text-content-faint transition-colors hover:border-[var(--accent)]/50 hover:bg-surface-2/40 hover:text-content"
+            >
+              <span className="grid size-11 place-items-center rounded-full border border-border-soft bg-surface-2 transition-colors group-hover:border-[var(--accent)]/40">
+                <Plus className="size-5" />
+              </span>
+              <span className="text-xs font-medium">New instance</span>
+            </button>
+          </div>
         </div>
       )}
 
-      <CreateInstanceModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={() => {}} />
+      <CreateInstanceModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={() => {}}
+      />
       <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
     </div>
   );
