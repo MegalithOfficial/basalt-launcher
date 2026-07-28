@@ -389,3 +389,17 @@ export type View =
   | "discover"
   | "project"
   | "logs";
+
+export interface UpdateInfo {
+  current: string;
+  latest: string | null;
+  notes_url: string | null;
+  published_at: string | null;
+  update_available: boolean;
+}
+
+export interface AboutLinks {
+  repository: string;
+  issues: string;
+  releases: string;
+}

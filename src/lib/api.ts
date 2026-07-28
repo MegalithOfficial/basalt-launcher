@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { log } from "./log";
 import type {
+  AboutLinks,
   AccountView,
   AppInfo,
   Changelog,
@@ -26,6 +27,7 @@ import type {
   SearchQuery,
   PendingOperation,
   Task,
+  UpdateInfo,
   VersionEntry,
   VersionMedia,
 } from "./types";
@@ -209,4 +211,6 @@ export const api = {
   clearLogRecords: () => call<void>("clear_log_records"),
   getLogConfig: () => call<LogConfig>("get_log_config"),
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
+  checkForUpdates: () => call<UpdateInfo>("check_for_updates"),
+  getAboutLinks: () => call<AboutLinks>("get_about_links"),
 };

@@ -19,6 +19,7 @@ use crate::meta::manifest::{self, VersionEntry};
 use crate::meta::media::{self, VersionMedia};
 use crate::search;
 use crate::state::AppState;
+use crate::update::{self, UpdateInfo};
 
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
@@ -1051,4 +1052,26 @@ pub fn frontend_log(
 ) -> Result<()> {
     logging::record_frontend(&level, &scope, &message, data.as_deref());
     Ok(())
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateInfo> {
+    update::check(&state.http).await
+}
+
+#[derive(Serialize)]
+pub struct AboutLinks {
+    pub repository: String,
+    pub issues: String,
+    pub releases: String,
+}
+
+#[tauri::command]
+pub fn get_about_links() -> AboutLinks {
+    AboutLinks {
+        repository: update::REPO_URL.to_string(),
+        issues: format!("{}/issues/new", update::REPO_URL),
+        releases: format!("{}/releases", update::REPO_URL),
+    }
 }

@@ -16,6 +16,7 @@ mod paths;
 mod search;
 mod state;
 mod tasks;
+mod update;
 
 use paths::Paths;
 use state::AppState;
@@ -113,6 +114,8 @@ pub fn run() {
             commands::get_log_config,
             commands::set_log_level,
             commands::frontend_log,
+            commands::check_for_updates,
+            commands::get_about_links,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
