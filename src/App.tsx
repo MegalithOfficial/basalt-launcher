@@ -7,6 +7,7 @@ import { cn } from "./lib/cn";
 import { Sidebar } from "./components/Sidebar";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { TitleBar } from "./components/TitleBar";
+import { ToastHost } from "./components/ToastHost";
 import { AccountsView } from "./views/AccountsView";
 import { ConsoleView } from "./views/ConsoleView";
 import { HomeView } from "./views/HomeView";
@@ -65,6 +66,7 @@ function App() {
       )}
       style={accentVars(accent)}
     >
+      <ToastHost />
       <Sidebar />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <TitleBar immersive={immersive} />

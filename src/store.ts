@@ -10,6 +10,7 @@ import type {
   ContentUpdate,
   PendingOperation,
   Task,
+  Toast,
   Instance,
   LauncherSettings,
   LogLine,
@@ -60,6 +61,7 @@ interface AppStore {
   contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
   updates: Record<string, ContentUpdate[]>;
   interrupted: PendingOperation[];
+  toasts: Toast[];
   tasks: Record<string, Task>;
   taskOrder: string[];
   selectedInstanceId: string | null;
@@ -123,6 +125,8 @@ interface AppStore {
   clearFinishedTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   dismissInterrupted: () => void;
+  pushToast: (toast: Omit<Toast, "id">) => void;
+  dismissToast: (id: string) => void;
   applyUpdate: (instanceId: string, kind: string, fileName: string) => Promise<void>;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
@@ -155,6 +159,7 @@ export const useStore = create<AppStore>((set) => ({
   contentSources: {},
   updates: {},
   interrupted: [],
+  toasts: [],
   tasks: {},
   taskOrder: [],
 
@@ -253,6 +258,14 @@ export const useStore = create<AppStore>((set) => ({
 
   dismissInterrupted: () => set({ interrupted: [] }),
 
+  pushToast: (toast) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    set((s) => ({ toasts: [...s.toasts.slice(-4), { ...toast, id }] }));
+  },
+
+  dismissToast: (id) =>
+    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+
   clearFinishedTasks: async () => {
     await api.clearFinishedTasks();
     const remaining = await api.listTasks();
@@ -315,6 +328,28 @@ export const useStore = create<AppStore>((set) => ({
         // A pack install creates its instance up front and only resolves when
         // the whole download finishes, so pull the row in as soon as a task
         // references an instance we do not know about yet.
+        const previous = useStore.getState().tasks[task.id];
+        const justFinished =
+          previous &&
+          (previous.state === "running" || previous.state === "queued") &&
+          task.state !== "running" &&
+          task.state !== "queued";
+
+        if (justFinished && task.state === "succeeded") {
+          useStore.getState().pushToast({
+            tone: "success",
+            title: task.title,
+            message: task.subtitle ?? "Installed",
+          });
+        }
+        if (justFinished && task.state === "failed") {
+          useStore.getState().pushToast({
+            tone: "error",
+            title: `${task.title} failed`,
+            message: task.error,
+          });
+        }
+
         const known = useStore.getState().instances;
         if (task.instance_id && !known.some((i) => i.id === task.instance_id)) {
           void useStore.getState().refreshInstances();
