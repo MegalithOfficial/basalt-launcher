@@ -76,11 +76,11 @@ export function ProjectHero({
         />
       )}
 
-      <div className="relative flex items-start gap-4 px-6 py-5">
+      <div className="relative flex items-start gap-4 px-6 pb-5 pt-12">
         <button
           onClick={onBack}
           aria-label="Back"
-          className="mt-1 grid size-9 shrink-0 place-items-center rounded-full border border-white/10 bg-black/40 text-white/70 backdrop-blur transition-colors hover:bg-black/60 hover:text-white"
+          className="grid size-9 shrink-0 place-items-center rounded-full border border-white/10 bg-black/40 text-white/70 backdrop-blur transition-colors hover:bg-black/60 hover:text-white"
         >
           <ArrowLeft className="size-4" />
         </button>

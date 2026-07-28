@@ -54,6 +54,7 @@ function App() {
   }, []);
 
   const Current = VIEWS[view];
+  const immersive = view === "instance" || view === "project";
 
   return (
     <div
@@ -64,8 +65,8 @@ function App() {
       style={accentVars(accent)}
     >
       <Sidebar />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <TitleBar />
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <TitleBar immersive={immersive} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!ready ? (
           <div className="grid flex-1 place-items-center text-sm text-content-muted">
