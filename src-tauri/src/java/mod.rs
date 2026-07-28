@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,25 +39,110 @@ pub async fn probe(path: &str) -> Option<JavaInfo> {
     })
 }
 
+fn java_binary() -> &'static str {
+    if cfg!(windows) {
+        "java.exe"
+    } else {
+        "java"
+    }
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+pub fn runtime_binaries_in(root: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let base = entry.path();
+        for relative in ["bin", "Contents/Home/bin", "jre/bin"] {
+            let bin = base.join(relative).join(java_binary());
+            if bin.is_file() {
+                found.push(bin);
+            }
+        }
+    }
+    found
+}
+
+fn install_roots() -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = [
+        "/usr/lib/jvm",
+        "/usr/lib64/jvm",
+        "/usr/java",
+        "/opt/java",
+        "/Library/Java/JavaVirtualMachines",
+        "/System/Library/Java/JavaVirtualMachines",
+        "C:\\Program Files\\Java",
+        "C:\\Program Files\\Eclipse Adoptium",
+        "C:\\Program Files\\Microsoft",
+        "C:\\Program Files\\Zulu",
+        "C:\\Program Files (x86)\\Java",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
+
+    if let Some(home) = home_dir() {
+        for relative in [
+            ".sdkman/candidates/java",
+            ".asdf/installs/java",
+            ".jdks",
+            ".gradle/jdks",
+            ".jenv/versions",
+            ".local/share/mise/installs/java",
+            "Library/Java/JavaVirtualMachines",
+            "scoop/apps",
+        ] {
+            roots.push(home.join(relative));
+        }
+    }
+    roots
+}
+
 async fn candidates(explicit: Option<&str>) -> Vec<JavaInfo> {
     let mut paths: Vec<String> = Vec::new();
     if let Some(path) = explicit {
         paths.push(path.to_string());
     }
     if let Ok(home) = std::env::var("JAVA_HOME") {
-        paths.push(format!("{home}/bin/java"));
+        paths.push(
+            PathBuf::from(home)
+                .join("bin")
+                .join(java_binary())
+                .display()
+                .to_string(),
+        );
     }
-    paths.push("java".to_string());
-    for base in ["/usr/lib/jvm", "/usr/lib64/jvm", "/opt/java"] {
-        if let Ok(entries) = std::fs::read_dir(base) {
-            for entry in entries.flatten() {
-                let bin = entry.path().join("bin/java");
-                if bin.is_file() {
-                    paths.push(bin.display().to_string());
-                }
-            }
-        }
+    paths.push(java_binary().to_string());
+    if let Some(home) = home_dir() {
+        paths.push(
+            home.join(".nix-profile/bin")
+                .join(java_binary())
+                .display()
+                .to_string(),
+        );
     }
+    for root in install_roots() {
+        paths.extend(
+            runtime_binaries_in(&root)
+                .into_iter()
+                .map(|p| p.display().to_string()),
+        );
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    paths.retain(|path| {
+        let key = std::fs::canonicalize(path)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| path.clone());
+        seen.insert(key)
+    });
 
     let mut found: Vec<JavaInfo> = Vec::new();
     for path in paths {
@@ -124,12 +211,41 @@ pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<Jav
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_major, pick, JavaInfo};
+    use super::{install_roots, java_binary, parse_major, pick, runtime_binaries_in, JavaInfo};
 
     fn java(major: u32) -> JavaInfo {
         JavaInfo {
             path: format!("/usr/lib/jvm/java-{major}/bin/java"),
             major,
+        }
+    }
+
+    #[test]
+    fn finds_runtimes_in_every_supported_layout() {
+        let root = std::env::temp_dir().join(format!("basalt-jvm-{}", uuid::Uuid::new_v4()));
+        for relative in ["jdk-21/bin", "zulu-17/Contents/Home/bin", "legacy-8/jre/bin"] {
+            let dir = root.join(relative);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(java_binary()), b"").unwrap();
+        }
+        std::fs::create_dir_all(root.join("not-a-jdk/share")).unwrap();
+
+        let found = runtime_binaries_in(&root);
+        assert_eq!(found.len(), 3, "found: {found:?}");
+        assert!(found.iter().all(|p| p.ends_with(java_binary())));
+        assert!(runtime_binaries_in(&root.join("missing")).is_empty());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn looks_in_version_manager_directories() {
+        let roots = install_roots();
+        let rendered: Vec<String> = roots.iter().map(|r| r.display().to_string()).collect();
+        for expected in [".sdkman", ".asdf", ".jdks", "mise", "/usr/lib/jvm"] {
+            assert!(
+                rendered.iter().any(|r| r.contains(expected)),
+                "no root covering {expected} in {rendered:?}"
+            );
         }
     }
 
