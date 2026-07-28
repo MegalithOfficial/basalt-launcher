@@ -416,6 +416,7 @@ async fn install_pack_body(
         },
         Some(task.token()),
         Some(task.written()),
+        Some(&|attempt, max, reason| task.note_retry(attempt, max, reason)),
     )
     .await;
 

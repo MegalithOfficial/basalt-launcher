@@ -55,6 +55,8 @@ pub struct Task {
     pub downloaded_bytes: u64,
     pub total_bytes: u64,
     pub error: Option<String>,
+    pub retries: u64,
+    pub retry_note: Option<String>,
     pub started_at: i64,
     pub finished_at: Option<i64>,
 }
@@ -155,6 +157,8 @@ impl Tasks {
             downloaded_bytes: 0,
             total_bytes: spec.total_bytes,
             error: None,
+            retries: 0,
+            retry_note: None,
             started_at: chrono::Utc::now().timestamp(),
             finished_at: None,
         };
@@ -269,16 +273,34 @@ impl TaskHandle {
     }
 
     pub fn progress(&self, completed: u64, total: u64, downloaded_bytes: u64, total_bytes: u64) {
+        let mut cleared_retry = false;
         let updated = self.tasks.mutate(&self.id, |t| {
             t.completed = completed;
             t.total = total;
             t.downloaded_bytes = downloaded_bytes;
             t.total_bytes = total_bytes;
+            if t.retry_note.is_some() {
+                t.retry_note = None;
+                cleared_retry = true;
+            }
         });
         if let Some(task) = updated {
-            if self.should_emit() {
+            if cleared_retry {
+                self.force_emit();
+                emit(&self.app, &task);
+            } else if self.should_emit() {
                 emit(&self.app, &task);
             }
+        }
+    }
+
+    pub fn note_retry(&self, attempt: u32, max: u32, reason: &str) {
+        if let Some(task) = self.tasks.mutate(&self.id, |t| {
+            t.retries += 1;
+            t.retry_note = Some(format!("Retrying {attempt} of {max}: {reason}"));
+        }) {
+            self.force_emit();
+            emit(&self.app, &task);
         }
     }
 
@@ -361,6 +383,8 @@ mod tests {
             downloaded_bytes: 0,
             total_bytes: 0,
             error: None,
+            retries: 0,
+            retry_note: None,
             started_at: 0,
             finished_at: None,
         }

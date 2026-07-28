@@ -6,6 +6,7 @@ import {
   CircleSlash,
   Loader2,
   Package,
+  RotateCw,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -59,6 +60,7 @@ function Ring({ fraction }: { fraction: number | null }) {
 }
 
 function StateIcon({ task }: { task: Task }) {
+  if (task.retry_note) return <RotateCw className="size-3.5 animate-spin text-warn" />;
   if (task.state === "succeeded") return <Check className="size-3.5 text-ok" />;
   if (task.state === "failed") return <TriangleAlert className="size-3.5 text-danger" />;
   if (task.state === "cancelled") return <CircleSlash className="size-3.5 text-content-faint" />;
@@ -104,6 +106,8 @@ function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void })
         <div className="truncate text-[11px] text-content-faint">
           {task.error ? (
             <span className="text-danger">{task.error}</span>
+          ) : task.retry_note ? (
+            <span className="text-warn">{task.retry_note}</span>
           ) : (
             <>
               {!active && task.subtitle && <span>{task.subtitle} · </span>}
@@ -123,6 +127,13 @@ function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void })
               {!active && task.finished_at && (
                 <span> · {relativeTime(task.finished_at)}</span>
               )}
+              {task.retries > 0 && !task.retry_note && (
+                <span className="text-warn">
+                  {" "}
+                  · retried {task.retries}
+                  {task.retries === 1 ? " time" : " times"}
+                </span>
+              )}
             </>
           )}
         </div>
@@ -131,7 +142,8 @@ function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void })
           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-3">
             <div
               className={cn(
-                "h-full rounded-full bg-[var(--accent)]",
+                "h-full rounded-full",
+                task.retry_note ? "bg-warn" : "bg-[var(--accent)]",
                 fraction == null
                   ? "w-1/3 animate-pulse"
                   : "transition-[width] duration-300",

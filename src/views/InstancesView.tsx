@@ -210,7 +210,8 @@ export function InstancesView() {
                   <div className="h-0.5 w-full overflow-hidden bg-surface-3">
                     <div
                       className={cn(
-                        "h-full bg-[var(--accent)]",
+                        "h-full",
+                        busyTasks.get(it.id)!.retry_note ? "bg-warn" : "bg-[var(--accent)]",
                         taskFraction(busyTasks.get(it.id)!) == null
                           ? "w-1/3 animate-pulse"
                           : "transition-[width] duration-300",
@@ -226,9 +227,13 @@ export function InstancesView() {
                 <div className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <span className="truncate text-[11px] text-content-faint">
                     {busyTasks.get(it.id) ? (
-                      <span className="capitalize text-[var(--accent)]">
-                        {busyTasks.get(it.id)!.stage}
-                      </span>
+                      busyTasks.get(it.id)!.retry_note ? (
+                        <span className="text-warn">Retrying</span>
+                      ) : (
+                        <span className="capitalize text-[var(--accent)]">
+                          {busyTasks.get(it.id)!.stage}
+                        </span>
+                      )
                     ) : it.last_played_at ? (
                       `Played ${relativeTime(it.last_played_at)}`
                     ) : (

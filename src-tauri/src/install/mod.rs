@@ -166,6 +166,7 @@ pub async fn install_version(
         },
         Some(task.token()),
         None,
+        Some(&|attempt, max, reason| task.note_retry(attempt, max, reason)),
     )
     .await?;
 

@@ -221,6 +221,8 @@ export interface Task {
   downloaded_bytes: number;
   total_bytes: number;
   error: string | null;
+  retries: number;
+  retry_note: string | null;
   started_at: number;
   finished_at: number | null;
 }

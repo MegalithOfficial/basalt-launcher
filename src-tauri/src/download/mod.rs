@@ -72,7 +72,17 @@ pub fn retry_delay(attempt: u32) -> Duration {
     Duration::from_millis(RETRY_BASE.as_millis() as u64 * 2u64.pow(attempt.min(6))).min(RETRY_CEILING)
 }
 
+pub type RetryHook<'a> = Option<&'a (dyn Fn(u32, u32, &str) + Send + Sync)>;
+
 pub async fn download_one(client: &reqwest::Client, spec: &DownloadSpec) -> Result<bool> {
+    download_one_reporting(client, spec, None).await
+}
+
+pub async fn download_one_reporting(
+    client: &reqwest::Client,
+    spec: &DownloadSpec,
+    on_retry: RetryHook<'_>,
+) -> Result<bool> {
     let mut attempt = 0;
     loop {
         match download_once(client, spec).await {
@@ -85,9 +95,26 @@ pub async fn download_one(client: &reqwest::Client, spec: &DownloadSpec) -> Resu
                         n => Error::other(format!("{e} (after {n} attempts)")),
                     });
                 }
+                if let Some(hook) = on_retry {
+                    hook(attempt, DOWNLOAD_ATTEMPTS, &short_reason(&e));
+                }
                 tokio::time::sleep(retry_delay(attempt)).await;
             }
         }
+    }
+}
+
+fn short_reason(error: &Error) -> String {
+    match error {
+        Error::Checksum { .. } => "corrupt download".to_string(),
+        Error::Http(e) if e.is_timeout() => "timed out".to_string(),
+        Error::Http(e) if e.is_connect() => "connection failed".to_string(),
+        Error::Http(e) if e.is_body() || e.is_decode() => "interrupted transfer".to_string(),
+        Error::Http(e) => match e.status() {
+            Some(status) => format!("server said {status}"),
+            None => "network error".to_string(),
+        },
+        other => other.to_string(),
     }
 }
 
@@ -138,7 +165,7 @@ pub async fn download_many<F>(
 where
     F: Fn(DownloadProgress) + Send + Sync,
 {
-    download_many_cancellable(client, specs, concurrency, on_progress, None, None).await
+    download_many_cancellable(client, specs, concurrency, on_progress, None, None, None).await
 }
 
 pub async fn download_many_cancellable<F>(
@@ -148,6 +175,7 @@ pub async fn download_many_cancellable<F>(
     on_progress: F,
     cancel: Option<CancellationToken>,
     written: Option<&std::sync::Mutex<Vec<PathBuf>>>,
+    on_retry: RetryHook<'_>,
 ) -> Result<()>
 where
     F: Fn(DownloadProgress) + Send + Sync,
@@ -176,9 +204,9 @@ where
             Some(token) => tokio::select! {
                 biased;
                 _ = token.cancelled() => return Err(Error::Cancelled),
-                result = download_one(client, &spec) => result?,
+                result = download_one_reporting(client, &spec, on_retry) => result?,
             },
-            None => download_one(client, &spec).await?,
+            None => download_one_reporting(client, &spec, on_retry).await?,
         };
         if created {
             if let Some(sink) = written {
@@ -234,6 +262,7 @@ mod tests {
             |_| {},
             Some(token),
             Some(&written),
+            None,
         )
         .await;
 
@@ -318,6 +347,7 @@ mod tests {
             |_| {},
             Some(token),
             None,
+            None,
         )
         .await;
 
@@ -353,6 +383,7 @@ mod tests {
             |_| {},
             None,
             Some(&written),
+            None,
         )
         .await;
 

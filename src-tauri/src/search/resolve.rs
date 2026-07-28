@@ -409,6 +409,10 @@ pub async fn apply(
         task.stage("downloading");
     }
 
+    let retry_hook = task
+        .as_ref()
+        .map(|t| move |attempt: u32, max: u32, reason: &str| t.note_retry(attempt, max, reason));
+
     let concurrency = state.db.load_settings()?.concurrent_downloads;
     let outcome = {
         let task_ref = task.as_ref();
@@ -428,6 +432,7 @@ pub async fn apply(
             },
             task.as_ref().map(|t| t.token()),
             task.as_ref().map(|t| t.written()),
+            retry_hook.as_ref().map(|h| h as &(dyn Fn(u32, u32, &str) + Send + Sync)),
         )
         .await
     };
