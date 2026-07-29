@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
-  ArrowLeft,
   ArrowUpCircle,
   Check,
   FileBox,
@@ -131,7 +130,6 @@ export function InstanceView() {
   const detailId = useStore((s) => s.detailInstanceId);
   const instance = useStore((s) => s.instances.find((i) => i.id === s.detailInstanceId));
   const media = useStore((s) => (detailId ? (s.media[detailId] ?? null) : null));
-  const setView = useStore((s) => s.setView);
   const openSearch = useStore((s) => s.openSearch);
   const openProject = useStore((s) => s.openProject);
   const refreshContentSources = useStore((s) => s.refreshContentSources);
@@ -397,13 +395,6 @@ export function InstanceView() {
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-base via-base/40 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent" />
-
-        <button
-          onClick={() => setView("instances")}
-          className="absolute left-4 top-12 grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/80 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
-        >
-          <ArrowLeft className="size-4" />
-        </button>
 
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 px-6 pb-4">
           <div className="flex min-w-0 items-end gap-4">

@@ -259,11 +259,7 @@ export const useStore = create<AppStore>((set) => ({
   tasks: {},
   taskOrder: [],
 
-  setView: (view) =>
-    set((s) => ({
-      view,
-      viewStack: s.view !== view ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
-    })),
+  setView: (view) => set({ view, viewStack: [] }),
 
   goBack: () =>
     set((s) => ({

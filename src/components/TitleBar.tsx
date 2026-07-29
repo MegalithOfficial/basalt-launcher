@@ -1,7 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, X } from "lucide-react";
+import { ArrowLeft, Minus, Square, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { useStore } from "../store";
 import { ActivityCenter } from "./ActivityCenter";
 import { RunningPill } from "./RunningPill";
 
@@ -42,6 +43,9 @@ function Control({
 }
 
 export function TitleBar({ immersive = false }: { immersive?: boolean }) {
+  const canGoBack = useStore((s) => s.viewStack.length > 0);
+  const goBack = useStore((s) => s.goBack);
+
   return (
     <div
       data-tauri-drag-region
@@ -59,7 +63,23 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
         />
       )}
 
-      <div className="w-24" />
+      <div className="relative flex w-24 items-center">
+        {canGoBack && (
+          <button
+            onClick={goBack}
+            aria-label="Back"
+            title="Back"
+            className={cn(
+              "ml-1.5 grid size-8 place-items-center rounded-lg transition-colors",
+              immersive
+                ? "text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:bg-white/15 hover:text-white"
+                : "text-content hover:bg-surface-3",
+            )}
+          >
+            <ArrowLeft className="size-5" />
+          </button>
+        )}
+      </div>
 
       <div
         data-tauri-drag-region

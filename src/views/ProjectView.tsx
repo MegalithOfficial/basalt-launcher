@@ -40,7 +40,6 @@ export function ProjectView() {
   const setDiscoverTarget = useStore((s) => s.setDiscoverTarget);
   const contentProgress = useInstanceTask(instance?.id);
   const activeProjects = useActiveProjectIds();
-  const goBack = useStore((s) => s.goBack);
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
   const installModpackAction = useStore((s) => s.installModpack);
@@ -312,7 +311,6 @@ export function ProjectView() {
         target={instance ?? null}
         onSelectTarget={(picked) => setDiscoverTarget(picked?.id ?? null)}
         showTargetPicker={!isPack}
-        onBack={goBack}
         onInstall={() => install(null)}
         onOpenInstalled={() =>
           isPack && packInstance ? openInstance(packInstance.id) : setTab("versions")
