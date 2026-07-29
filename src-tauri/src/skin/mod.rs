@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::SkinRecord;
 use crate::error::{Error, Result};
-use crate::paths::Paths;
 use crate::state::AppState;
 
 const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
@@ -172,7 +171,7 @@ pub fn worn_skin(state: &AppState, uuid: &str) -> Result<Option<SkinEntry>> {
     let Some(record) = state.db.find_skin(&id)? else {
         return Ok(None);
     };
-    Ok(entry_for(&state.paths, record))
+    Ok(entry_for(&state.files, record))
 }
 
 async fn current(state: &AppState, token: &str) -> Result<Appearance> {
@@ -605,8 +604,10 @@ fn data_url(bytes: &[u8]) -> String {
     )
 }
 
-fn entry_for(paths: &Paths, record: SkinRecord) -> Option<SkinEntry> {
-    let bytes = std::fs::read(paths.skins().join(&record.file_name)).ok()?;
+fn entry_for(files: &crate::files::FileManager, record: SkinRecord) -> Option<SkinEntry> {
+    let bytes = files
+        .read(files.paths().skins().join(&record.file_name))
+        .ok()?;
     Some(SkinEntry {
         id: record.id,
         name: record.name,
@@ -621,7 +622,7 @@ pub fn library(state: &AppState) -> Result<Vec<SkinEntry>> {
         .db
         .list_skins()?
         .into_iter()
-        .filter_map(|record| entry_for(&state.paths, record))
+        .filter_map(|record| entry_for(&state.files, record))
         .collect())
 }
 
@@ -631,15 +632,16 @@ fn store(state: &AppState, bytes: &[u8], name: &str, variant: Variant, source: O
     if let Some(existing) = state.db.find_skin_by_hash(&hash)? {
         if let Some(record) = state.db.find_skin(&existing)? {
             tracing::debug!(name = %record.name, "skin already in the library");
-            if let Some(entry) = entry_for(&state.paths, record) {
+            if let Some(entry) = entry_for(&state.files, record) {
                 return Ok(entry);
             }
         }
     }
     let id = uuid::Uuid::new_v4().to_string();
     let file_name = format!("{id}.png");
-    std::fs::create_dir_all(state.paths.skins())?;
-    std::fs::write(state.paths.skins().join(&file_name), bytes)?;
+    state
+        .files
+        .write_atomic(state.paths.skins().join(&file_name), bytes)?;
 
     let record = SkinRecord {
         id,
@@ -654,12 +656,12 @@ fn store(state: &AppState, bytes: &[u8], name: &str, variant: Variant, source: O
     state.db.insert_skin(&record)?;
     tracing::info!(name = %record.name, variant = variant.as_str(), "skin saved to library");
 
-    entry_for(&state.paths, record).ok_or_else(|| Error::other("skin vanished after saving"))
+    entry_for(&state.files, record).ok_or_else(|| Error::other("skin vanished after saving"))
 }
 
 #[tracing::instrument(skip(state), err)]
 pub fn add_from_file(state: &AppState, path: &str, name: Option<&str>, variant: &str) -> Result<SkinEntry> {
-    let bytes = std::fs::read(path)?;
+    let bytes = state.files.read_external(path)?;
     let fallback = std::path::Path::new(path)
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
@@ -744,7 +746,9 @@ pub async fn add_from_reference(state: &AppState, reference: &str) -> Result<Ski
 #[tracing::instrument(skip(state), err)]
 pub fn remove(state: &AppState, id: &str) -> Result<()> {
     if let Some(record) = state.db.find_skin(id)? {
-        let _ = std::fs::remove_file(state.paths.skins().join(&record.file_name));
+        let _ = state
+            .files
+            .remove_file_if_exists(state.paths.skins().join(&record.file_name));
     }
     state.db.delete_skin(id)?;
     tracing::info!("skin removed from library");
@@ -757,7 +761,9 @@ pub async fn apply_saved(state: &AppState, id: &str, variant: Option<&str>) -> R
         .db
         .find_skin(id)?
         .ok_or_else(|| Error::NotFound(format!("skin {id}")))?;
-    let bytes = std::fs::read(state.paths.skins().join(&record.file_name))?;
+    let bytes = state
+        .files
+        .read(state.paths.skins().join(&record.file_name))?;
     let chosen = Variant::parse(variant.unwrap_or(&record.variant));
     let mut applied = upload(state, bytes, chosen).await?;
     if chosen.as_str() != record.variant {
@@ -790,7 +796,7 @@ pub fn reconcile_library(state: &AppState) -> Result<usize> {
 
     for record in state.db.list_skins()? {
         let path = state.paths.skins().join(&record.file_name);
-        let Ok(bytes) = std::fs::read(&path) else {
+        let Ok(bytes) = state.files.read(&path) else {
             tracing::warn!(name = %record.name, "skin file is missing, dropping the entry");
             state.db.delete_skin(&record.id)?;
             removed += 1;
@@ -809,7 +815,7 @@ pub fn reconcile_library(state: &AppState) -> Result<usize> {
                     kept = %kept,
                     "removing a duplicate of a skin already in the library"
                 );
-                let _ = std::fs::remove_file(&path);
+                let _ = state.files.remove_file_if_exists(&path);
                 state.db.delete_skin(&record.id)?;
                 removed += 1;
             }
@@ -841,7 +847,7 @@ pub fn rename(state: &AppState, id: &str, name: &str) -> Result<SkinEntry> {
         .find_skin(id)?
         .ok_or_else(|| Error::NotFound(format!("skin {id}")))?;
     tracing::info!(name, "skin renamed");
-    entry_for(&state.paths, record).ok_or_else(|| Error::other("skin file is missing"))
+    entry_for(&state.files, record).ok_or_else(|| Error::other("skin file is missing"))
 }
 
 #[cfg(test)]
@@ -944,7 +950,9 @@ mod tests {
     fn scratch_state() -> (AppState, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!("basalt-skins-{}", uuid::Uuid::new_v4()));
         let paths = Paths { root: root.clone() };
-        paths.ensure_dirs().unwrap();
+        crate::files::FileManager::new(paths.clone())
+            .ensure_base_dirs()
+            .unwrap();
         let db = crate::db::Db::open(&paths).unwrap();
         (AppState::new(paths, db), root)
     }

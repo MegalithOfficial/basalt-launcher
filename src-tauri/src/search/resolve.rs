@@ -458,7 +458,7 @@ pub async fn apply(
 
     for file in files {
         if let Some(old) = &file.replaces {
-            let _ = content::delete(&state.paths, instance_id, kind.as_str(), old);
+            let _ = content::delete(&state.files, instance_id, kind.as_str(), old);
             let _ = state
                 .db
                 .delete_content_file(instance_id, kind.as_str(), old);

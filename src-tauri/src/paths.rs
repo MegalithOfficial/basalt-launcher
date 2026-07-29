@@ -15,23 +15,6 @@ impl Paths {
         Ok(Self { root })
     }
 
-    pub fn ensure_dirs(&self) -> Result<()> {
-        for dir in [
-            self.versions(),
-            self.libraries(),
-            self.assets_indexes(),
-            self.assets_objects(),
-            self.natives(),
-            self.runtimes(),
-            self.instances(),
-            self.logs(),
-            self.skins(),
-        ] {
-            std::fs::create_dir_all(dir)?;
-        }
-        Ok(())
-    }
-
     pub fn versions(&self) -> PathBuf {
         self.root.join("versions")
     }
@@ -90,17 +73,6 @@ impl Paths {
         Some(dir)
     }
 
-    pub fn remove_instance_dir(&self, id: &str) -> bool {
-        match self.instance_dir_checked(id) {
-            Some(dir) => {
-                if dir.exists() {
-                    let _ = std::fs::remove_dir_all(&dir);
-                }
-                true
-            }
-            None => false,
-        }
-    }
     pub fn manifest_cache(&self) -> PathBuf {
         self.root.join("version_manifest_v2.json")
     }
@@ -134,7 +106,6 @@ mod tests {
         assert!(p.instance_dir_checked("..").is_none());
         assert!(p.instance_dir_checked("../..").is_none());
         assert!(p.instance_dir_checked("a/b").is_none());
-        assert!(!p.remove_instance_dir(""), "a blank id must never delete anything");
     }
 
     #[test]

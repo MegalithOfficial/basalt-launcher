@@ -109,7 +109,7 @@ pub fn create_instance(
         pack_project_id: None,
         pack_version_id: None,
     };
-    std::fs::create_dir_all(state.paths.instance_dir(&instance.id))?;
+    state.files.ensure_dir(state.paths.instance_dir(&instance.id))?;
     state.db.insert_instance(&instance)?;
     tracing::info!(
         instance_id = %instance.id,
@@ -184,9 +184,7 @@ pub fn update_instance(
 #[tracing::instrument(skip(state), err)]
 pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
     state.db.delete_instance(&instance_id)?;
-    if !state.paths.remove_instance_dir(&instance_id) {
-        return Err(Error::other("refusing to delete an instance with an invalid id"));
-    }
+    state.files.remove_instance_dir(&instance_id)?;
     media::clear_custom_banner(&state.files, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     state.db.delete_instance_content_files(&instance_id)?;
@@ -319,17 +317,16 @@ pub fn cancel_task(state: State<AppState>, task_id: String) -> bool {
     state.tasks.cancel(&task_id)
 }
 
-fn sweep_partials(dir: &std::path::Path) -> usize {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+fn sweep_partials(files: &crate::files::FileManager, dir: &std::path::Path) -> usize {
+    let Ok(entries) = files.read_dir(dir) else {
         return 0;
     };
     let mut removed = 0;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            removed += sweep_partials(&path);
+    for path in entries {
+        if files.metadata(&path).is_ok_and(|metadata| metadata.is_dir()) {
+            removed += sweep_partials(files, &path);
         } else if path.extension().is_some_and(|e| e == "part") {
-            if std::fs::remove_file(&path).is_ok() {
+            if files.remove_file_if_exists(&path).is_ok() {
                 removed += 1;
             }
         }
@@ -351,9 +348,9 @@ pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::Pend
         if op.kind == "ModpackInstall" {
             let _ = state.db.delete_instance_content_files(instance_id);
             let _ = state.db.delete_instance(instance_id);
-            state.paths.remove_instance_dir(instance_id);
+            let _ = state.files.remove_instance_dir(instance_id);
         } else {
-            sweep_partials(&state.paths.instance_dir(instance_id));
+            sweep_partials(&state.files, &state.paths.instance_dir(instance_id));
         }
     }
 
@@ -362,13 +359,13 @@ pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::Pend
 }
 
 fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {
-    if state.paths.version_jar(id).is_file() {
+    if state.files.is_file(state.paths.version_jar(id)).unwrap_or(false) {
         return true;
     }
     if depth == 0 {
         return false;
     }
-    let Ok(bytes) = std::fs::read(state.paths.version_json(id)) else {
+    let Ok(bytes) = state.files.read(state.paths.version_json(id)) else {
         return false;
     };
     let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
@@ -388,14 +385,21 @@ fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {
 #[tracing::instrument(skip_all, err)]
 pub fn list_installed_versions(state: State<AppState>) -> Result<Vec<String>> {
     let mut installed = Vec::new();
-    let entries = match std::fs::read_dir(state.paths.versions()) {
+    let entries = match state.files.read_dir(state.paths.versions()) {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(installed),
-        Err(e) => return Err(e.into()),
+        Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(installed)
+        }
+        Err(error) => return Err(error),
     };
-    for entry in entries.flatten() {
-        let id = entry.file_name().to_string_lossy().into_owned();
-        if state.paths.version_json(&id).is_file() && version_jar_exists(&state, &id, 3) {
+    for path in entries {
+        let id = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        if state
+            .files
+            .is_file(state.paths.version_json(&id))
+            .unwrap_or(false)
+            && version_jar_exists(&state, &id, 3)
+        {
             installed.push(id);
         }
     }
@@ -507,7 +511,7 @@ pub async fn list_instance_content(
         let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
     }
 
-    let mut items = content::list(&state.paths, &instance_id, &kind)?;
+    let mut items = content::list(&state.files, &instance_id, &kind)?;
     let mut sources: std::collections::HashMap<String, crate::db::ContentFile> = state
         .db
         .content_files(&instance_id, &kind)?
@@ -537,7 +541,7 @@ pub fn toggle_instance_content(
     kind: String,
     file_name: String,
 ) -> Result<bool> {
-    let enabled = content::toggle(&state.paths, &instance_id, &kind, &file_name)?;
+    let enabled = content::toggle(&state.files, &instance_id, &kind, &file_name)?;
     tracing::info!(enabled, "content toggled");
     Ok(enabled)
 }
@@ -550,7 +554,7 @@ pub fn delete_instance_content(
     kind: String,
     file_name: String,
 ) -> Result<()> {
-    content::delete(&state.paths, &instance_id, &kind, &file_name)?;
+    content::delete(&state.files, &instance_id, &kind, &file_name)?;
     tracing::info!("content deleted");
     state.db.delete_content_file(&instance_id, &kind, &file_name)
 }
@@ -585,7 +589,7 @@ pub async fn add_instance_content(
     sources: Vec<String>,
 ) -> Result<usize> {
     find_instance(&state, &instance_id)?;
-    let copied = content::add(&state.paths, &instance_id, &kind, &sources)?;
+    let copied = content::add(&state.files, &instance_id, &kind, &sources)?;
     let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
     tracing::info!(copied, offered = sources.len(), "content added from disk");
     Ok(copied)

@@ -346,7 +346,7 @@ pub async fn install_modpack(
     if let Err(e) = outcome {
         let _ = state.db.delete_instance_content_files(&instance.id);
         let _ = state.db.delete_instance(&instance.id);
-        state.paths.remove_instance_dir(&instance.id);
+        let _ = state.files.remove_instance_dir(&instance.id);
         match &e {
             Error::Cancelled => task.cancelled(),
             other => task.fail(other),

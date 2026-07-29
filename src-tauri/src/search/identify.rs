@@ -225,7 +225,7 @@ pub fn identify_file(path: &Path) -> Result<FileIdentity> {
 }
 
 pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Result<()> {
-    let items = content::list(&state.paths, instance_id, kind)?;
+    let items = content::list(&state.files, instance_id, kind)?;
     if items.is_empty() {
         return Ok(());
     }
@@ -252,7 +252,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
             continue;
         }
 
-        let path = content::resolve_path(&dir, &item.file_name);
+        let path = content::resolve_path(&state.files, &dir, &item.file_name);
         let Ok(identity) = identify_file(&path) else {
             continue;
         };

@@ -23,6 +23,7 @@ mod sysinfo_probe;
 mod tasks;
 mod update;
 
+use files::FileManager;
 use paths::Paths;
 use state::AppState;
 use tauri::Manager;
@@ -41,7 +42,7 @@ pub fn run() {
                 let _ = window.set_icon(icon);
             }
             let paths = Paths::resolve(app.handle())?;
-            paths.ensure_dirs()?;
+            FileManager::new(paths.clone()).ensure_base_dirs()?;
 
             let log_state = logging::init(app.handle(), &paths, logging::DEFAULT_LEVEL)?;
             tracing::info!(

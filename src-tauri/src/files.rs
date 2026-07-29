@@ -17,6 +17,23 @@ impl FileManager {
         &self.paths
     }
 
+    pub fn ensure_base_dirs(&self) -> Result<()> {
+        for directory in [
+            self.paths.versions(),
+            self.paths.libraries(),
+            self.paths.assets_indexes(),
+            self.paths.assets_objects(),
+            self.paths.natives(),
+            self.paths.runtimes(),
+            self.paths.instances(),
+            self.paths.logs(),
+            self.paths.skins(),
+        ] {
+            self.ensure_dir(directory)?;
+        }
+        Ok(())
+    }
+
     fn managed<'a>(&self, path: &'a Path) -> Result<&'a Path> {
         if !path.starts_with(&self.paths.root)
             || path
@@ -43,6 +60,10 @@ impl FileManager {
 
     pub fn read(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
         Ok(std::fs::read(self.managed(path.as_ref())?)?)
+    }
+
+    pub fn read_external(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
+        Ok(std::fs::read(path)?)
     }
 
     pub async fn read_async(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
@@ -97,6 +118,17 @@ impl FileManager {
         Ok(size)
     }
 
+    pub fn copy_external_into_sync(
+        &self,
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<u64> {
+        let bytes = std::fs::read(source)?;
+        let size = bytes.len() as u64;
+        self.write_atomic(destination, &bytes)?;
+        Ok(size)
+    }
+
     pub fn exists(&self, path: impl AsRef<Path>) -> Result<bool> {
         Ok(self.managed(path.as_ref())?.exists())
     }
@@ -110,6 +142,10 @@ impl FileManager {
             .filter_map(|entry| entry.ok().map(|entry| entry.path()))
             .collect();
         Ok(entries)
+    }
+
+    pub fn metadata(&self, path: impl AsRef<Path>) -> Result<std::fs::Metadata> {
+        Ok(std::fs::metadata(self.managed(path.as_ref())?)?)
     }
 
     pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {
@@ -129,6 +165,14 @@ impl FileManager {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
         }
+    }
+
+    pub fn remove_instance_dir(&self, instance_id: &str) -> Result<bool> {
+        let path = self
+            .paths
+            .instance_dir_checked(instance_id)
+            .ok_or_else(|| Error::other("invalid instance id"))?;
+        self.remove_dir_all_if_exists(path)
     }
 
     pub fn temporary_for(&self, path: impl AsRef<Path>) -> Result<PathBuf> {
