@@ -12,6 +12,7 @@ pub(crate) mod launch_commands;
 pub(crate) mod logging_commands;
 pub(crate) mod skins;
 pub(crate) mod tasks;
+pub(crate) mod worlds;
 
 fn find_instance(state: &AppState, instance_id: &str) -> Result<Instance> {
     state

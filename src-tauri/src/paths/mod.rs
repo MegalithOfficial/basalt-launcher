@@ -78,6 +78,10 @@ impl Paths {
         Some(dir)
     }
 
+    pub fn instance_saves_dir_checked(&self, id: &str) -> Option<PathBuf> {
+        self.instance_dir_checked(id).map(|dir| dir.join("saves"))
+    }
+
     pub fn manifest_cache(&self) -> PathBuf {
         self.root.join("version_manifest_v2.json")
     }

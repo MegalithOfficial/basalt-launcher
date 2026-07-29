@@ -22,6 +22,7 @@ mod state;
 mod sysinfo_probe;
 mod tasks;
 mod update;
+mod worlds;
 
 use files::FileManager;
 use paths::Paths;
@@ -126,6 +127,7 @@ pub fn run() {
             commands::content_commands::toggle_instance_content,
             commands::content_commands::delete_instance_content,
             commands::content_commands::add_instance_content,
+            commands::worlds::list_instance_worlds,
             commands::launch_commands::launch_instance,
             commands::launch_commands::kill_instance,
             commands::launch_commands::list_running,

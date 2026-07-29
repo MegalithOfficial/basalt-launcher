@@ -206,6 +206,10 @@ impl FileManager {
         Ok(self.root.metadata(self.relative(path.as_ref())?)?)
     }
 
+    pub fn symlink_metadata(&self, path: impl AsRef<Path>) -> Result<Metadata> {
+        Ok(self.root.symlink_metadata(self.relative(path.as_ref())?)?)
+    }
+
     pub fn open(&self, path: impl AsRef<Path>) -> Result<std::fs::File> {
         Ok(self.root.open(self.relative(path.as_ref())?)?.into_std())
     }

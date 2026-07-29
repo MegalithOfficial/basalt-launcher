@@ -258,6 +258,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "cap-std",
+ "cesu8",
  "chrono",
  "flate2",
  "futures",
