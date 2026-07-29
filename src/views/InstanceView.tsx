@@ -16,17 +16,28 @@ import {
 } from "lucide-react";
 
 import { EditInstanceModal } from "../components/EditInstanceModal";
+import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
 import { Modal } from "../components/Modal";
+import { SuggestedContent } from "../components/SuggestedContent";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
+import { log } from "../lib/log";
 import { notifyRemoved } from "../lib/notify";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc, mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
-import type { ContentItem, ContentKind, ContentUpdate, RemovalPlan } from "../lib/types";
+import type {
+  ContentItem,
+  ContentKind,
+  ContentUpdate,
+  InstallPlan,
+  ProjectSummary,
+  RemovalPlan,
+  SearchProvider,
+} from "../lib/types";
 import { useActiveProjectIds } from "../lib/useTasks";
 import { useStore } from "../store";
 
@@ -132,6 +143,7 @@ export function InstanceView() {
   const instance = useStore((s) => s.instances.find((i) => i.id === s.detailInstanceId));
   const media = useStore((s) => (detailId ? (s.media[detailId] ?? null) : null));
   const openSearch = useStore((s) => s.openSearch);
+  const installContent = useStore((s) => s.installContent);
   const openProject = useStore((s) => s.openProject);
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const refreshUpdates = useStore((s) => s.refreshUpdates);
@@ -168,6 +180,12 @@ export function InstanceView() {
     plan: RemovalPlan;
   } | null>(null);
   const [dropOrphans, setDropOrphans] = useState<string[]>([]);
+  const [suggestPlan, setSuggestPlan] = useState<{
+    provider: SearchProvider;
+    project: ProjectSummary;
+    plan: InstallPlan;
+  } | null>(null);
+  const [suggestBusy, setSuggestBusy] = useState<string | null>(null);
 
   const refresh = useCallback(
     async (reconcile = false) => {
@@ -353,6 +371,56 @@ export function InstanceView() {
         : `from ${instance.name}`,
     );
     await refresh();
+  };
+
+  const installSuggestion = async (
+    provider: SearchProvider,
+    project: ProjectSummary,
+    withDependencies = true,
+    plan?: InstallPlan,
+  ) => {
+    if (tab === "worlds") return;
+    setSuggestBusy(project.id);
+    try {
+      if (!plan) {
+        const resolved = await api.planContentInstall(
+          provider,
+          project.id,
+          instance.id,
+          tab,
+          instance.version_id,
+          tab === "mods" ? instance.loader : null,
+        );
+        const replaces =
+          !!resolved.primary?.replaces || resolved.dependencies.some((f) => !!f.replaces);
+        const trivial =
+          resolved.dependencies.length === 0 &&
+          resolved.skipped.length === 0 &&
+          resolved.conflicts.length === 0 &&
+          !replaces;
+        if (!trivial) {
+          setSuggestPlan({ provider, project, plan: resolved });
+          return;
+        }
+      }
+      await installContent({
+        provider,
+        projectId: project.id,
+        instanceId: instance.id,
+        kind: tab,
+        gameVersion: instance.version_id,
+        loader: tab === "mods" ? instance.loader : null,
+        withDependencies,
+      });
+      setSuggestPlan(null);
+      setFilter("");
+      await refresh();
+    } catch (e) {
+      setSuggestPlan(null);
+      log.warn("content", `could not install ${project.title}: ${String(e)}`);
+    } finally {
+      setSuggestBusy(null);
+    }
   };
 
   const checkUpdates = async () => {
@@ -645,11 +713,28 @@ export function InstanceView() {
             </button>
           </div>
         ) : shownItems.length === 0 ? (
-          <div className="py-16 text-center text-sm text-content-faint">
-            {query
-              ? `Nothing matches “${filter}”.`
-              : `No ${listView === "unlinked" ? "unlinked" : listView} ${tabMeta.label.toLowerCase()}.`}
-          </div>
+          <>
+            <div
+              className={cn(
+                "text-sm text-content-faint",
+                query ? "py-6" : "py-16 text-center",
+              )}
+            >
+              {query
+                ? `Nothing installed matches “${filter}”.`
+                : `No ${listView === "unlinked" ? "unlinked" : listView} ${tabMeta.label.toLowerCase()}.`}
+            </div>
+            {query && (
+              <SuggestedContent
+                instance={instance}
+                kind={tab}
+                query={filter}
+                busyId={suggestBusy}
+                onInstall={(provider, project) => void installSuggestion(provider, project)}
+                onOpen={(provider, project) => openProject(provider, project.id, tab)}
+              />
+            )}
+          </>
         ) : (
           <div className="flex flex-col gap-1.5">
             {shownItems.map((item) => {
@@ -863,6 +948,31 @@ export function InstanceView() {
           </>
         )}
       </Modal>
+
+      <InstallPlanPrompt
+        plan={suggestPlan?.plan ?? null}
+        busy={suggestBusy !== null && suggestPlan !== null}
+        progress={null}
+        onConfirm={() =>
+          suggestPlan &&
+          void installSuggestion(
+            suggestPlan.provider,
+            suggestPlan.project,
+            true,
+            suggestPlan.plan,
+          )
+        }
+        onSkipDependencies={() =>
+          suggestPlan &&
+          void installSuggestion(
+            suggestPlan.provider,
+            suggestPlan.project,
+            false,
+            suggestPlan.plan,
+          )
+        }
+        onCancel={() => setSuggestPlan(null)}
+      />
 
       <EditInstanceModal
         instance={editOpen ? instance : null}
