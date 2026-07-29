@@ -38,6 +38,40 @@ interface LogPayload {
   line: string;
 }
 
+function pruneSupersededSessions(
+  sessions: Record<string, RunningInfo>,
+): Record<string, RunningInfo> {
+  const liveInstances = new Set(
+    Object.values(sessions)
+      .filter((run) => run.state === "running")
+      .map((run) => run.instance_id),
+  );
+  const newestFinished = new Map<string, RunningInfo>();
+  for (const run of Object.values(sessions)) {
+    if (run.state === "running" || liveInstances.has(run.instance_id)) continue;
+    const newest = newestFinished.get(run.instance_id);
+    if (!newest || run.started_at > newest.started_at) {
+      newestFinished.set(run.instance_id, run);
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(sessions).filter(
+      ([, run]) =>
+        run.state === "running" ||
+        newestFinished.get(run.instance_id)?.running_id === run.running_id,
+    ),
+  );
+}
+
+function newestLiveSessionId(sessions: Record<string, RunningInfo>): string | null {
+  return (
+    Object.values(sessions)
+      .filter((run) => run.state === "running")
+      .sort((a, b) => b.started_at - a.started_at)[0]?.running_id ?? null
+  );
+}
+
 export interface AuthFlow {
   status: "idle" | "starting" | "pending" | "error";
   userCode?: string;
@@ -411,7 +445,22 @@ export const useStore = create<AppStore>((set) => ({
       }));
       track(await listen<RunningInfo>("process:state", (e) => {
         const info = e.payload;
-        set((s) => ({ running: { ...s.running, [info.running_id]: info } }));
+        set((s) => {
+          const running = pruneSupersededSessions({
+            ...s.running,
+            [info.running_id]: info,
+          });
+          return {
+            running,
+            logs: Object.fromEntries(
+              Object.entries(s.logs).filter(([runningId]) => runningId in running),
+            ),
+            activeRunningId:
+              s.activeRunningId && s.activeRunningId in running
+                ? s.activeRunningId
+                : newestLiveSessionId(running),
+          };
+        });
         if (info.state !== "running") {
           void useStore.getState().refreshInstances();
         }
@@ -446,37 +495,44 @@ export const useStore = create<AppStore>((set) => ({
       const installedIds = instances
         .filter((i) => isInstanceInstalled(i, installedVersions))
         .map((i) => i.id);
-      set((s) => ({
-        settings,
-        instances,
-        accounts,
-        installedIds,
-        ready: true,
-        error: null,
-        selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
-        discoverTargetId: s.discoverTargetId ?? instances[0]?.id ?? null,
-        tasks: Object.fromEntries(tasks.map((t) => [t.id, t])),
-        taskOrder: tasks.map((t) => t.id),
-        interrupted,
-        running: {
+      set((s) => {
+        const running = pruneSupersededSessions({
           ...Object.fromEntries(recoveredRuns.map((run) => [run.running_id, run])),
           ...s.running,
-        },
-        logs: recoveredLogs.reduce(
+        });
+        const logs = recoveredLogs.reduce(
           (logs, [runningId, backfill]) => {
+            if (!(runningId in running)) return logs;
             const streamed = logs[runningId] ?? [];
             logs[runningId] = backfill.length >= streamed.length ? backfill : streamed;
             return logs;
           },
-          { ...s.logs },
-        ),
-        activeRunningId:
-          s.activeRunningId ??
-          recoveredRuns
-            .filter((run) => run.state === "running")
-            .sort((a, b) => b.started_at - a.started_at)[0]?.running_id ??
-          null,
-      }));
+          Object.fromEntries(
+            Object.entries(s.logs).filter(([runningId]) => runningId in running),
+          ),
+        );
+        const activeRunningId =
+          s.activeRunningId && s.activeRunningId in running
+            ? s.activeRunningId
+            : newestLiveSessionId(running);
+
+        return {
+          settings,
+          instances,
+          accounts,
+          installedIds,
+          ready: true,
+          error: null,
+          selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
+          discoverTargetId: s.discoverTargetId ?? instances[0]?.id ?? null,
+          tasks: Object.fromEntries(tasks.map((t) => [t.id, t])),
+          taskOrder: tasks.map((t) => t.id),
+          interrupted,
+          running,
+          logs,
+          activeRunningId,
+        };
+      });
 
       if (instances.some((i) => i.pack_project_id && !i.logo)) {
         api
