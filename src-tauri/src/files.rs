@@ -70,6 +70,10 @@ impl FileManager {
         Ok(tokio::fs::read(self.managed(path.as_ref())?).await?)
     }
 
+    pub async fn read_external_async(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
+        Ok(tokio::fs::read(path).await?)
+    }
+
     pub async fn read_string_async(&self, path: impl AsRef<Path>) -> Result<String> {
         Ok(tokio::fs::read_to_string(self.managed(path.as_ref())?).await?)
     }
@@ -146,6 +150,10 @@ impl FileManager {
 
     pub fn metadata(&self, path: impl AsRef<Path>) -> Result<std::fs::Metadata> {
         Ok(std::fs::metadata(self.managed(path.as_ref())?)?)
+    }
+
+    pub fn open(&self, path: impl AsRef<Path>) -> Result<std::fs::File> {
+        Ok(std::fs::File::open(self.managed(path.as_ref())?)?)
     }
 
     pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {

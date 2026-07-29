@@ -165,10 +165,13 @@ fn planned_from(
     })
 }
 
-pub fn rollback_written(task: &crate::tasks::TaskHandle) {
+pub fn rollback_written(
+    files: &crate::files::FileManager,
+    task: &crate::tasks::TaskHandle,
+) {
     let paths = std::mem::take(&mut *task.written().lock().unwrap());
     for path in paths {
-        let _ = std::fs::remove_file(path);
+        let _ = files.remove_file_if_exists(path);
     }
 }
 
@@ -362,7 +365,7 @@ pub async fn apply(
     }
 
     let dir = content::dir_for(&state.paths, instance_id, kind.as_str())?;
-    std::fs::create_dir_all(&dir)?;
+    state.files.ensure_dir(&dir)?;
 
     let files = plan.files();
     let total = files.len();
@@ -440,7 +443,7 @@ pub async fn apply(
 
     if let Err(e) = outcome {
         if let Some(task) = &task {
-            rollback_written(task);
+            rollback_written(&state.files, task);
             match &e {
                 crate::error::Error::Cancelled => task.cancelled(),
                 other => task.fail(other),

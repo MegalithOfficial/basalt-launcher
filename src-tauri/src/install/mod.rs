@@ -100,10 +100,14 @@ async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<Ass
 }
 
 #[tracing::instrument(skip_all, fields(count = natives.len(), dest = %dest.display()), err)]
-fn extract_natives(natives: &[NativeSpec], dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest)?;
+fn extract_natives(
+    files: &crate::files::FileManager,
+    natives: &[NativeSpec],
+    dest: &Path,
+) -> Result<()> {
+    files.ensure_dir(dest)?;
     for native in natives {
-        let file = std::fs::File::open(&native.spec.dest)?;
+        let file = files.open(&native.spec.dest)?;
         let mut archive = zip::ZipArchive::new(file)
             .map_err(|e| Error::other(format!("opening native jar: {e}")))?;
         for i in 0..archive.len() {
@@ -120,7 +124,7 @@ fn extract_natives(natives: &[NativeSpec], dest: &Path) -> Result<()> {
             let out = dest.join(Path::new(&name).file_name().unwrap_or_default());
             let mut buf = Vec::with_capacity(entry.size() as usize);
             entry.read_to_end(&mut buf)?;
-            std::fs::write(out, buf)?;
+            files.write_atomic(out, &buf)?;
         }
     }
     Ok(())
@@ -185,7 +189,8 @@ pub async fn install_version(
     task.stage("natives");
     let natives = resolved.natives.clone();
     let natives_dir = state.paths.natives_dir(version_id);
-    tokio::task::spawn_blocking(move || extract_natives(&natives, &natives_dir))
+    let files = state.files.clone();
+    tokio::task::spawn_blocking(move || extract_natives(&files, &natives, &natives_dir))
         .await
         .map_err(|e| Error::other(format!("native extraction task failed: {e}")))??;
 

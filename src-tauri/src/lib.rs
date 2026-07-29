@@ -42,7 +42,8 @@ pub fn run() {
                 let _ = window.set_icon(icon);
             }
             let paths = Paths::resolve(app.handle())?;
-            FileManager::new(paths.clone()).ensure_base_dirs()?;
+            let files = FileManager::new(paths.clone());
+            files.ensure_base_dirs()?;
 
             let log_state = logging::init(app.handle(), &paths, logging::DEFAULT_LEVEL)?;
             tracing::info!(
@@ -53,7 +54,7 @@ pub fn run() {
             );
             app.manage(log_state);
 
-            let db = db::Db::open(&paths)?;
+            let db = db::Db::open(&files)?;
             match db.load_settings() {
                 Ok(settings) => {
                     if let Err(e) = logging::set_level(&settings.log_level) {
@@ -63,7 +64,7 @@ pub fn run() {
                 Err(e) => tracing::warn!(error = %e, "could not read settings for log level"),
             }
 
-            let state = AppState::new(paths, db);
+            let state = AppState::new(files, db);
             if let Err(e) = skin::reconcile_library(&state) {
                 tracing::warn!(error = %e, "could not reconcile the skin library");
             }

@@ -21,11 +21,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(paths: Paths, db: Db) -> Self {
+    pub fn new(files: FileManager, db: Db) -> Self {
+        let paths = files.paths().clone();
         let tasks = std::sync::Arc::new(Tasks::new(db.clone()));
         Self {
             network: Arc::new(NetworkManager::new()),
-            files: FileManager::new(paths.clone()),
+            files,
             paths,
             db,
             running: Mutex::new(HashMap::new()),

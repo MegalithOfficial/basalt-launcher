@@ -153,8 +153,11 @@ fn read_entry(zip: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Option<St
     Some(body)
 }
 
-pub fn read_metadata(path: &Path) -> Option<(Option<String>, Option<String>, Option<String>)> {
-    let file = std::fs::File::open(path).ok()?;
+pub fn read_metadata(
+    files: &crate::files::FileManager,
+    path: &Path,
+) -> Option<(Option<String>, Option<String>, Option<String>)> {
+    let file = files.open(path).ok()?;
     let mut zip = zip::ZipArchive::new(file).ok()?;
 
     if let Some(body) = read_entry(&mut zip, "fabric.mod.json") {
@@ -212,9 +215,10 @@ pub fn read_metadata(path: &Path) -> Option<(Option<String>, Option<String>, Opt
     None
 }
 
-pub fn identify_file(path: &Path) -> Result<FileIdentity> {
-    let bytes = std::fs::read(path)?;
-    let (mod_id, mod_version, display_name) = read_metadata(path).unwrap_or((None, None, None));
+pub fn identify_file(files: &crate::files::FileManager, path: &Path) -> Result<FileIdentity> {
+    let bytes = files.read(path)?;
+    let (mod_id, mod_version, display_name) =
+        read_metadata(files, path).unwrap_or((None, None, None));
     Ok(FileIdentity {
         sha1: crate::download::sha1_hex(&bytes),
         murmur2: curseforge_fingerprint(&bytes),
@@ -253,7 +257,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         }
 
         let path = content::resolve_path(&state.files, &dir, &item.file_name);
-        let Ok(identity) = identify_file(&path) else {
+        let Ok(identity) = identify_file(&state.files, &path) else {
             continue;
         };
         let _ = state.db.merge_identity(

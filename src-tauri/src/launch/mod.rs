@@ -270,9 +270,9 @@ pub async fn launch_instance(
     let classpath = classpath.join(classpath_separator());
 
     let natives_dir = state.paths.natives_dir(&version.id);
-    std::fs::create_dir_all(&natives_dir)?;
+    state.files.ensure_dir(&natives_dir)?;
     let game_dir = state.paths.instance_dir(&instance.id);
-    std::fs::create_dir_all(&game_dir)?;
+    state.files.ensure_dir(&game_dir)?;
 
     let min_mb = instance.min_memory_mb.unwrap_or(settings.min_memory_mb);
     let max_mb = instance.max_memory_mb.unwrap_or(settings.max_memory_mb);

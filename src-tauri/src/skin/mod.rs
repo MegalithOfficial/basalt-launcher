@@ -953,8 +953,9 @@ mod tests {
         crate::files::FileManager::new(paths.clone())
             .ensure_base_dirs()
             .unwrap();
-        let db = crate::db::Db::open(&paths).unwrap();
-        (AppState::new(paths, db), root)
+        let files = crate::files::FileManager::new(paths);
+        let db = crate::db::Db::open(&files).unwrap();
+        (AppState::new(files, db), root)
     }
 
     #[test]

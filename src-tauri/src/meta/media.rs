@@ -308,7 +308,7 @@ pub async fn set_instance_logo(
         )));
     }
 
-    let bytes = tokio::fs::read(source_path).await?;
+    let bytes = files.read_external_async(source_path).await?;
     write_logo(files, instance_id, &ext, &bytes).await
 }
 

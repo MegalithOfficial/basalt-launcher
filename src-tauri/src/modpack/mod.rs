@@ -100,8 +100,12 @@ fn kind_for_path(path: &str) -> Option<&'static str> {
     }
 }
 
-fn extract_overrides(archive_path: &Path, dest: &Path) -> Result<()> {
-    let file = std::fs::File::open(archive_path)?;
+fn extract_overrides(
+    files: &crate::files::FileManager,
+    archive_path: &Path,
+    dest: &Path,
+) -> Result<()> {
+    let file = files.open(archive_path)?;
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| Error::other(format!("opening modpack archive: {e}")))?;
 
@@ -119,19 +123,16 @@ fn extract_overrides(archive_path: &Path, dest: &Path) -> Result<()> {
             }
             let relative = sanitize_relative(rest)?;
             let target = dest.join(relative);
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
             let mut buffer = Vec::with_capacity(entry.size() as usize);
             entry.read_to_end(&mut buffer)?;
-            std::fs::write(target, buffer)?;
+            files.write_atomic(target, &buffer)?;
         }
     }
     Ok(())
 }
 
-fn read_index(archive_path: &Path) -> Result<MrIndex> {
-    let file = std::fs::File::open(archive_path)?;
+fn read_index(files: &crate::files::FileManager, archive_path: &Path) -> Result<MrIndex> {
+    let file = files.open(archive_path)?;
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| Error::other(format!("opening modpack archive: {e}")))?;
     let mut entry = zip
@@ -253,7 +254,8 @@ pub async fn install_modpack(
 
     let index = {
         let path = archive_path.clone();
-        tokio::task::spawn_blocking(move || read_index(&path))
+        let files = state.files.clone();
+        tokio::task::spawn_blocking(move || read_index(&files, &path))
             .await
             .map_err(|e| Error::other(format!("modpack parse task failed: {e}")))??
     };
@@ -306,7 +308,7 @@ pub async fn install_modpack(
         pack_version_id: Some(target.id.clone()),
     };
     let instance_dir = state.paths.instance_dir(&instance.id);
-    std::fs::create_dir_all(&instance_dir)?;
+    state.files.ensure_dir(&instance_dir)?;
     state.db.insert_instance(&instance)?;
     tracing::info!(instance_id = %instance.id, name = %instance.name, "modpack instance created");
 
@@ -438,7 +440,8 @@ async fn install_pack_body(
     {
         let archive = archive_path.to_path_buf();
         let dest = instance_dir.to_path_buf();
-        tokio::task::spawn_blocking(move || extract_overrides(&archive, &dest))
+        let files = state.files.clone();
+        tokio::task::spawn_blocking(move || extract_overrides(&files, &archive, &dest))
             .await
             .map_err(|e| Error::other(format!("override extraction task failed: {e}")))??;
     }
