@@ -225,8 +225,13 @@ export function ProjectView() {
         loader,
         target.versionId,
       );
+      const replaces =
+        !!plan.primary?.replaces || plan.dependencies.some((file) => !!file.replaces);
       const trivial =
-        plan.dependencies.length === 0 && plan.skipped.length === 0 && plan.conflicts.length === 0;
+        plan.dependencies.length === 0 &&
+        plan.skipped.length === 0 &&
+        plan.conflicts.length === 0 &&
+        !replaces;
       if (!trivial) {
         setInstalling(null);
         setPending({ target, plan });

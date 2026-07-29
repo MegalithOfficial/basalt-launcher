@@ -80,6 +80,9 @@ export function InstallPlanPrompt({
   const skipped = plan?.skipped ?? [];
   const conflicts = plan?.conflicts ?? [];
   const present = plan?.already_present ?? [];
+  const replacing = [plan?.primary, ...(plan?.dependencies ?? [])].filter(
+    (file): file is NonNullable<typeof file> => !!file?.replaces,
+  );
   const total = (plan?.primary ? 1 : 0) + deps.length;
 
   return (
@@ -89,7 +92,8 @@ export function InstallPlanPrompt({
             <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
               <div className="min-w-0">
                 <h2 className="truncate font-display text-base font-semibold text-content">
-                  Install {plan.primary?.title ?? "content"}
+                  {replacing.length > 0 ? "Replace" : "Install"}{" "}
+                  {plan.primary?.title ?? "content"}
                 </h2>
                 <div className="mt-0.5 text-xs text-content-muted">
                   {total} {total === 1 ? "file" : "files"}
@@ -120,6 +124,22 @@ export function InstallPlanPrompt({
                     <Row key={file.project_id} file={file} tone="dependency" />
                   ))}
                 </>
+              )}
+
+              {replacing.length > 0 && (
+                <div className="mt-3 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2">
+                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-warn">
+                    <TriangleAlert className="size-3" />
+                    Replacing what is installed
+                  </div>
+                  {replacing.map((file) => (
+                    <div key={file.project_id} className="py-0.5 text-xs text-warn">
+                      <span className="font-mono opacity-80">{file.replaces}</span> is removed
+                      first, so only one copy of{" "}
+                      <span className="font-medium">{file.title}</span> stays in the instance.
+                    </div>
+                  ))}
+                </div>
               )}
 
               {present.length > 0 && (
@@ -219,7 +239,11 @@ export function InstallPlanPrompt({
                 ) : (
                   <Download className="size-4" />
                 )}
-                {deps.length > 0 ? `Install ${total} files` : "Install"}
+                {deps.length > 0
+                  ? `Install ${total} files`
+                  : replacing.length > 0
+                    ? "Replace"
+                    : "Install"}
               </button>
             </div>
         </>

@@ -294,10 +294,13 @@ export function DiscoverView() {
         destination.version_id,
         kind === "mods" ? destination.loader : null,
       );
+      const replaces =
+        !!plan.primary?.replaces || plan.dependencies.some((file) => !!file.replaces);
       const trivial =
         plan.dependencies.length === 0 &&
         plan.skipped.length === 0 &&
-        plan.conflicts.length === 0;
+        plan.conflicts.length === 0 &&
+        !replaces;
       if (trivial) {
         await runInstall(project, true, destination);
       } else {
