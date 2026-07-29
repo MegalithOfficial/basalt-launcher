@@ -377,7 +377,7 @@ export function SettingsView() {
                 <img
                   src="/logo.png"
                   alt=""
-                  className="size-full scale-[1.45] object-cover"
+                  className="size-full object-contain"
                   draggable={false}
                 />
               </div>
@@ -393,6 +393,13 @@ export function SettingsView() {
                     <Tag className="size-3.5" />
                     Version {appInfo?.version ?? "\u2026"}
                   </span>
+                  {appInfo && (
+                    <span className={chipCls}>
+                      {appInfo.build_channel === "release"
+                        ? "Release build"
+                        : "Development build"}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

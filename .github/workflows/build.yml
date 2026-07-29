@@ -1,0 +1,203 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: Build channel
+        type: choice
+        options:
+          - dev
+          - release
+        default: dev
+        required: true
+      upload_release:
+        description: Upload bundles to a GitHub release
+        type: boolean
+        default: false
+        required: true
+      version:
+        description: Version in x.y.z format, or leave empty to increment the Cargo patch version
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Require a branch
+        if: github.ref_type != 'branch'
+        run: |
+          echo "Run this workflow from a branch so a published version can be recorded."
+          exit 1
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: node .github/scripts/set-version.mjs "$REQUESTED_VERSION"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            runner: ubuntu-22.04
+            artifact: linux
+          - name: Windows
+            runner: windows-latest
+            artifact: windows
+          - name: macOS
+            runner: macos-latest
+            artifact: macos
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Apply build version
+        run: node .github/scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build development bundles
+        if: inputs.build_type == 'dev'
+        env:
+          BASALT_BUILD_CHANNEL: dev
+        run: bun run tauri build --debug
+
+      - name: Build release bundles
+        if: inputs.build_type == 'release'
+        env:
+          BASALT_BUILD_CHANNEL: release
+        run: bun run tauri build
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: basalt-${{ inputs.build_type }}-${{ needs.prepare.outputs.version }}-${{ matrix.artifact }}
+          path: |
+            src-tauri/target/debug/bundle/**
+            src-tauri/target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish
+    if: inputs.upload_release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out build branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Record version
+        id: commit
+        run: |
+          node .github/scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/Cargo.toml src-tauri/Cargo.lock
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): bump version to ${{ needs.prepare.outputs.version }}"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
+          echo "target=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download bundles
+        uses: actions/download-artifact@v5
+        with:
+          pattern: basalt-${{ inputs.build_type }}-${{ needs.prepare.outputs.version }}-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TYPE: ${{ inputs.build_type }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ steps.commit.outputs.target }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          mapfile -t files < <(
+            find release-assets -type f \
+              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+              -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \)
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No installable bundles were downloaded."
+            exit 1
+          fi
+
+          if [ "$BUILD_TYPE" = "dev" ]; then
+            tag="v${VERSION}-dev.${RUN_NUMBER}.${RUN_ATTEMPT}"
+            title="Basalt ${VERSION} development build"
+            channel_args=(--prerelease)
+          else
+            tag="v${VERSION}"
+            title="Basalt ${VERSION}"
+            channel_args=(--latest)
+          fi
+
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET" \
+            --title "$title" \
+            --generate-notes \
+            "${channel_args[@]}"

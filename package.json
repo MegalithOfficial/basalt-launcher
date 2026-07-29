@@ -1,11 +1,32 @@
 {
   "name": "basalt-launcher",
+  "description": "A visually polished Minecraft launcher with practical instance and content management",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
+  "author": "MegalithOfficial",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MegalithOfficial/basalt-launcher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MegalithOfficial/basalt-launcher/issues"
+  },
+  "keywords": [
+    "minecraft",
+    "launcher",
+    "tauri",
+    "modrinth",
+    "curseforge"
+  ],
+  "packageManager": "bun@1.3.14",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "BASALT_BUILD_CHANNEL=dev tauri dev",
+    "dev:frontend": "vite",
+    "build": "BASALT_BUILD_CHANNEL=release tauri build",
+    "build:frontend": "tsc && vite build",
+    "check": "bun run check:frontend && bun run check:rust",
+    "check:frontend": "bun run build:frontend",
+    "check:rust": "cargo test --manifest-path src-tauri/Cargo.toml && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets",
     "preview": "vite preview",
     "tauri": "tauri"
   },

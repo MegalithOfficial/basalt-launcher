@@ -78,7 +78,7 @@ export function Sidebar() {
         <img
           src="/logo.png"
           alt="Basalt"
-          className="size-full scale-[1.45] object-cover"
+          className="size-full object-contain"
           draggable={false}
         />
       </button>

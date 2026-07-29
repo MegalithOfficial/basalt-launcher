@@ -1,4 +1,5 @@
 mod auth;
+mod build_info;
 mod commands;
 mod config;
 mod content;

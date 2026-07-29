@@ -318,6 +318,7 @@ export interface JavaInfo {
 
 export interface AppInfo {
   version: string;
+  build_channel: "dev" | "release";
   data_dir: string;
   default_jvm_args: string;
   jvm_placeholders: string[];

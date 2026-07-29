@@ -32,6 +32,7 @@ pub fn get_settings(state: State<AppState>) -> Result<LauncherSettings> {
 #[derive(Serialize)]
 pub struct AppInfo {
     pub version: String,
+    pub build_channel: String,
     pub data_dir: String,
     pub default_jvm_args: String,
     pub jvm_placeholders: Vec<String>,
@@ -41,7 +42,8 @@ pub struct AppInfo {
 #[tracing::instrument(skip_all, err)]
 pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
     Ok(AppInfo {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: crate::build_info::VERSION.to_string(),
+        build_channel: crate::build_info::CHANNEL.to_string(),
         data_dir: state.paths.root.display().to_string(),
         default_jvm_args: crate::config::DEFAULT_JVM_ARGS.to_string(),
         jvm_placeholders: crate::launch::PLACEHOLDERS

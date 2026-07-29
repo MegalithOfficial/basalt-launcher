@@ -1,0 +1,78 @@
+name: Feature request
+description: Propose an improvement that fits Basalt's direction
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Basalt aims to be visually considered without sacrificing functionality. Explain the user problem first so the proposed solution can be evaluated in that context.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Accounts
+        - Instances
+        - Minecraft installation
+        - Launching
+        - Loaders
+        - Content discovery
+        - Modpacks
+        - Skins or capes
+        - Settings
+        - Interface
+        - Platform support
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the missing or frustrating workflow from the user's perspective.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Explain how the feature should work and where it belongs in the existing interface.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Expected workflow
+      description: Walk through the main user interaction from start to finish.
+      placeholder: |
+        1. The user...
+        2. Basalt...
+        3. The user...
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note any simpler approaches, workarounds, or competing designs you considered.
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References or mockups
+      description: Add screenshots, sketches, or examples from other launchers when they clarify the request.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and did not find the same request.
+          required: true
+        - label: This request describes one focused feature rather than several unrelated changes.
+          required: true

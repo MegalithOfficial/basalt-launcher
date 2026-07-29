@@ -1,22 +1,23 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "basalt-launcher",
-  "version": "0.1.0",
+  "productName": "Basalt Launcher",
   "identifier": "com.megalithofficial.basalt-launcher",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun run dev:frontend",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run build:frontend",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Basalt Launcher",
         "width": 1460,
         "height": 850,
         "minWidth": 1080,
         "minHeight": 700,
+        "center": true,
         "decorations": false,
         "transparent": true,
         "shadow": false
@@ -33,6 +34,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "MegalithOfficial",
+    "homepage": "https://github.com/MegalithOfficial/basalt-launcher",
+    "copyright": "Copyright © 2026 MegalithOfficial",
+    "category": "Game",
+    "shortDescription": "A polished, functional Minecraft launcher.",
+    "longDescription": "Basalt Launcher is a visually polished Minecraft launcher with practical instance and content management.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

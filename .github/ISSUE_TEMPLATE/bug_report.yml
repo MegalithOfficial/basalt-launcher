@@ -1,0 +1,122 @@
+name: Bug report
+description: Report something in Basalt that is broken or behaves incorrectly
+title: "fix: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Search the existing issues before continuing and remove private information from logs.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Basalt is affected?
+      options:
+        - Startup
+        - Accounts
+        - Instances
+        - Minecraft installation
+        - Launching or game process
+        - Loaders
+        - Modrinth or CurseForge
+        - Installed content
+        - Skins or capes
+        - Settings
+        - Interface
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem and its impact. Include the exact error when one is shown.
+      placeholder: Basalt displayed..., then...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give us the shortest reliable path to the problem.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should Basalt have done instead?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Basalt version or commit
+      description: Use the version shown in Settings, or the commit hash when running from source.
+      placeholder: 0.1.0 or 1244fe9
+    validations:
+      required: true
+
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      placeholder: Arch Linux, Fedora 42, Windows 11, macOS 15
+    validations:
+      required: true
+
+  - type: input
+    id: minecraft
+    attributes:
+      label: Minecraft version
+      description: Leave blank when the issue is unrelated to a Minecraft instance.
+      placeholder: 1.21.5
+
+  - type: input
+    id: loader
+    attributes:
+      label: Loader and version
+      description: Include Fabric, Quilt, NeoForge, or Forge and its version when relevant.
+      placeholder: Fabric 0.16.14
+
+  - type: input
+    id: java
+    attributes:
+      label: Java
+      description: Say whether Java was auto-detected or manually selected, and include its major version when relevant.
+      placeholder: Auto-detected Java 21
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: Drag in the relevant launcher log, game output, screenshots, or a short recording. Remove tokens, API keys, usernames, and private paths first.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add anything else that may help reproduce or diagnose the problem.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and did not find the same problem.
+          required: true
+        - label: I tested a current Basalt build or included the exact version or commit where this occurred.
+          required: true
+        - label: I removed credentials and other private information from the report and attachments.
+          required: true
