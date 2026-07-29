@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::{error::Result, state::AppState};
+use crate::{error::Result, state::AppState, tasks::TaskKind};
 
 #[tauri::command]
 pub fn list_tasks(state: State<AppState>) -> Vec<crate::tasks::Task> {
@@ -52,7 +52,7 @@ pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::Pend
         let Some(instance_id) = op.instance_id.as_deref() else {
             continue;
         };
-        if op.kind == "ModpackInstall" {
+        if op.kind == TaskKind::ModpackInstall {
             let _ = state.db.delete_instance_content_files(instance_id);
             let _ = state.db.delete_instance(instance_id);
             let _ = state.files.remove_instance_dir(instance_id);

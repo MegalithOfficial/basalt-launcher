@@ -22,6 +22,29 @@ pub enum TaskKind {
     ContentUpdate,
 }
 
+impl TaskKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GameInstall => "game_install",
+            Self::LoaderInstall => "loader_install",
+            Self::ModpackInstall => "modpack_install",
+            Self::ContentInstall => "content_install",
+            Self::ContentUpdate => "content_update",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "game_install" | "GameInstall" => Some(Self::GameInstall),
+            "loader_install" | "LoaderInstall" => Some(Self::LoaderInstall),
+            "modpack_install" | "ModpackInstall" => Some(Self::ModpackInstall),
+            "content_install" | "ContentInstall" => Some(Self::ContentInstall),
+            "content_update" | "ContentUpdate" => Some(Self::ContentUpdate),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskState {
@@ -180,7 +203,7 @@ impl Tasks {
         if is_recoverable(kind) {
             let _ = self.db.begin_operation(&crate::db::PendingOperation {
                 id: id.clone(),
-                kind: format!("{kind:?}"),
+                kind,
                 instance_id: task.instance_id.clone(),
                 title: task.title.clone(),
                 payload: None,
@@ -402,6 +425,19 @@ mod tests {
         assert!(TaskState::Cancelled.is_finished());
         assert!(!TaskState::Running.is_finished());
         assert!(!TaskState::Queued.is_finished());
+    }
+
+    #[test]
+    fn task_kind_parses_current_and_legacy_names() {
+        assert_eq!(
+            TaskKind::parse("modpack_install"),
+            Some(TaskKind::ModpackInstall)
+        );
+        assert_eq!(
+            TaskKind::parse("ModpackInstall"),
+            Some(TaskKind::ModpackInstall)
+        );
+        assert_eq!(TaskKind::parse("unknown"), None);
     }
 
     #[test]

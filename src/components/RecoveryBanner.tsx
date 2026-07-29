@@ -11,7 +11,7 @@ export function RecoveryBanner() {
   const count = interrupted.length;
   if (count === 0) return null;
 
-  const packs = interrupted.filter((op) => op.kind === "ModpackInstall");
+  const packs = interrupted.filter((op) => op.kind === "modpack_install");
 
   return (
     <AnimatePresence>

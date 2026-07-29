@@ -32,7 +32,7 @@ pub struct ContentFile {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PendingOperation {
     pub id: String,
-    pub kind: String,
+    pub kind: TaskKind,
     pub instance_id: Option<String>,
     pub title: String,
     pub payload: Option<String>,
@@ -53,3 +53,4 @@ pub struct CachedResponse {
     pub etag: Option<String>,
     pub fresh: bool,
 }
+use crate::tasks::TaskKind;

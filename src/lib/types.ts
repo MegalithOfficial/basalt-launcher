@@ -242,7 +242,7 @@ export interface Task {
 
 export interface PendingOperation {
   id: string;
-  kind: string;
+  kind: TaskKind;
   instance_id: string | null;
   title: string;
   payload: string | null;
