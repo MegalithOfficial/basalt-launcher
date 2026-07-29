@@ -10,6 +10,9 @@ pub enum Error {
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
 
+    #[error("http status {0}")]
+    HttpStatus(reqwest::StatusCode),
+
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
 

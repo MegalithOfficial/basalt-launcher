@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt};
-use reqwest::{IntoUrl, Method, RequestBuilder, Response, StatusCode};
+use reqwest::{IntoUrl, Method, Request, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -14,6 +14,7 @@ const MAX_CONCURRENT_REQUESTS: usize = 8;
 const MAX_ATTEMPTS: u32 = 4;
 const BASE_BACKOFF_MS: u64 = 400;
 const MAX_BACKOFF: Duration = Duration::from_secs(20);
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(5 * 60);
 const MAX_BUFFERED_BODY: usize = 16 * 1024 * 1024;
 
 pub struct NetworkManager {
@@ -63,23 +64,23 @@ impl NetworkManager {
     }
 
     pub async fn send_once(&self, request: RequestBuilder) -> Result<ManagedResponse> {
+        self.execute_once(request.build()?).await
+    }
+
+    async fn execute_once(&self, request: Request) -> Result<ManagedResponse> {
         let lease = self.limiter.acquire().await;
-        let response = request.send().await?;
+        let response = self.client.execute(request).await?;
         Ok(ManagedResponse {
             response,
             _lease: lease,
         })
     }
 
-    pub async fn send(&self, request: RequestBuilder) -> Result<ManagedResponse> {
-        let method = request
-            .try_clone()
-            .ok_or_else(|| Error::other("request body cannot be inspected"))?
-            .build()?
-            .method()
-            .clone();
+    pub async fn send(&self, request: RequestBuilder) -> Result<BufferedResponse> {
+        let request = request.build()?;
+        let method = request.method().clone();
         if !method_is_retryable(&method) {
-            return self.send_once(request).await;
+            return self.execute_once(request).await?.buffer().await;
         }
 
         let mut attempt = 0;
@@ -87,17 +88,29 @@ impl NetworkManager {
             let attempt_request = request
                 .try_clone()
                 .ok_or_else(|| Error::other("request body cannot be retried"))?;
-            match self.send_once(attempt_request).await {
+            match self.execute_once(attempt_request).await {
                 Ok(response) if should_retry(response.status()) => {
                     let wait = retry_after(&response).unwrap_or_else(|| backoff(attempt));
                     attempt += 1;
                     if attempt >= MAX_ATTEMPTS {
-                        return response.error_for_status();
+                        return Err(Error::HttpStatus(response.status()));
                     }
                     drop(response);
                     tokio::time::sleep(wait).await;
                 }
-                Ok(response) => return Ok(response),
+                Ok(response) => match response.buffer().await {
+                    Ok(response) => return Ok(response),
+                    Err(Error::Http(error))
+                        if error.is_body() || error.is_decode() || error.is_timeout() =>
+                    {
+                        attempt += 1;
+                        if attempt >= MAX_ATTEMPTS {
+                            return Err(error.into());
+                        }
+                        tokio::time::sleep(backoff(attempt - 1)).await;
+                    }
+                    Err(error) => return Err(error),
+                },
                 Err(Error::Http(error)) if error.is_timeout() || error.is_connect() => {
                     attempt += 1;
                     if attempt >= MAX_ATTEMPTS {
@@ -235,10 +248,6 @@ impl ManagedResponse {
             .map_err(|error| Error::other(format!("response body was not valid UTF-8: {error}")))
     }
 
-    pub async fn json<T: DeserializeOwned>(self) -> Result<T> {
-        Ok(serde_json::from_slice(&self.bytes().await?)?)
-    }
-
     pub fn bytes_stream(
         self,
     ) -> impl Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> {
@@ -251,12 +260,71 @@ impl ManagedResponse {
             item
         })
     }
+
+    async fn buffer(self) -> Result<BufferedResponse> {
+        let status = self.status();
+        let headers = self.headers().clone();
+        let body = self.bytes().await?;
+        Ok(BufferedResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+}
+
+pub struct BufferedResponse {
+    status: StatusCode,
+    headers: reqwest::header::HeaderMap,
+    body: Vec<u8>,
+}
+
+impl BufferedResponse {
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    pub fn headers(&self) -> &reqwest::header::HeaderMap {
+        &self.headers
+    }
+
+    pub fn error_for_status(self) -> Result<Self> {
+        if self.status.is_client_error() || self.status.is_server_error() {
+            return Err(Error::HttpStatus(self.status));
+        }
+        Ok(self)
+    }
+
+    pub async fn bytes(self) -> Result<Vec<u8>> {
+        Ok(self.body)
+    }
+
+    pub async fn text(self) -> Result<String> {
+        String::from_utf8(self.body)
+            .map_err(|error| Error::other(format!("response body was not valid UTF-8: {error}")))
+    }
+
+    pub async fn json<T: DeserializeOwned>(self) -> Result<T> {
+        Ok(serde_json::from_slice(&self.body)?)
+    }
 }
 
 fn retry_after(response: &ManagedResponse) -> Option<Duration> {
     let header = response.headers().get(reqwest::header::RETRY_AFTER)?;
-    let seconds: u64 = header.to_str().ok()?.trim().parse().ok()?;
-    Some(Duration::from_secs(seconds).min(MAX_BACKOFF))
+    let value = header.to_str().ok()?.trim();
+    parse_retry_after(value, std::time::SystemTime::now())
+}
+
+fn parse_retry_after(value: &str, now: std::time::SystemTime) -> Option<Duration> {
+    let delay = if let Ok(seconds) = value.parse::<u64>() {
+        Duration::from_secs(seconds)
+    } else {
+        httpdate::parse_http_date(value)
+            .ok()?
+            .duration_since(now)
+            .unwrap_or_default()
+    };
+    Some(delay.min(MAX_RETRY_AFTER))
 }
 
 fn backoff(attempt: u32) -> Duration {
@@ -282,7 +350,10 @@ pub struct Fetched {
 
 #[cfg(test)]
 mod tests {
-    use super::{backoff, method_is_retryable, RateLimiter, MAX_BACKOFF};
+    use super::{
+        backoff, method_is_retryable, parse_retry_after, NetworkManager, RateLimiter, MAX_BACKOFF,
+        MAX_RETRY_AFTER,
+    };
     use reqwest::Method;
     use std::time::Duration;
 
@@ -310,6 +381,87 @@ mod tests {
         assert!(!method_is_retryable(&Method::PUT));
         assert!(!method_is_retryable(&Method::DELETE));
         assert!(!method_is_retryable(&Method::PATCH));
+    }
+
+    #[test]
+    fn retry_after_accepts_seconds_and_http_dates() {
+        let now = std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        assert_eq!(parse_retry_after("12", now), Some(Duration::from_secs(12)));
+        let date = httpdate::fmt_http_date(now + Duration::from_secs(45));
+        assert_eq!(
+            parse_retry_after(&date, now),
+            Some(Duration::from_secs(45))
+        );
+        assert_eq!(
+            parse_retry_after("999999", now),
+            Some(MAX_RETRY_AFTER)
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupted_get_bodies_are_retried() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for attempt in 0..2 {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 1024];
+                let _ = socket.read(&mut request);
+                if attempt == 0 {
+                    socket
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nbad",
+                        )
+                        .unwrap();
+                } else {
+                    socket
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\ncomplete",
+                        )
+                        .unwrap();
+                }
+            }
+        });
+
+        let network = NetworkManager::with_client(reqwest::Client::new());
+        let body = network
+            .send(network.get(format!("http://{address}/body")))
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert_eq!(body, "complete");
+    }
+
+    #[tokio::test]
+    async fn non_cloneable_mutation_requests_execute_once() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = socket.read(&mut request);
+            socket
+                .write_all(
+                    b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+
+        let network = NetworkManager::with_client(reqwest::Client::new());
+        let body = reqwest::Body::wrap_stream(futures::stream::once(async {
+            Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"payload"))
+        }));
+        let response = network
+            .send(network.post(format!("http://{address}/mutation")).body(body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
     }
 
     #[tokio::test]
