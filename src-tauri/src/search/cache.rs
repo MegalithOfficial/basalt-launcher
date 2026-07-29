@@ -5,8 +5,6 @@ use serde::de::DeserializeOwned;
 use crate::error::Result;
 use crate::state::AppState;
 
-use super::http;
-
 pub const TTL_TAGS: i64 = 60 * 60 * 24;
 pub const TTL_SEARCH: i64 = 60 * 5;
 pub const TTL_PROJECT: i64 = 60 * 60;
@@ -36,7 +34,7 @@ pub async fn fetch<T: DeserializeOwned>(
         None => request,
     };
 
-    let fetched = match http::fetch_body(&state.limiter, request).await {
+    let fetched = match state.network.fetch_body(request).await {
         Ok(fetched) => fetched,
         Err(e) => match cached {
             Some(entry) => return Ok(serde_json::from_str(&entry.body)?),
@@ -69,7 +67,7 @@ pub async fn fetch<T: DeserializeOwned>(
 }
 
 pub async fn post<T: DeserializeOwned>(state: &AppState, request: RequestBuilder) -> Result<T> {
-    let fetched = http::fetch_body(&state.limiter, request).await?;
+    let fetched = state.network.fetch_body(request).await?;
     if !fetched.status.is_success() {
         return Err(crate::error::Error::other(format!(
             "request failed with {}",

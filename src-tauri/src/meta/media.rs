@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::network::NetworkManager;
 use crate::paths::Paths;
 
 const PATCH_NOTES_URL: &str = "https://launchercontent.mojang.com/v2/javaPatchNotes.json";
@@ -35,9 +36,9 @@ pub struct VersionMedia {
 
 const BANNER_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "gif"];
 
-pub async fn fetch_notes(client: &reqwest::Client, paths: &Paths) -> Result<PatchNotes> {
+pub async fn fetch_notes(client: &NetworkManager, paths: &Paths) -> Result<PatchNotes> {
     let cache = paths.root.join("patch_notes.json");
-    let bytes = match client.get(PATCH_NOTES_URL).send().await {
+    let bytes = match client.send(client.get(PATCH_NOTES_URL)).await {
         Ok(resp) => {
             let resp = resp.error_for_status()?;
             let bytes = resp.bytes().await?;
@@ -102,7 +103,7 @@ fn accent_from_pixels(img: &image::RgbImage) -> Option<String> {
 }
 
 async fn accent_for(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     paths: &Paths,
     version_id: &str,
     image_url: &str,
@@ -119,7 +120,12 @@ async fn accent_for(
     let bytes = match tokio::fs::read(&img_path).await {
         Ok(bytes) => bytes,
         Err(_) => {
-            let resp = client.get(image_url).send().await.ok()?.error_for_status().ok()?;
+            let resp = client
+                .send(client.get(image_url))
+                .await
+                .ok()?
+                .error_for_status()
+                .ok()?;
             let bytes = resp.bytes().await.ok()?.to_vec();
             let _ = tokio::fs::create_dir_all(&media_dir).await;
             let _ = tokio::fs::write(&img_path, &bytes).await;
@@ -297,7 +303,7 @@ pub async fn set_instance_logo(
 }
 
 pub async fn fetch_instance_logo(
-    http: &reqwest::Client,
+    http: &NetworkManager,
     paths: &Paths,
     instance_id: &str,
     url: &str,
@@ -309,13 +315,18 @@ pub async fn fetch_instance_logo(
         .filter(|e| BANNER_EXTENSIONS.contains(&e.as_str()))
         .unwrap_or_else(|| "png".to_string());
 
-    let response = http.get(url).send().await.ok()?.error_for_status().ok()?;
+    let response = http
+        .send(http.get(url))
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?;
     let bytes = response.bytes().await.ok()?;
     write_logo(paths, instance_id, &ext, &bytes).await.ok()
 }
 
 pub async fn media_for(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     paths: &Paths,
     notes: &PatchNotes,
     version_id: &str,

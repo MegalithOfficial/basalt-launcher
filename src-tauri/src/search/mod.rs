@@ -1,6 +1,5 @@
 pub mod cache;
 pub mod curseforge;
-pub mod http;
 pub mod identify;
 pub mod model;
 pub mod modrinth;

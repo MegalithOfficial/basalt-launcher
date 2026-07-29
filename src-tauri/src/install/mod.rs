@@ -34,7 +34,7 @@ pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<Ver
     }
     tracing::debug!("version json not cached, fetching from mojang");
 
-    let manifest = manifest::fetch(&state.http, &state.paths).await?;
+    let manifest = manifest::fetch(&state.network, &state.paths).await?;
     let entry = manifest
         .versions
         .iter()
@@ -42,9 +42,8 @@ pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<Ver
         .ok_or_else(|| Error::NotFound(format!("version {version_id}")))?;
 
     let bytes = state
-        .http
-        .get(&entry.url)
-        .send()
+        .network
+        .send(state.network.get(&entry.url))
         .await?
         .error_for_status()?
         .bytes()
@@ -93,9 +92,8 @@ async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<Ass
     }
 
     let bytes = state
-        .http
-        .get(&asset_index.url)
-        .send()
+        .network
+        .send(state.network.get(&asset_index.url))
         .await?
         .error_for_status()?
         .bytes()
@@ -172,7 +170,7 @@ pub async fn install_version(
     task.stage("downloading");
     task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
     download::download_many_cancellable(
-        &state.http,
+        &state.network,
         specs,
         concurrency,
         |progress| {

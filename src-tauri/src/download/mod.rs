@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{Error, Result};
+use crate::network::NetworkManager;
 
 #[derive(Debug, Clone)]
 pub struct DownloadSpec {
@@ -74,12 +75,12 @@ pub fn retry_delay(attempt: u32) -> Duration {
 
 pub type RetryHook<'a> = Option<&'a (dyn Fn(u32, u32, &str) + Send + Sync)>;
 
-pub async fn download_one(client: &reqwest::Client, spec: &DownloadSpec) -> Result<bool> {
+pub async fn download_one(client: &NetworkManager, spec: &DownloadSpec) -> Result<bool> {
     download_one_reporting(client, spec, None).await
 }
 
 pub async fn download_one_reporting(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     spec: &DownloadSpec,
     on_retry: RetryHook<'_>,
 ) -> Result<bool> {
@@ -118,7 +119,7 @@ fn short_reason(error: &Error) -> String {
     }
 }
 
-async fn download_once(client: &reqwest::Client, spec: &DownloadSpec) -> Result<bool> {
+async fn download_once(client: &NetworkManager, spec: &DownloadSpec) -> Result<bool> {
     if already_valid(spec).await {
         tracing::trace!(dest = %spec.dest.display(), "already on disk, skipped");
         return Ok(false);
@@ -127,7 +128,10 @@ async fn download_once(client: &reqwest::Client, spec: &DownloadSpec) -> Result<
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    let resp = client.get(&spec.url).send().await?.error_for_status()?;
+    let resp = client
+        .send_once(client.get(&spec.url))
+        .await?
+        .error_for_status()?;
     let mut stream = resp.bytes_stream();
 
     let tmp = spec.dest.with_extension("part");
@@ -165,7 +169,7 @@ async fn download_once(client: &reqwest::Client, spec: &DownloadSpec) -> Result<
 }
 
 pub async fn download_many<F>(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     specs: Vec<DownloadSpec>,
     concurrency: usize,
     on_progress: F,
@@ -177,7 +181,7 @@ where
 }
 
 pub async fn download_many_cancellable<F>(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     specs: Vec<DownloadSpec>,
     concurrency: usize,
     on_progress: F,
@@ -259,6 +263,10 @@ mod tests {
     use super::*;
     use super::sha1_hex;
 
+    fn network() -> NetworkManager {
+        NetworkManager::with_client(reqwest::Client::new())
+    }
+
     #[tokio::test]
     async fn cancelled_before_start_downloads_nothing() {
         let dir = std::env::temp_dir().join(format!("basalt-cancel-{}", std::process::id()));
@@ -274,8 +282,9 @@ mod tests {
             size: None,
         }];
 
+        let network = network();
         let result = download_many_cancellable(
-            &reqwest::Client::new(),
+            &network,
             specs,
             2,
             |_| {},
@@ -323,7 +332,7 @@ mod tests {
             sha1: None,
             size: None,
         };
-        let result = download_one(&reqwest::Client::new(), &spec).await;
+        let result = download_one(&network(), &spec).await;
         let message = result.unwrap_err().to_string();
 
         assert!(
@@ -359,8 +368,9 @@ mod tests {
         });
 
         let started = std::time::Instant::now();
+        let network = network();
         let result = download_many_cancellable(
-            &reqwest::Client::new(),
+            &network,
             specs,
             4,
             |_| {},
@@ -392,11 +402,12 @@ mod tests {
             sha1: Some(sha1_hex(b"abc")),
             size: None,
         };
-        assert!(!download_one(&reqwest::Client::new(), &spec).await.unwrap());
+        let network = network();
+        assert!(!download_one(&network, &spec).await.unwrap());
 
         let written = std::sync::Mutex::new(Vec::new());
         let result = download_many_cancellable(
-            &reqwest::Client::new(),
+            &network,
             vec![spec],
             2,
             |_| {},

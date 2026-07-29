@@ -129,7 +129,7 @@ pub async fn list_loader_versions(
     game_version: String,
 ) -> Result<Vec<String>> {
     let loader = loaders::Loader::parse(&loader)?;
-    loaders::list_loader_versions(&state.http, loader, &game_version).await
+    loaders::list_loader_versions(&state.network, loader, &game_version).await
 }
 
 #[tauri::command]
@@ -213,13 +213,13 @@ pub async fn get_instance_media(
                 match cached {
                     Some(notes) => notes,
                     None => {
-                        let notes = media::fetch_notes(&state.http, &state.paths).await?;
+                        let notes = media::fetch_notes(&state.network, &state.paths).await?;
                         *state.patch_notes.lock().unwrap() = Some(notes.clone());
                         notes
                     }
                 }
             };
-            media::media_for(&state.http, &state.paths, &notes, &instance.version_id).await
+            media::media_for(&state.network, &state.paths, &notes, &instance.version_id).await
         }
     };
 
@@ -297,7 +297,7 @@ pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Insta
             .and_then(|mut list| list.pop())
             .and_then(|summary| summary.icon_url);
         if let Some(icon) = icon {
-            media::fetch_instance_logo(&state.http, &state.paths, &instance.id, &icon).await;
+            media::fetch_instance_logo(&state.network, &state.paths, &instance.id, &icon).await;
         }
     }
 
@@ -408,7 +408,7 @@ pub async fn list_versions(
     state: State<'_, AppState>,
     include_snapshots: bool,
 ) -> Result<Vec<VersionEntry>> {
-    let manifest = manifest::fetch(&state.http, &state.paths).await?;
+    let manifest = manifest::fetch(&state.network, &state.paths).await?;
     let versions = manifest
         .versions
         .into_iter()
@@ -871,7 +871,7 @@ pub struct DeviceCodeInfo {
 }
 
 async fn run_auth_flow(
-    http: reqwest::Client,
+    network: std::sync::Arc<crate::network::NetworkManager>,
     db: Db,
     device_code: String,
     interval: u64,
@@ -879,7 +879,7 @@ async fn run_auth_flow(
     let mut interval = interval.max(1);
     let token = loop {
         tokio::time::sleep(Duration::from_secs(interval)).await;
-        match microsoft::poll_token(&http, &device_code).await? {
+        match microsoft::poll_token(&network, &device_code).await? {
             PollOutcome::Pending => continue,
             PollOutcome::SlowDown => {
                 interval += 5;
@@ -889,7 +889,7 @@ async fn run_auth_flow(
         }
     };
 
-    let mc = microsoft::authenticate_minecraft(&http, &token.access_token).await?;
+    let mc = microsoft::authenticate_minecraft(&network, &token.access_token).await?;
     let account = Account {
         id: mc.uuid.clone(),
         name: mc.name,
@@ -913,7 +913,7 @@ async fn run_auth_flow(
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<DeviceCodeInfo> {
-    let device = microsoft::request_device_code(&state.http).await?;
+    let device = microsoft::request_device_code(&state.network).await?;
     tracing::info!(
         verification_uri = %device.verification_uri,
         interval = device.interval,
@@ -925,13 +925,13 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
         message: device.message.clone(),
     };
 
-    let http = state.http.clone();
+    let network = state.network.clone();
     let db = state.db.clone();
     let device_code = device.device_code.clone();
     let interval = device.interval;
 
     tokio::spawn(async move {
-        match run_auth_flow(http, db, device_code, interval).await {
+        match run_auth_flow(network, db, device_code, interval).await {
             Ok(view) => {
                 let _ = app.emit("auth:state", json!({ "status": "success", "account": view }));
             }
@@ -1068,7 +1068,7 @@ pub fn frontend_log(
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateInfo> {
-    update::check(&state.http).await
+    update::check(&state.network).await
 }
 
 #[derive(Serialize)]

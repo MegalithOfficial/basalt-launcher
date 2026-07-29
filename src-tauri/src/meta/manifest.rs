@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::network::NetworkManager;
 use crate::paths::Paths;
 
 const MANIFEST_URL: &str =
@@ -30,9 +31,9 @@ pub struct VersionManifest {
     pub versions: Vec<VersionEntry>,
 }
 
-pub async fn fetch(client: &reqwest::Client, paths: &Paths) -> Result<VersionManifest> {
+pub async fn fetch(client: &NetworkManager, paths: &Paths) -> Result<VersionManifest> {
     let cache = paths.manifest_cache();
-    let bytes = match client.get(MANIFEST_URL).send().await {
+    let bytes = match client.send(client.get(MANIFEST_URL)).await {
         Ok(resp) => {
             let resp = resp.error_for_status()?;
             let bytes = resp.bytes().await?;

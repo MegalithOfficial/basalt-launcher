@@ -239,7 +239,7 @@ pub struct FileDependency {
 }
 
 fn request(state: &AppState, url: String, api_key: &str) -> reqwest::RequestBuilder {
-    state.http.get(url).header("x-api-key", api_key)
+    state.network.get(url).header("x-api-key", api_key)
 }
 
 fn summary(item: Mod) -> ProjectSummary {
@@ -576,7 +576,7 @@ pub async fn resolve_projects(state: &AppState, ids: &[String]) -> Result<Vec<Pr
     let response: Paged<Mod> = cache::post(
         state,
         state
-            .http
+            .network
             .post(format!("{API}/mods"))
             .header("x-api-key", api_key)
             .json(&serde_json::json!({ "modIds": mod_ids })),
@@ -608,7 +608,7 @@ pub async fn match_fingerprints(
     let response: Wrapped<FingerprintMatches> = cache::post(
         state,
         state
-            .http
+            .network
             .post(format!("{API}/fingerprints"))
             .header("x-api-key", api_key)
             .json(&serde_json::json!({ "fingerprints": fingerprints })),

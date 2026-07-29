@@ -8,6 +8,7 @@ use crate::download::{self, DownloadSpec};
 use crate::error::{Error, Result};
 use crate::install;
 use crate::java;
+use crate::network::NetworkManager;
 use crate::state::AppState;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,12 +52,11 @@ struct ForgePromotions {
 }
 
 async fn fetch_json<T: serde::de::DeserializeOwned>(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     url: &str,
 ) -> Result<T> {
     Ok(client
-        .get(url)
-        .send()
+        .send(client.get(url))
         .await?
         .error_for_status()?
         .json()
@@ -73,7 +73,7 @@ fn neoforge_prefix(game_version: &str) -> String {
 
 #[tracing::instrument(skip(client), fields(loader = ?loader), err)]
 pub async fn list_loader_versions(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     loader: Loader,
     game_version: &str,
 ) -> Result<Vec<String>> {
@@ -128,7 +128,7 @@ async fn install_profile_json(
     state: &AppState,
     url: &str,
 ) -> Result<String> {
-    let profile: serde_json::Value = fetch_json(&state.http, url).await?;
+    let profile: serde_json::Value = fetch_json(&state.network, url).await?;
     let id = profile
         .get("id")
         .and_then(|v| v.as_str())
@@ -162,7 +162,7 @@ async fn run_installer(
     let installer_dir = state.paths.root.join("cache").join("installers");
     let installer_path = installer_dir.join(installer_name);
     download::download_one(
-        &state.http,
+        &state.network,
         &DownloadSpec {
             url: installer_url.to_string(),
             dest: installer_path.clone(),

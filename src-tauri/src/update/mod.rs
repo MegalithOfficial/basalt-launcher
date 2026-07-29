@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::network::NetworkManager;
 
 pub const REPO: &str = "MegalithOfficial/basalt-launcher";
 pub const REPO_URL: &str = "https://github.com/MegalithOfficial/basalt-launcher";
@@ -57,15 +58,14 @@ fn up_to_date(current: String) -> UpdateInfo {
 }
 
 #[tracing::instrument(skip_all, err)]
-pub async fn check(client: &reqwest::Client) -> Result<UpdateInfo> {
+pub async fn check(client: &NetworkManager) -> Result<UpdateInfo> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
 
-    let response = client
+    let request = client
         .get(&url)
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await?;
+        .header("Accept", "application/vnd.github+json");
+    let response = client.send(request).await?;
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         tracing::info!(repo = REPO, "no published releases yet");

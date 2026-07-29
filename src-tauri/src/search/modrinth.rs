@@ -154,7 +154,7 @@ pub async fn search(
         state,
         &cache_key,
         cache::TTL_SEARCH,
-        state.http.get(format!("{API}/search")).query(&params),
+        state.network.get(format!("{API}/search")).query(&params),
     )
     .await?;
 
@@ -249,7 +249,7 @@ pub async fn project_details(state: &AppState, project_id: &str) -> Result<Proje
         state,
         &format!("mr:project:{project_id}"),
         cache::TTL_PROJECT,
-        state.http.get(format!("{API}/project/{project_id}")),
+        state.network.get(format!("{API}/project/{project_id}")),
     )
     .await?;
 
@@ -258,7 +258,7 @@ pub async fn project_details(state: &AppState, project_id: &str) -> Result<Proje
         &format!("mr:members:{project_id}"),
         cache::TTL_PROJECT,
         state
-            .http
+            .network
             .get(format!("{API}/project/{project_id}/members")),
     )
     .await
@@ -466,7 +466,7 @@ pub async fn project_versions(
         &format!("mr:versions:{project_id}"),
         cache::TTL_VERSIONS,
         state
-            .http
+            .network
             .get(format!("{API}/project/{project_id}/version")),
     )
     .await?;
@@ -482,7 +482,7 @@ pub async fn version(state: &AppState, version_id: &str) -> Result<Version> {
         state,
         &format!("mr:version:{version_id}"),
         cache::TTL_VERSIONS,
-        state.http.get(format!("{API}/version/{version_id}")),
+        state.network.get(format!("{API}/version/{version_id}")),
     )
     .await
 }
@@ -524,7 +524,7 @@ pub async fn resolve_projects(state: &AppState, ids: &[String]) -> Result<Vec<Pr
         &format!("mr:projects:{}", sorted.join(",")),
         cache::TTL_PROJECT,
         state
-            .http
+            .network
             .get(format!("{API}/projects"))
             .query(&[("ids", serde_json::to_string(&sorted)?)]),
     )
@@ -564,7 +564,7 @@ pub async fn versions_by_hash(
     for chunk in hashes.chunks(500) {
         let response: HashMap<String, Version> = cache::post(
             state,
-            state.http.post(format!("{API}/version_files")).json(
+            state.network.post(format!("{API}/version_files")).json(
                 &serde_json::json!({ "hashes": chunk, "algorithm": "sha1" }),
             ),
         )
@@ -588,7 +588,7 @@ pub async fn latest_versions_by_hash(
         let response: HashMap<String, Version> = cache::post(
             state,
             state
-                .http
+                .network
                 .post(format!("{API}/version_files/update"))
                 .json(&serde_json::json!({
                     "hashes": chunk,
@@ -653,7 +653,7 @@ pub async fn taxonomy(
         state,
         "mr:tag:category",
         cache::TTL_TAGS,
-        state.http.get(format!("{API}/tag/category")),
+        state.network.get(format!("{API}/tag/category")),
     )
     .await?;
 
@@ -661,7 +661,7 @@ pub async fn taxonomy(
         state,
         "mr:tag:loader",
         cache::TTL_TAGS,
-        state.http.get(format!("{API}/tag/loader")),
+        state.network.get(format!("{API}/tag/loader")),
     )
     .await?;
 
@@ -669,7 +669,7 @@ pub async fn taxonomy(
         state,
         "mr:tag:game_version",
         cache::TTL_TAGS,
-        state.http.get(format!("{API}/tag/game_version")),
+        state.network.get(format!("{API}/tag/game_version")),
     )
     .await?;
 

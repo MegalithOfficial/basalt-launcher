@@ -417,7 +417,7 @@ pub async fn apply(
     let outcome = {
         let task_ref = task.as_ref();
         download::download_many_cancellable(
-            &state.http,
+            &state.network,
             specs,
             concurrency,
             move |progress| {

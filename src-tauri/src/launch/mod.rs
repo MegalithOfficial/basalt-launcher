@@ -32,8 +32,8 @@ pub(crate) async fn ensure_account(state: &AppState) -> Result<Account> {
 
     tracing::info!(account = %account.name, "session expired, refreshing with microsoft");
 
-    let refreshed = microsoft::refresh(&state.http, &account.refresh_token).await?;
-    let mc = microsoft::authenticate_minecraft(&state.http, &refreshed.access_token).await?;
+    let refreshed = microsoft::refresh(&state.network, &account.refresh_token).await?;
+    let mc = microsoft::authenticate_minecraft(&state.network, &refreshed.access_token).await?;
     let updated = Account {
         id: account.id,
         name: mc.name,

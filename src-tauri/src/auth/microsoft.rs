@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::error::{Error, Result};
+use crate::network::NetworkManager;
 
 pub const CLIENT_ID: &str = "90a06a16-16a9-4fae-ab23-6ec5fdd44978";
 const SCOPE: &str = "XboxLive.signin offline_access";
@@ -62,12 +63,11 @@ fn aad_message(text: &str) -> String {
     }
 }
 
-pub async fn request_device_code(client: &reqwest::Client) -> Result<DeviceCode> {
-    let resp = client
+pub async fn request_device_code(client: &NetworkManager) -> Result<DeviceCode> {
+    let request = client
         .post(DEVICE_CODE_URL)
-        .form(&[("client_id", CLIENT_ID), ("scope", SCOPE)])
-        .send()
-        .await?;
+        .form(&[("client_id", CLIENT_ID), ("scope", SCOPE)]);
+    let resp = client.send(request).await?;
     let status = resp.status();
     let text = resp.text().await?;
     if !status.is_success() {
@@ -92,16 +92,15 @@ struct TokenErrorResp {
     error: String,
 }
 
-pub async fn poll_token(client: &reqwest::Client, device_code: &str) -> Result<PollOutcome> {
-    let resp = client
+pub async fn poll_token(client: &NetworkManager, device_code: &str) -> Result<PollOutcome> {
+    let request = client
         .post(TOKEN_URL)
         .form(&[
             ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ("client_id", CLIENT_ID),
             ("device_code", device_code),
-        ])
-        .send()
-        .await?;
+        ]);
+    let resp = client.send_once(request).await?;
     let status = resp.status();
     let text = resp.text().await?;
 
@@ -128,18 +127,16 @@ pub async fn poll_token(client: &reqwest::Client, device_code: &str) -> Result<P
     }
 }
 
-pub async fn refresh(client: &reqwest::Client, refresh_token: &str) -> Result<MsToken> {
-    let resp = client
+pub async fn refresh(client: &NetworkManager, refresh_token: &str) -> Result<MsToken> {
+    let request = client
         .post(TOKEN_URL)
         .form(&[
             ("grant_type", "refresh_token"),
             ("client_id", CLIENT_ID),
             ("refresh_token", refresh_token),
             ("scope", SCOPE),
-        ])
-        .send()
-        .await?
-        .error_for_status()?;
+        ]);
+    let resp = client.send(request).await?.error_for_status()?;
     let token: MsTokenResp = resp.json().await?;
     Ok(MsToken {
         access_token: token.access_token,
@@ -196,10 +193,10 @@ fn xsts_error_message(xerr: i64) -> String {
 
 #[tracing::instrument(skip_all, err)]
 pub async fn authenticate_minecraft(
-    client: &reqwest::Client,
+    client: &NetworkManager,
     ms_access_token: &str,
 ) -> Result<McAuth> {
-    let xbox: XboxResp = client
+    let xbox_request = client
         .post(XBOX_URL)
         .json(&json!({
             "Properties": {
@@ -209,14 +206,15 @@ pub async fn authenticate_minecraft(
             },
             "RelyingParty": "http://auth.xboxlive.com",
             "TokenType": "JWT"
-        }))
-        .send()
+        }));
+    let xbox: XboxResp = client
+        .send(xbox_request)
         .await?
         .error_for_status()?
         .json()
         .await?;
 
-    let xsts_resp = client
+    let xsts_request = client
         .post(XSTS_URL)
         .json(&json!({
             "Properties": {
@@ -225,9 +223,8 @@ pub async fn authenticate_minecraft(
             },
             "RelyingParty": "rp://api.minecraftservices.com/",
             "TokenType": "JWT"
-        }))
-        .send()
-        .await?;
+        }));
+    let xsts_resp = client.send(xsts_request).await?;
 
     if !xsts_resp.status().is_success() {
         let text = xsts_resp.text().await?;
@@ -246,20 +243,20 @@ pub async fn authenticate_minecraft(
         .map(|x| x.uhs.clone())
         .ok_or_else(|| Error::other("Missing Xbox user hash."))?;
 
-    let mc: McLoginResp = client
+    let mc_request = client
         .post(MC_LOGIN_URL)
-        .json(&json!({ "identityToken": format!("XBL3.0 x={uhs};{}", xsts.token) }))
-        .send()
+        .json(&json!({ "identityToken": format!("XBL3.0 x={uhs};{}", xsts.token) }));
+    let mc: McLoginResp = client
+        .send(mc_request)
         .await?
         .error_for_status()?
         .json()
         .await?;
 
-    let profile_resp = client
+    let profile_request = client
         .get(PROFILE_URL)
-        .bearer_auth(&mc.access_token)
-        .send()
-        .await?;
+        .bearer_auth(&mc.access_token);
+    let profile_resp = client.send(profile_request).await?;
     if profile_resp.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(Error::other(
             "This account does not own Minecraft: Java Edition.",

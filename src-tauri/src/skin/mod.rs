@@ -142,11 +142,13 @@ async fn token(state: &AppState) -> Result<String> {
 }
 
 async fn profile(state: &AppState, token: &str) -> Result<Appearance> {
-    let response = state
-        .http
+    let request = state
+        .network
         .get(PROFILE_URL)
-        .bearer_auth(token)
-        .send()
+        .bearer_auth(token);
+    let response = state
+        .network
+        .send(request)
         .await?
         .error_for_status()?;
     let parsed: ProfileResponse = response.json().await?;
@@ -191,9 +193,8 @@ pub async fn appearance(state: &AppState) -> Result<Appearance> {
 async fn capture_worn(state: &AppState, current: &Appearance) -> Option<String> {
     let url = current.skin_url.as_ref()?;
     let bytes = state
-        .http
-        .get(url)
-        .send()
+        .network
+        .send(state.network.get(url))
         .await
         .ok()?
         .error_for_status()
@@ -270,13 +271,12 @@ pub async fn upload(state: &AppState, bytes: Vec<u8>, variant: Variant) -> Resul
         .text("variant", variant.as_str())
         .part("file", part);
 
-    let response = state
-        .http
+    let request = state
+        .network
         .post(format!("{PROFILE_URL}/skins"))
         .bearer_auth(&token)
-        .multipart(form)
-        .send()
-        .await?;
+        .multipart(form);
+    let response = state.network.send_once(request).await?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -294,11 +294,13 @@ pub async fn upload(state: &AppState, bytes: Vec<u8>, variant: Variant) -> Resul
 #[tracing::instrument(skip_all, err)]
 pub async fn reset(state: &AppState) -> Result<Appearance> {
     let token = token(state).await?;
-    state
-        .http
+    let request = state
+        .network
         .delete(format!("{PROFILE_URL}/skins/active"))
-        .bearer_auth(&token)
-        .send()
+        .bearer_auth(&token);
+    state
+        .network
+        .send(request)
         .await?
         .error_for_status()?;
     tracing::info!("skin reset to default");
@@ -311,13 +313,13 @@ pub async fn set_cape(state: &AppState, cape_id: Option<&str>) -> Result<Appeara
     let url = format!("{PROFILE_URL}/capes/active");
     let request = match cape_id {
         Some(id) => state
-            .http
+            .network
             .put(&url)
             .bearer_auth(&token)
             .json(&serde_json::json!({ "capeId": id })),
-        None => state.http.delete(&url).bearer_auth(&token),
+        None => state.network.delete(&url).bearer_auth(&token),
     };
-    request.send().await?.error_for_status()?;
+    state.network.send(request).await?.error_for_status()?;
     tracing::info!(cape = ?cape_id, "cape updated");
     current(state, &token).await
 }
@@ -379,9 +381,8 @@ pub struct ResolvedPlayer {
 #[tracing::instrument(skip(state), err)]
 pub async fn resolve_uuid(state: &AppState, uuid: &str) -> Result<ResolvedPlayer> {
     let session: SessionProfile = state
-        .http
-        .get(format!("{SESSION_URL}/{uuid}"))
-        .send()
+        .network
+        .send(state.network.get(format!("{SESSION_URL}/{uuid}")))
         .await?
         .error_for_status()?
         .json()
@@ -424,9 +425,8 @@ pub async fn resolve_player(state: &AppState, name: &str) -> Result<ResolvedPlay
     }
 
     let response = state
-        .http
-        .get(format!("{NAME_LOOKUP_URL}/{name}"))
-        .send()
+        .network
+        .send(state.network.get(format!("{NAME_LOOKUP_URL}/{name}")))
         .await?;
     if response.status() == reqwest::StatusCode::NOT_FOUND
         || response.status() == reqwest::StatusCode::NO_CONTENT
@@ -436,9 +436,8 @@ pub async fn resolve_player(state: &AppState, name: &str) -> Result<ResolvedPlay
     let looked_up: NameLookup = response.error_for_status()?.json().await?;
 
     let session: SessionProfile = state
-        .http
-        .get(format!("{SESSION_URL}/{}", looked_up.id))
-        .send()
+        .network
+        .send(state.network.get(format!("{SESSION_URL}/{}", looked_up.id)))
         .await?
         .error_for_status()?
         .json()
@@ -670,7 +669,7 @@ pub fn add_from_file(state: &AppState, path: &str, name: Option<&str>, variant: 
 }
 
 async fn download(state: &AppState, url: &str) -> Result<Vec<u8>> {
-    let response = state.http.get(url).send().await?;
+    let response = state.network.send(state.network.get(url)).await?;
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(Error::NotFound(format!("no skin at {url}")));
     }

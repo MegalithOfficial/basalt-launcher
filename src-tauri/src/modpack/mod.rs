@@ -159,12 +159,11 @@ async fn link_pack_files(
         return;
     }
 
-    let Ok(resp) = state
-        .http
+    let request = state
+        .network
         .post(format!("{MODRINTH}/version_files"))
-        .json(&serde_json::json!({ "hashes": hashes, "algorithm": "sha1" }))
-        .send()
-        .await
+        .json(&serde_json::json!({ "hashes": hashes, "algorithm": "sha1" }));
+    let Ok(resp) = state.network.send(request).await
     else {
         return;
     };
@@ -241,7 +240,7 @@ pub async fn install_modpack(
     let cache_dir = state.paths.root.join("cache").join("modpacks");
     let archive_path = cache_dir.join(&archive.file_name);
     download::download_one(
-        &state.http,
+        &state.network,
         &DownloadSpec {
             url,
             dest: archive_path.clone(),
@@ -414,7 +413,7 @@ async fn install_pack_body(
     let concurrency = state.db.load_settings()?.concurrent_downloads;
     task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
     let downloaded = download::download_many_cancellable(
-        &state.http,
+        &state.network,
         specs,
         concurrency,
         |progress| {
@@ -451,7 +450,7 @@ async fn install_pack_body(
         .and_then(|summary| summary.icon_url)
     {
         crate::meta::media::fetch_instance_logo(
-            &state.http,
+            &state.network,
             &state.paths,
             &instance.id,
             &icon_url,
