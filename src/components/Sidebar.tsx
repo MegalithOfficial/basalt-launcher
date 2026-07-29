@@ -1,26 +1,54 @@
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import {
   Boxes,
   Compass,
+  Download,
   FileText,
+  Pin,
+  PinOff,
   Play,
   ScrollText,
   Settings,
+  SquareTerminal,
   UserCircle2,
 } from "lucide-react";
 
 import { cn } from "../lib/cn";
-import type { View } from "../lib/types";
+import { logoSrc, mediaSrc } from "../lib/media";
+import type { Instance, VersionMedia, View } from "../lib/types";
 import { PlayerHead } from "./Avatar";
+import { ContextMenu, useContextMenu, type MenuItem } from "./ContextMenu";
 import { useStore } from "../store";
+
+const MAX_TILES = 5;
+const PIN_KEY = "sidebar-pins";
+
+function readPins(): string[] {
+  try {
+    const raw = localStorage.getItem(PIN_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
   { id: "home", label: "Play", icon: Play },
   { id: "instances", label: "Instances", icon: Boxes },
   { id: "discover", label: "Discover", icon: Compass },
   { id: "logs", label: "Logs", icon: FileText },
-  { id: "settings", label: "Settings", icon: Settings },
 ];
+
+function RailLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 max-w-44 -translate-x-1 -translate-y-1/2 truncate whitespace-nowrap rounded-lg border border-border bg-surface-3 px-2 py-1 text-[11px] font-medium text-content opacity-0 shadow-xl transition duration-150 group-hover:translate-x-0 group-hover:opacity-100">
+      {children}
+    </span>
+  );
+}
 
 function RailButton({
   label,
@@ -36,25 +64,107 @@ function RailButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      className={cn(
-        "group relative grid size-11 place-items-center rounded-xl transition-colors",
-        active ? "text-black" : "text-content-faint hover:bg-surface-2 hover:text-content",
-        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-content-faint",
-      )}
-    >
+    <div className="relative flex w-full justify-center">
       {active && (
         <motion.span
           layoutId="rail-active"
-          className="absolute inset-0 rounded-xl shadow-lg shadow-[var(--accent-glow)] transition-colors duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))]"
-          transition={{ type: "spring", stiffness: 500, damping: 38 }}
+          className="absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
+          transition={{ type: "spring", stiffness: 520, damping: 40 }}
         />
       )}
-      <span className="relative z-10">{children}</span>
-    </button>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "group relative grid size-12 place-items-center rounded-xl outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+          disabled
+            ? "cursor-not-allowed text-content-faint/40"
+            : active
+              ? "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-[var(--accent-bright)]"
+              : "text-content-faint hover:bg-surface-2 hover:text-content",
+        )}
+      >
+        {children}
+        <RailLabel>{label}</RailLabel>
+      </button>
+    </div>
+  );
+}
+
+function RecentTile({
+  instance,
+  media,
+  active,
+  running,
+  pinned,
+  onClick,
+  onContextMenu,
+}: {
+  instance: Instance;
+  media: VersionMedia | null;
+  active: boolean;
+  running: boolean;
+  pinned: boolean;
+  onClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  const [broken, setBroken] = useState<string[]>([]);
+  const logo = logoSrc(instance.logo);
+  const banner = media ? mediaSrc(media) : null;
+  const src = [logo, banner].find((c): c is string => !!c && !broken.includes(c)) ?? null;
+
+  useEffect(() => setBroken([]), [instance.logo, media?.image_url]);
+
+  return (
+    <div className="relative flex w-full justify-center">
+      {active && (
+        <motion.span
+          layoutId="rail-active"
+          className="absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
+          transition={{ type: "spring", stiffness: 520, damping: 40 }}
+        />
+      )}
+      <button
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        aria-label={instance.name}
+        aria-current={active ? "page" : undefined}
+        className="group relative grid size-11 place-items-center rounded-xl outline-none transition-transform duration-150 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        <span className="absolute inset-0 grid place-items-center overflow-hidden rounded-[10px] bg-surface-2">
+          {src ? (
+            <img
+              src={src}
+              onError={() => setBroken((b) => (b.includes(src) ? b : [...b, src]))}
+              alt=""
+              draggable={false}
+              className={cn(
+                "size-full object-cover",
+                src === banner && media && !media.local && "[image-rendering:pixelated]",
+              )}
+            />
+          ) : (
+            <span className="font-display text-[13px] font-semibold text-content-muted">
+              {instance.name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+        </span>
+        <span
+          className={cn(
+            "pointer-events-none absolute inset-0 rounded-[10px] ring-inset transition-colors",
+            active ? "ring-2 ring-[var(--accent)]" : running ? "ring-2 ring-ok" : "ring-1 ring-white/10",
+          )}
+        />
+        {pinned && (
+          <span className="pointer-events-none absolute -right-1 -top-1 grid size-[15px] place-items-center rounded-full bg-surface-3 text-content-muted ring-2 ring-base">
+            <Pin className="size-2.5" />
+          </span>
+        )}
+        <RailLabel>{instance.name}</RailLabel>
+      </button>
+    </div>
   );
 }
 
@@ -64,16 +174,97 @@ export function Sidebar() {
   const activeAccount = useStore((s) => s.accounts.find((a) => a.active));
   const running = useStore((s) => s.running);
   const openConsole = useStore((s) => s.openConsole);
+  const instances = useStore((s) => s.instances);
+  const mediaMap = useStore((s) => s.media);
+  const detailInstanceId = useStore((s) => s.detailInstanceId);
+  const openInstance = useStore((s) => s.openInstance);
+  const loadMedia = useStore((s) => s.loadMedia);
+  const installedIds = useStore((s) => s.installedIds);
+  const installInstance = useStore((s) => s.installInstance);
+  const launchInstance = useStore((s) => s.launchInstance);
+  const openDiscover = useStore((s) => s.openDiscover);
+
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
+  const [pins, setPins] = useState<string[]>(readPins);
 
   const latestRun = Object.values(running).sort((a, b) => b.started_at - a.started_at)[0];
   const anyRunning = Object.values(running).some((r) => r.state === "running");
+  const liveRuns = Object.values(running).filter((r) => r.state === "running");
+  const runningIds = new Set(liveRuns.map((r) => r.instance_id));
+
+  const togglePin = (id: string) =>
+    setPins((current) => {
+      const next = current.includes(id)
+        ? current.filter((v) => v !== id)
+        : [...current, id];
+      localStorage.setItem(PIN_KEY, JSON.stringify(next));
+      return next;
+    });
+
+  const dock = useMemo(() => {
+    const byId = new Map(instances.map((i) => [i.id, i]));
+    const pinned = pins.map((id) => byId.get(id)).filter((i): i is Instance => !!i);
+    const pinnedIds = new Set(pinned.map((i) => i.id));
+    const recents = instances
+      .filter((i) => i.last_played_at && !pinnedIds.has(i.id))
+      .sort((a, b) => (b.last_played_at ?? 0) - (a.last_played_at ?? 0))
+      .slice(0, Math.max(0, MAX_TILES - pinned.length));
+    return { pinned, recents };
+  }, [instances, pins]);
+
+  const tiles = [...dock.pinned, ...dock.recents];
+
+  useEffect(() => {
+    tiles.forEach((i) => void loadMedia(i.id));
+  }, [instances, pins, loadMedia]);
+
+  const tileMenu = (instance: Instance): MenuItem[] => {
+    const isRunning = runningIds.has(instance.id);
+    const run = liveRuns.find((r) => r.instance_id === instance.id);
+    const installed = installedIds.includes(instance.id);
+    const pinned = pins.includes(instance.id);
+
+    return [
+      installed
+        ? {
+            label: isRunning ? "Running" : "Play",
+            icon: Play,
+            disabled: isRunning,
+            onSelect: () => {
+              launchInstance(instance.id).catch((e) =>
+                toast.error(`Could not launch ${instance.name}`, { description: String(e) }),
+              );
+            },
+          }
+        : {
+            label: "Install",
+            icon: Download,
+            onSelect: () => {
+              installInstance(instance.id).catch((e) =>
+                toast.error(`Could not install ${instance.name}`, { description: String(e) }),
+              );
+            },
+          },
+      ...(run
+        ? [{ label: "Open console", icon: SquareTerminal, onSelect: () => openConsole(run.running_id) }]
+        : []),
+      { label: "Open instance", icon: Boxes, onSelect: () => openInstance(instance.id) },
+      { label: "Find mods", icon: Compass, onSelect: () => openDiscover("mods", instance.id) },
+      {
+        label: pinned ? "Unpin from sidebar" : "Pin to sidebar",
+        icon: pinned ? PinOff : Pin,
+        separated: true,
+        onSelect: () => togglePin(instance.id),
+      },
+    ];
+  };
 
   return (
-    <aside className="flex w-[68px] shrink-0 flex-col items-center border-r border-border-soft bg-surface/40 py-4">
+    <aside className="relative z-30 flex w-[74px] shrink-0 flex-col items-center border-r border-border-soft bg-surface/40 py-3">
       <button
         onClick={() => setView("home")}
         aria-label="Basalt"
-        className="group relative size-10 overflow-hidden rounded-xl transition-transform hover:scale-105 active:scale-95"
+        className="group relative size-10 shrink-0 overflow-hidden rounded-xl transition-transform hover:scale-105 active:scale-95"
       >
         <img
           src="/logo.png"
@@ -83,29 +274,63 @@ export function Sidebar() {
         />
       </button>
 
-      <nav className="mt-6 flex flex-col gap-1.5">
+      <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
+
+      <nav className="flex w-full flex-col items-center gap-1">
         {NAV.map(({ id, label, icon: Icon }) => (
           <RailButton key={id} label={label} active={view === id} onClick={() => setView(id)}>
-            <Icon className="size-[19px]" />
+            <Icon className="size-[21px]" />
           </RailButton>
         ))}
       </nav>
 
+      {tiles.length > 0 && (
+        <>
+          <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
+          <div className="flex w-full flex-col items-center gap-1.5">
+            {tiles.map((instance) => (
+              <RecentTile
+                key={instance.id}
+                instance={instance}
+                media={mediaMap[instance.id] ?? null}
+                active={view === "instance" && detailInstanceId === instance.id}
+                running={runningIds.has(instance.id)}
+                pinned={pins.includes(instance.id)}
+                onClick={() => openInstance(instance.id)}
+                onContextMenu={(e) =>
+                  openMenu(e, tileMenu(instance), instance.name, { fromElement: true })
+                }
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="flex-1" />
 
-      <div className="flex flex-col items-center gap-1.5">
+      <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
+
+      <div className="flex w-full flex-col items-center gap-1">
         <RailButton
-          label={anyRunning ? "Console · running" : "Last log"}
+          label={anyRunning ? "Console (running)" : "Last log"}
           active={view === "console"}
           disabled={!latestRun}
           onClick={() => latestRun && openConsole(latestRun.running_id)}
         >
           <span className="relative">
-            <ScrollText className="size-[19px]" />
+            <ScrollText className="size-[21px]" />
             {anyRunning && view !== "console" && (
-              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-surface" />
+              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-base" />
             )}
           </span>
+        </RailButton>
+
+        <RailButton
+          label="Settings"
+          active={view === "settings"}
+          onClick={() => setView("settings")}
+        >
+          <Settings className="size-[21px]" />
         </RailButton>
 
         <RailButton
@@ -114,12 +339,14 @@ export function Sidebar() {
           onClick={() => setView("accounts")}
         >
           {activeAccount ? (
-            <PlayerHead uuid={activeAccount.id} name={activeAccount.name} size={28} />
+            <PlayerHead uuid={activeAccount.id} name={activeAccount.name} size={30} />
           ) : (
-            <UserCircle2 className="size-[19px]" />
+            <UserCircle2 className="size-[21px]" />
           )}
         </RailButton>
       </div>
+
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </aside>
   );
 }
