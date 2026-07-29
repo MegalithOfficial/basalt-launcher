@@ -1,9 +1,11 @@
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use reqwest::{IntoUrl, RequestBuilder, Response, StatusCode};
-use tokio::sync::{Semaphore, SemaphorePermit};
+use futures::{Stream, StreamExt};
+use reqwest::{IntoUrl, Method, RequestBuilder, Response, StatusCode};
+use serde::de::DeserializeOwned;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::error::{Error, Result};
 
@@ -12,6 +14,7 @@ const MAX_CONCURRENT_REQUESTS: usize = 8;
 const MAX_ATTEMPTS: u32 = 4;
 const BASE_BACKOFF_MS: u64 = 400;
 const MAX_BACKOFF: Duration = Duration::from_secs(20);
+const MAX_BUFFERED_BODY: usize = 16 * 1024 * 1024;
 
 pub struct NetworkManager {
     client: reqwest::Client,
@@ -59,36 +62,51 @@ impl NetworkManager {
         self.client.delete(url)
     }
 
-    pub async fn send_once(&self, request: RequestBuilder) -> Result<Response> {
-        let _lease = self.limiter.acquire().await;
-        Ok(request.send().await?)
+    pub async fn send_once(&self, request: RequestBuilder) -> Result<ManagedResponse> {
+        let lease = self.limiter.acquire().await;
+        let response = request.send().await?;
+        Ok(ManagedResponse {
+            response,
+            _lease: lease,
+        })
     }
 
-    pub async fn send(&self, request: RequestBuilder) -> Result<Response> {
+    pub async fn send(&self, request: RequestBuilder) -> Result<ManagedResponse> {
+        let method = request
+            .try_clone()
+            .ok_or_else(|| Error::other("request body cannot be inspected"))?
+            .build()?
+            .method()
+            .clone();
+        if !method_is_retryable(&method) {
+            return self.send_once(request).await;
+        }
+
         let mut attempt = 0;
         loop {
             let attempt_request = request
                 .try_clone()
                 .ok_or_else(|| Error::other("request body cannot be retried"))?;
-            let outcome = self.send_once(attempt_request).await;
-
-            let wait = match &outcome {
+            match self.send_once(attempt_request).await {
                 Ok(response) if should_retry(response.status()) => {
-                    retry_after(response).unwrap_or_else(|| backoff(attempt))
+                    let wait = retry_after(&response).unwrap_or_else(|| backoff(attempt));
+                    attempt += 1;
+                    if attempt >= MAX_ATTEMPTS {
+                        return response.error_for_status();
+                    }
+                    drop(response);
+                    tokio::time::sleep(wait).await;
                 }
-                Ok(_) => return outcome,
+                Ok(response) => return Ok(response),
                 Err(Error::Http(error)) if error.is_timeout() || error.is_connect() => {
-                    backoff(attempt)
+                    attempt += 1;
+                    if attempt >= MAX_ATTEMPTS {
+                        return Err(error.into());
+                    }
+                    tokio::time::sleep(backoff(attempt - 1)).await;
                 }
-                Err(_) => return outcome,
-            };
-
-            attempt += 1;
-            if attempt >= MAX_ATTEMPTS {
-                let response = outcome?;
-                return Ok(response.error_for_status()?);
+                Err(error) => return Err(error),
             }
-            tokio::time::sleep(wait).await;
         }
     }
 
@@ -106,20 +124,20 @@ impl NetworkManager {
 }
 
 struct RateLimiter {
-    concurrency: Semaphore,
+    concurrency: Arc<Semaphore>,
     window: Mutex<VecDeque<Instant>>,
     limit: usize,
     period: Duration,
 }
 
-struct Lease<'a> {
-    _permit: SemaphorePermit<'a>,
+struct Lease {
+    _permit: OwnedSemaphorePermit,
 }
 
 impl RateLimiter {
     fn new(limit: usize, period: Duration, concurrency: usize) -> Self {
         Self {
-            concurrency: Semaphore::new(concurrency.max(1)),
+            concurrency: Arc::new(Semaphore::new(concurrency.max(1))),
             window: Mutex::new(VecDeque::with_capacity(limit)),
             limit: limit.max(1),
             period,
@@ -144,10 +162,11 @@ impl RateLimiter {
         Err(self.period - now.duration_since(oldest) + Duration::from_millis(25))
     }
 
-    async fn acquire(&self) -> Lease<'_> {
+    async fn acquire(&self) -> Lease {
         let permit = self
             .concurrency
-            .acquire()
+            .clone()
+            .acquire_owned()
             .await
             .expect("network semaphore is never closed");
         loop {
@@ -159,7 +178,82 @@ impl RateLimiter {
     }
 }
 
-fn retry_after(response: &Response) -> Option<Duration> {
+pub struct ManagedResponse {
+    response: Response,
+    _lease: Lease,
+}
+
+impl ManagedResponse {
+    pub fn status(&self) -> StatusCode {
+        self.response.status()
+    }
+
+    pub fn headers(&self) -> &reqwest::header::HeaderMap {
+        self.response.headers()
+    }
+
+    pub fn content_length(&self) -> Option<u64> {
+        self.response.content_length()
+    }
+
+    pub fn error_for_status(self) -> Result<Self> {
+        self.response.error_for_status_ref()?;
+        Ok(self)
+    }
+
+    pub async fn bytes(self) -> Result<Vec<u8>> {
+        let ManagedResponse {
+            response,
+            _lease,
+        } = self;
+        if let Some(actual) = response.content_length() {
+            if actual > MAX_BUFFERED_BODY as u64 {
+                return Err(Error::ResponseTooLarge {
+                    limit: MAX_BUFFERED_BODY,
+                    actual,
+                });
+            }
+        }
+
+        let mut body = Vec::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            if body.len() + chunk.len() > MAX_BUFFERED_BODY {
+                return Err(Error::ResponseTooLarge {
+                    limit: MAX_BUFFERED_BODY,
+                    actual: (body.len() + chunk.len()) as u64,
+                });
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(body)
+    }
+
+    pub async fn text(self) -> Result<String> {
+        String::from_utf8(self.bytes().await?)
+            .map_err(|error| Error::other(format!("response body was not valid UTF-8: {error}")))
+    }
+
+    pub async fn json<T: DeserializeOwned>(self) -> Result<T> {
+        Ok(serde_json::from_slice(&self.bytes().await?)?)
+    }
+
+    pub fn bytes_stream(
+        self,
+    ) -> impl Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> {
+        let ManagedResponse {
+            response,
+            _lease,
+        } = self;
+        response.bytes_stream().map(move |item| {
+            let _ = &_lease;
+            item
+        })
+    }
+}
+
+fn retry_after(response: &ManagedResponse) -> Option<Duration> {
     let header = response.headers().get(reqwest::header::RETRY_AFTER)?;
     let seconds: u64 = header.to_str().ok()?.trim().parse().ok()?;
     Some(Duration::from_secs(seconds).min(MAX_BACKOFF))
@@ -173,6 +267,13 @@ fn should_retry(status: StatusCode) -> bool {
     status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
+fn method_is_retryable(method: &Method) -> bool {
+    matches!(
+        *method,
+        Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+    )
+}
+
 pub struct Fetched {
     pub status: StatusCode,
     pub etag: Option<String>,
@@ -181,7 +282,8 @@ pub struct Fetched {
 
 #[cfg(test)]
 mod tests {
-    use super::{backoff, RateLimiter, MAX_BACKOFF};
+    use super::{backoff, method_is_retryable, RateLimiter, MAX_BACKOFF};
+    use reqwest::Method;
     use std::time::Duration;
 
     #[test]
@@ -198,5 +300,28 @@ mod tests {
         assert!(backoff(0) < backoff(1));
         assert!(backoff(1) < backoff(2));
         assert_eq!(backoff(30), MAX_BACKOFF);
+    }
+
+    #[test]
+    fn only_read_only_methods_are_retried() {
+        assert!(method_is_retryable(&Method::GET));
+        assert!(method_is_retryable(&Method::HEAD));
+        assert!(!method_is_retryable(&Method::POST));
+        assert!(!method_is_retryable(&Method::PUT));
+        assert!(!method_is_retryable(&Method::DELETE));
+        assert!(!method_is_retryable(&Method::PATCH));
+    }
+
+    #[tokio::test]
+    async fn concurrency_lease_lasts_until_the_response_is_dropped() {
+        let limiter = RateLimiter::new(10, Duration::from_secs(60), 1);
+        let first = limiter.acquire().await;
+        assert!(tokio::time::timeout(Duration::from_millis(25), limiter.acquire())
+            .await
+            .is_err());
+        drop(first);
+        assert!(tokio::time::timeout(Duration::from_millis(25), limiter.acquire())
+            .await
+            .is_ok());
     }
 }

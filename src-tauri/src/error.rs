@@ -36,6 +36,9 @@ pub enum Error {
         actual: u64,
     },
 
+    #[error("response body exceeded the {limit} byte limit after {actual} bytes")]
+    ResponseTooLarge { limit: usize, actual: u64 },
+
     #[error("not found: {0}")]
     NotFound(String),
 

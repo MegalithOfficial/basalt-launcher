@@ -261,6 +261,7 @@ version = "1.0.0"
 dependencies = [
  "atomic-write-file",
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "futures",
  "image",
