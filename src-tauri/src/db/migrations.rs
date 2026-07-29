@@ -2,89 +2,6 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-#[cfg(test)]
-mod tests {
-    use rusqlite::Connection;
-
-    use super::{column_exists, migrate};
-
-    #[test]
-    fn migrate_is_idempotent() {
-        let conn = Connection::open_in_memory().unwrap();
-        migrate(&conn).unwrap();
-        migrate(&conn).unwrap();
-        assert!(column_exists(&conn, "instances", "pack_provider").unwrap());
-        assert!(column_exists(&conn, "instances", "loader").unwrap());
-        assert!(column_exists(&conn, "content_files", "origin").unwrap());
-        assert!(super::table_exists(&conn, "api_cache").unwrap());
-    }
-
-    #[test]
-    fn migrate_moves_content_sources_forward() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE content_sources(
-                instance_id TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-                provider TEXT NOT NULL,
-                project_id TEXT NOT NULL,
-                version_id TEXT,
-                title TEXT,
-                icon_url TEXT,
-                PRIMARY KEY (instance_id, kind, file_name)
-            );
-            INSERT INTO content_sources VALUES
-                ('i1', 'mods', 'sodium.jar', 'modrinth', 'AANobbMI', 'abc', 'Sodium', NULL);",
-        )
-        .unwrap();
-        migrate(&conn).unwrap();
-
-        assert!(!super::table_exists(&conn, "content_sources").unwrap());
-        let (project, origin): (String, String) = conn
-            .query_row(
-                "SELECT project_id, origin FROM content_files WHERE file_name = 'sodium.jar'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(project, "AANobbMI");
-        assert_eq!(origin, "user");
-    }
-
-    #[test]
-    fn migrate_heals_partial_state() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE instances(
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                version_id TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                min_memory_mb INTEGER,
-                max_memory_mb INTEGER,
-                java_path TEXT,
-                last_played_at INTEGER,
-                playtime_secs INTEGER NOT NULL DEFAULT 0
-            );
-            ALTER TABLE instances ADD COLUMN loader TEXT;
-            ALTER TABLE instances ADD COLUMN loader_version TEXT;
-            ALTER TABLE instances ADD COLUMN launch_version_id TEXT;
-            ALTER TABLE instances ADD COLUMN pack_provider TEXT;
-            ALTER TABLE instances ADD COLUMN pack_project_id TEXT;
-            ALTER TABLE instances ADD COLUMN pack_version_id TEXT;
-            PRAGMA user_version = 3;",
-        )
-        .unwrap();
-        migrate(&conn).unwrap();
-        let version: i64 = conn
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(version, super::SCHEMA_VERSION);
-        assert!(column_exists(&conn, "instances", "pack_version_id").unwrap());
-    }
-}
-
 pub(super) const SCHEMA_VERSION: i64 = 7;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -234,4 +151,87 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    use super::{column_exists, migrate};
+
+    #[test]
+    fn migrate_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        migrate(&conn).unwrap();
+        assert!(column_exists(&conn, "instances", "pack_provider").unwrap());
+        assert!(column_exists(&conn, "instances", "loader").unwrap());
+        assert!(column_exists(&conn, "content_files", "origin").unwrap());
+        assert!(super::table_exists(&conn, "api_cache").unwrap());
+    }
+
+    #[test]
+    fn migrate_moves_content_sources_forward() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE content_sources(
+                instance_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                version_id TEXT,
+                title TEXT,
+                icon_url TEXT,
+                PRIMARY KEY (instance_id, kind, file_name)
+            );
+            INSERT INTO content_sources VALUES
+                ('i1', 'mods', 'sodium.jar', 'modrinth', 'AANobbMI', 'abc', 'Sodium', NULL);",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        assert!(!super::table_exists(&conn, "content_sources").unwrap());
+        let (project, origin): (String, String) = conn
+            .query_row(
+                "SELECT project_id, origin FROM content_files WHERE file_name = 'sodium.jar'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(project, "AANobbMI");
+        assert_eq!(origin, "user");
+    }
+
+    #[test]
+    fn migrate_heals_partial_state() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE instances(
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                version_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                min_memory_mb INTEGER,
+                max_memory_mb INTEGER,
+                java_path TEXT,
+                last_played_at INTEGER,
+                playtime_secs INTEGER NOT NULL DEFAULT 0
+            );
+            ALTER TABLE instances ADD COLUMN loader TEXT;
+            ALTER TABLE instances ADD COLUMN loader_version TEXT;
+            ALTER TABLE instances ADD COLUMN launch_version_id TEXT;
+            ALTER TABLE instances ADD COLUMN pack_provider TEXT;
+            ALTER TABLE instances ADD COLUMN pack_project_id TEXT;
+            ALTER TABLE instances ADD COLUMN pack_version_id TEXT;
+            PRAGMA user_version = 3;",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, super::SCHEMA_VERSION);
+        assert!(column_exists(&conn, "instances", "pack_version_id").unwrap());
+    }
 }
