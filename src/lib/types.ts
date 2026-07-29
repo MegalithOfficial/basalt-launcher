@@ -215,7 +215,44 @@ export type TaskKind =
   | "loader_install"
   | "modpack_install"
   | "content_install"
-  | "content_update";
+  | "content_update"
+  | "world_import";
+
+export type WorldStatus = "ok" | "recovered" | "damaged";
+
+export interface WorldSummary {
+  folder_name: string;
+  name: string;
+  last_played_ms: number | null;
+  version_name: string | null;
+  data_version: number | null;
+  game_mode: string;
+  hardcore: boolean;
+  difficulty: number | null;
+  icon_data_url: string | null;
+  status: WorldStatus;
+  error: string | null;
+}
+
+export interface WorldImportCandidate {
+  id: string;
+  archive_root: string;
+  name: string;
+  last_played_ms: number | null;
+  version_name: string | null;
+  data_version: number | null;
+  game_mode: string;
+  hardcore: boolean;
+  status: WorldStatus;
+  error: string | null;
+  file_count: number;
+  total_bytes: number;
+}
+
+export interface WorldImportInspection {
+  source_kind: "directory" | "zip";
+  candidates: WorldImportCandidate[];
+}
 
 export type TaskState = "running" | "succeeded" | "failed" | "cancelled";
 

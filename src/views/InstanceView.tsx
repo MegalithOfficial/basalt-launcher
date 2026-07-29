@@ -16,6 +16,7 @@ import {
 
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { PlayButton } from "../components/PlayButton";
+import { WorldsPanel } from "../components/worlds/WorldsPanel";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { loaderLabel } from "../lib/loader";
@@ -24,6 +25,8 @@ import { formatPlaytime, relativeTime } from "../lib/time";
 import type { ContentItem, ContentKind, ContentUpdate } from "../lib/types";
 import { useActiveProjectIds } from "../lib/useTasks";
 import { useStore } from "../store";
+
+type InstanceTab = ContentKind | "worlds";
 
 const TABS: Array<{ kind: ContentKind; label: string; extensions: string[] }> = [
   { kind: "mods", label: "Mods", extensions: ["jar"] },
@@ -35,6 +38,12 @@ const SCHEMATICS_TAB = {
   kind: "schematics" as ContentKind,
   label: "Schematics",
   extensions: ["litematic", "schem", "schematic", "nbt"],
+};
+
+const WORLDS_TAB = {
+  kind: "worlds" as const,
+  label: "Worlds",
+  extensions: [],
 };
 
 const SCHEMATIC_MOD_MARKERS = ["litematica", "worldedit", "schematica", "axiom", "schematic"];
@@ -80,10 +89,15 @@ export function InstanceView() {
   const beginToastBatch = useStore((s) => s.beginToastBatch);
   const endToastBatch = useStore((s) => s.endToastBatch);
   const storedUpdates = useStore((s) => (detailId ? s.updates[detailId] : undefined));
+  const gameRunning = useStore((s) =>
+    Object.values(s.running).some(
+      (running) => running.instance_id === detailId && running.state === "running",
+    ),
+  );
   const updates = storedUpdates ?? NO_UPDATES;
   const activeProjects = useActiveProjectIds();
 
-  const [tab, setTab] = useState<ContentKind>("mods");
+  const [tab, setTab] = useState<InstanceTab>("mods");
   const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -99,7 +113,7 @@ export function InstanceView() {
 
   const refresh = useCallback(
     async (reconcile = false) => {
-      if (!instance) return;
+      if (!instance || tab === "worlds") return;
       setLoading(true);
       try {
         setItems(await api.listInstanceContent(instance.id, tab, reconcile));
@@ -156,9 +170,11 @@ export function InstanceView() {
   const baseTabs = instance.loader
     ? TABS
     : TABS.filter((t) => t.kind === "resourcepacks");
-  const allTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
+  const contentTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
+  const allTabs = [WORLDS_TAB, ...contentTabs];
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
-  const tabUpdates = updates.filter((u) => u.kind === tab);
+  const tabUpdates =
+    tab === "worlds" ? NO_UPDATES : updates.filter((u) => u.kind === tab);
   const query = filter.trim().toLowerCase();
   const shownItems = query
     ? items.filter(
@@ -170,6 +186,7 @@ export function InstanceView() {
   const enabledCount = items.filter((i) => i.enabled).length;
 
   const addContent = async () => {
+    if (tab === "worlds") return;
     if (tab !== "schematics") {
       openSearch(tab);
       return;
@@ -186,11 +203,13 @@ export function InstanceView() {
   };
 
   const toggle = async (item: ContentItem) => {
+    if (tab === "worlds") return;
     await api.toggleInstanceContent(instance.id, tab, item.file_name);
     await refresh();
   };
 
   const askRemove = async (item: ContentItem) => {
+    if (tab === "worlds") return;
     const dependents = await api
       .getContentDependents(instance.id, tab, item.file_name)
       .catch(() => [] as string[]);
@@ -202,6 +221,7 @@ export function InstanceView() {
   };
 
   const remove = async (item: ContentItem) => {
+    if (tab === "worlds") return;
     setConfirmDelete(null);
     await api.deleteInstanceContent(instance.id, tab, item.file_name);
     await refresh();
@@ -237,6 +257,7 @@ export function InstanceView() {
   };
 
   const updateOne = async (item: ContentItem) => {
+    if (tab === "worlds") return;
     await applyUpdate(instance.id, tab, item.file_name);
     await refresh();
   };
@@ -344,43 +365,48 @@ export function InstanceView() {
             );
           })}
         </div>
-        <div className="mb-2 flex items-center gap-2">
-          {tabUpdates.length > 0 && (
+        {tab !== "worlds" && (
+          <div className="mb-2 flex items-center gap-2">
+            {tabUpdates.length > 0 && (
+              <button
+                onClick={updateAll}
+                disabled={updatingAll}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60"
+              >
+                {updatingAll ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <ArrowUpCircle className="size-3.5" />
+                )}
+                Update all ({tabUpdates.length})
+              </button>
+            )}
             <button
-              onClick={updateAll}
-              disabled={updatingAll}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60"
+              onClick={checkUpdates}
+              disabled={checkingUpdates}
+              title="Check for updates"
+              aria-label="Check for updates"
+              className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-60"
             >
-              {updatingAll ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <ArrowUpCircle className="size-3.5" />
-              )}
-              Update all ({tabUpdates.length})
+              <RefreshCw className={cn("size-3.5", checkingUpdates && "animate-spin")} />
             </button>
-          )}
-          <button
-            onClick={checkUpdates}
-            disabled={checkingUpdates}
-            title="Check for updates"
-            aria-label="Check for updates"
-            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-60"
-          >
-            <RefreshCw className={cn("size-3.5", checkingUpdates && "animate-spin")} />
-          </button>
-          <button
-            onClick={addContent}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
-          >
-            <Plus className="size-3.5" />
-            Add content
-          </button>
-        </div>
+            <button
+              onClick={addContent}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+            >
+              <Plus className="size-3.5" />
+              Add content
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="px-6 py-5">
-        {items.length > 0 && (
+        {tab === "worlds" ? (
+          <WorldsPanel instance={instance} running={gameRunning} />
+        ) : (
+          <div className="px-6 py-5">
+          {items.length > 0 && (
           <div className="mb-4 flex items-center gap-3">
             <div className="relative w-full max-w-sm">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-content-faint" />
@@ -529,8 +555,9 @@ export function InstanceView() {
               );
             })}
           </div>
+          )}
+          </div>
         )}
-        </div>
       </div>
 
       {confirmDelete && (

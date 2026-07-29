@@ -38,6 +38,8 @@ import type {
   UpdateInfo,
   VersionEntry,
   VersionMedia,
+  WorldImportInspection,
+  WorldSummary,
 } from "./types";
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -72,6 +74,16 @@ export const api = {
     call<string[]>("list_loader_versions", { loader, gameVersion }),
   listInstanceContent: (instanceId: string, kind: string, reconcile = false) =>
     call<ContentItem[]>("list_instance_content", { instanceId, kind, reconcile }),
+  listInstanceWorlds: (instanceId: string) =>
+    call<WorldSummary[]>("list_instance_worlds", { instanceId }),
+  inspectWorldSource: (sourcePath: string) =>
+    call<WorldImportInspection>("inspect_world_source", { sourcePath }),
+  importWorlds: (
+    instanceId: string,
+    sourcePath: string,
+    candidateIds: string[],
+  ) =>
+    call<number>("import_worlds", { instanceId, sourcePath, candidateIds }),
   toggleInstanceContent: (instanceId: string, kind: string, fileName: string) =>
     call<boolean>("toggle_instance_content", { instanceId, kind, fileName }),
   deleteInstanceContent: (instanceId: string, kind: string, fileName: string) =>
