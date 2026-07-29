@@ -68,6 +68,14 @@ pub fn run() {
             if let Err(e) = skin::reconcile_library(&state) {
                 tracing::warn!(error = %e, "could not reconcile the skin library");
             }
+            if let Err(e) = launch::process::recover_processes(
+                app.handle(),
+                &state.running,
+                &state.files,
+                &state.db,
+            ) {
+                tracing::warn!(error = %e, "could not recover running game processes");
+            }
             app.manage(state);
             tracing::info!("startup complete");
             Ok(())

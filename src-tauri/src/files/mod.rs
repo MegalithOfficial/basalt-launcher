@@ -210,6 +210,19 @@ impl FileManager {
         Ok(self.root.open(self.relative(path.as_ref())?)?.into_std())
     }
 
+    pub fn create(&self, path: impl AsRef<Path>) -> Result<std::fs::File> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            self.ensure_dir(parent)?;
+        }
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        Ok(self
+            .root
+            .open_with(self.relative(path)?, &options)?
+            .into_std())
+    }
+
     pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {
         let source = self.relative(source.as_ref())?;
         let destination_path = destination.as_ref();
@@ -432,6 +445,22 @@ mod tests {
         files.write_atomic(&path, b"first").unwrap();
         files.write_atomic(&path, b"second").unwrap();
         assert_eq!(files.read(&path).unwrap(), b"second");
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn create_truncates_managed_files() {
+        let root = std::env::temp_dir().join(format!("basalt-files-test-{}", uuid::Uuid::new_v4()));
+        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let path = root.join("logs").join("run.log");
+
+        {
+            let mut file = files.create(&path).unwrap();
+            std::io::Write::write_all(&mut file, b"old log").unwrap();
+        }
+        drop(files.create(&path).unwrap());
+
+        assert!(files.read(&path).unwrap().is_empty());
         std::fs::remove_dir_all(root).ok();
     }
 

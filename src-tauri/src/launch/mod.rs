@@ -336,6 +336,7 @@ pub async fn launch_instance(
         settings.jvm_args.as_str()
     };
     let mut args: Vec<String> = split_args(&render_placeholders(template, &placeholders));
+    let running_id = uuid::Uuid::new_v4().to_string();
 
     if let Some(arguments) = &version.arguments {
         for arg in &arguments.jvm {
@@ -347,6 +348,7 @@ pub async fn launch_instance(
         args.push(classpath.clone());
     }
 
+    args.push(process::run_marker(&running_id));
     args.push(version.main_class.clone());
 
     if let Some(arguments) = &version.arguments {
@@ -392,18 +394,20 @@ pub async fn launch_instance(
         "launching minecraft"
     );
 
-    let running_id = uuid::Uuid::new_v4().to_string();
     process::spawn_process(
         app,
         &state.running,
+        state.files.clone(),
         state.db.clone(),
-        &instance.id,
-        &running_id,
-        now(),
-        &java.path,
-        args,
-        &game_dir,
-        env,
+        process::ProcessLaunch {
+            instance_id: &instance.id,
+            running_id: &running_id,
+            started_at: now(),
+            program: &java.path,
+            args,
+            cwd: &game_dir,
+            env,
+        },
     )?;
 
     Ok(running_id)

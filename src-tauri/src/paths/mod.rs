@@ -54,6 +54,11 @@ impl Paths {
     pub fn logs(&self) -> PathBuf {
         self.root.join("logs")
     }
+    pub fn run_log(&self, running_id: &str, stream: &str) -> PathBuf {
+        self.logs()
+            .join("runs")
+            .join(format!("{running_id}.{stream}.log"))
+    }
     pub fn skins(&self) -> PathBuf {
         self.root.join("media").join("skins")
     }

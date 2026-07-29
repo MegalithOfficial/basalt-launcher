@@ -27,9 +27,8 @@ pub async fn launch_instance(
 pub fn kill_instance(state: State<AppState>, running_id: String) -> Result<()> {
     let mut registry = state.running.lock().unwrap();
     if let Some(handle) = registry.get_mut(&running_id) {
-        if let Some(tx) = handle.kill_tx.take() {
+        if handle.request_kill(&running_id) {
             tracing::info!(pid = handle.pid, "kill requested");
-            let _ = tx.send(());
         }
     }
     Ok(())
