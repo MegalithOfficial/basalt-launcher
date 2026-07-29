@@ -259,6 +259,7 @@ dependencies = [
  "bytes",
  "cap-std",
  "chrono",
+ "flate2",
  "futures",
  "httpdate",
  "image",

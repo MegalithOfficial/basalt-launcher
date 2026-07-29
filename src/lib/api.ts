@@ -18,8 +18,10 @@ import type {
   JavaStatus,
   LaunchPreview,
   LauncherSettings,
+  InstanceLogFile,
   LogConfig,
   LogLine,
+  LogSearch,
   LogRecord,
   ProjectDetails,
   ProjectSummary,
@@ -215,6 +217,17 @@ export const api = {
     call<LogRecord[]>("get_log_records", { limit: limit ?? null }),
   clearLogRecords: () => call<void>("clear_log_records"),
   getLogConfig: () => call<LogConfig>("get_log_config"),
+  listInstanceLogs: (instanceId: string) =>
+    call<InstanceLogFile[]>("list_instance_logs", { instanceId }),
+  searchInstanceLog: (
+    instanceId: string,
+    name: string,
+    query: string,
+    minLevel: string | null = null,
+  ) =>
+    call<LogSearch>("search_instance_log", { instanceId, name, query, minLevel, limit: null }),
+  deleteInstanceLog: (instanceId: string, name: string) =>
+    call<void>("delete_instance_log", { instanceId, name }),
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
   checkForUpdates: () => call<UpdateInfo>("check_for_updates"),
   getAboutLinks: () => call<AboutLinks>("get_about_links"),

@@ -11,11 +11,15 @@ export function Select({
   options,
   onChange,
   placeholder = "Select",
+  label,
+  compact,
 }: {
   value: string | null;
   options: string[];
   onChange: (value: string) => void;
   placeholder?: string;
+  label?: string;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -63,14 +67,21 @@ export function Select({
         ref={triggerRef}
         type="button"
         onClick={toggle}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]"
+        className={cn(
+          "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-base text-content outline-none transition-colors focus:border-[var(--accent)]",
+          compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
+        )}
       >
-        <span className={cn("truncate", !value && "text-content-faint")}>
-          {value ?? placeholder}
+        <span className="flex min-w-0 items-center gap-1.5">
+          {label && <span className="shrink-0 text-content-faint">{label}</span>}
+          <span className={cn("truncate", !value && "text-content-faint")}>
+            {value ?? placeholder}
+          </span>
         </span>
         <ChevronDown
           className={cn(
-            "size-4 shrink-0 text-content-faint transition-transform",
+            "shrink-0 text-content-faint transition-transform",
+            compact ? "size-3.5" : "size-4",
             open && "rotate-180",
           )}
         />
@@ -102,13 +113,16 @@ export function Select({
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors",
+                  "flex w-full items-center justify-between text-left transition-colors",
+                  compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
                   option === value
                     ? "bg-[var(--accent-glow)] text-content"
                     : "text-content-muted hover:bg-surface-3 hover:text-content",
                 )}
               >
-                <span className="truncate font-mono text-xs">{option}</span>
+                <span className={cn("truncate", compact ? "text-xs" : "font-mono text-xs")}>
+                  {option}
+                </span>
                 {option === value && (
                   <Check className="size-3.5 shrink-0 text-[var(--accent)]" />
                 )}

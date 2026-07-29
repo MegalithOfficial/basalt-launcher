@@ -5,13 +5,11 @@ import {
   Boxes,
   Compass,
   Download,
-  FileText,
   Pin,
   PinOff,
   Play,
-  ScrollText,
   Settings,
-  SquareTerminal,
+  SquareChartGantt,
   UserCircle2,
 } from "lucide-react";
 
@@ -39,7 +37,6 @@ const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
   { id: "home", label: "Play", icon: Play },
   { id: "instances", label: "Instances", icon: Boxes },
   { id: "discover", label: "Discover", icon: Compass },
-  { id: "logs", label: "Logs", icon: FileText },
 ];
 
 function RailLabel({ children }: { children: React.ReactNode }) {
@@ -187,7 +184,6 @@ export function Sidebar() {
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const [pins, setPins] = useState<string[]>(readPins);
 
-  const latestRun = Object.values(running).sort((a, b) => b.started_at - a.started_at)[0];
   const anyRunning = Object.values(running).some((r) => r.state === "running");
   const liveRuns = Object.values(running).filter((r) => r.state === "running");
   const runningIds = new Set(liveRuns.map((r) => r.instance_id));
@@ -246,7 +242,7 @@ export function Sidebar() {
             },
           },
       ...(run
-        ? [{ label: "Open console", icon: SquareTerminal, onSelect: () => openConsole(run.running_id) }]
+        ? [{ label: "Live logs", icon: SquareChartGantt, onSelect: () => openConsole(run.running_id) }]
         : []),
       { label: "Open instance", icon: Boxes, onSelect: () => openInstance(instance.id) },
       { label: "Find mods", icon: Compass, onSelect: () => openDiscover("mods", instance.id) },
@@ -312,14 +308,13 @@ export function Sidebar() {
 
       <div className="flex w-full flex-col items-center gap-1">
         <RailButton
-          label={anyRunning ? "Console (running)" : "Last log"}
-          active={view === "console"}
-          disabled={!latestRun}
-          onClick={() => latestRun && openConsole(latestRun.running_id)}
+          label={anyRunning ? "Logs (running)" : "Logs"}
+          active={view === "logs"}
+          onClick={() => setView("logs")}
         >
           <span className="relative">
-            <ScrollText className="size-[21px]" />
-            {anyRunning && view !== "console" && (
+            <SquareChartGantt className="size-[21px]" />
+            {anyRunning && view !== "logs" && (
               <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-base" />
             )}
           </span>

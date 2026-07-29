@@ -9,7 +9,6 @@ import { RecoveryBanner } from "./components/RecoveryBanner";
 import { TitleBar } from "./components/TitleBar";
 import { Toaster } from "sonner";
 import { AccountsView } from "./views/AccountsView";
-import { ConsoleView } from "./views/ConsoleView";
 import { HomeView } from "./views/HomeView";
 import { InstanceView } from "./views/InstanceView";
 import { InstancesView } from "./views/InstancesView";
@@ -25,7 +24,6 @@ const VIEWS: Record<View, React.ComponentType> = {
   instances: InstancesView,
   accounts: AccountsView,
   settings: SettingsView,
-  console: ConsoleView,
   instance: InstanceView,
   discover: DiscoverView,
   project: ProjectView,

@@ -16,6 +16,7 @@ import type {
   LauncherSettings,
   LogConfig,
   LogLevel,
+  LogsTab,
   LogLine,
   LogRecord,
   RunningInfo,
@@ -60,6 +61,7 @@ interface AppStore {
   skinRevision: number;
   skinHeads: Record<string, string>;
   activeRunningId: string | null;
+  logsTab: LogsTab;
   media: Record<string, VersionMedia | null>;
   detailInstanceId: string | null;
   viewStack: View[];
@@ -104,6 +106,7 @@ interface AppStore {
   killInstance: (runningId: string) => Promise<void>;
   closeRunning: (runningId: string) => Promise<void>;
   openConsole: (runningId: string) => void;
+  setLogsTab: (tab: LogsTab) => void;
   bumpSkinRevision: () => void;
   setSkinHead: (uuid: string, dataUrl: string | null) => void;
   syncActiveSkin: () => Promise<void>;
@@ -168,6 +171,7 @@ export const useStore = create<AppStore>((set) => ({
   skinRevision: 0,
   skinHeads: {},
   activeRunningId: null,
+  logsTab: "launcher",
   media: {},
   selectedInstanceId: null,
   detailInstanceId: null,
@@ -547,8 +551,9 @@ export const useStore = create<AppStore>((set) => ({
     const runningId = await api.launchInstance(id);
     set((s) => ({
       activeRunningId: runningId,
-      view: "console",
-      viewStack: s.view !== "console" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      logsTab: "game",
+      view: "logs",
+      viewStack: s.view !== "logs" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     }));
     const backfill = await api.getLogs(runningId);
     set((s) => {
@@ -581,9 +586,12 @@ export const useStore = create<AppStore>((set) => ({
   openConsole: (runningId) =>
     set((s) => ({
       activeRunningId: runningId,
-      view: "console",
-      viewStack: s.view !== "console" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      logsTab: "game",
+      view: "logs",
+      viewStack: s.view !== "logs" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     })),
+
+  setLogsTab: (tab) => set({ logsTab: tab }),
 
   selectInstance: (id) => set({ selectedInstanceId: id }),
 

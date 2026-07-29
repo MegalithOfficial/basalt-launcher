@@ -386,6 +386,29 @@ export interface LogRecord {
   fields: Record<string, string>;
 }
 
+export type LogsTab = "launcher" | "game" | "files";
+
+export interface InstanceLogFile {
+  name: string;
+  size_bytes: number;
+  modified_ms: number;
+  compressed: boolean;
+}
+
+export interface LogHit {
+  number: number;
+  line: string;
+  ranges: Array<[number, number]>;
+  level: "error" | "warn" | "info" | "debug";
+}
+
+export interface LogSearch {
+  hits: LogHit[];
+  total_lines: number;
+  matched_lines: number;
+  truncated: boolean;
+}
+
 export interface LogConfig {
   level: LogLevel;
   directory: string;
@@ -399,7 +422,6 @@ export type View =
   | "instances"
   | "accounts"
   | "settings"
-  | "console"
   | "instance"
   | "discover"
   | "project"

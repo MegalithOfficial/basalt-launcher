@@ -44,6 +44,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v3", "v4", "serde"] }
 
 zip = "2"
+flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 base64 = "0.22"
 sha1_smol = "1"

@@ -1,121 +1,52 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Check, Copy, FolderOpen, Search, Trash2 } from "lucide-react";
+import { Check, CircleStop, Copy, FolderOpen, Search, Trash2, TriangleAlert } from "lucide-react";
 
-import { PageHeader } from "../components/ui";
+import { FileLogPanel } from "../components/logs/FileLogPanel";
+import { GameLogPanel } from "../components/logs/GameLogPanel";
+import {
+  LauncherLogPanel,
+  filterRecords,
+  recordsToText,
+} from "../components/logs/LauncherLogPanel";
+import { LogSourceTree, type LogSelection } from "../components/logs/LogSourceTree";
+import type { LineLevel } from "../components/logs/lines";
+import { api } from "../lib/api";
+import { Select } from "../components/Select";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
-import type { LogLevel, LogRecord, LogSource } from "../lib/types";
+import type { LogLevel, LogSearch, LogSource } from "../lib/types";
 import { useStore } from "../store";
 
-const RANK: Record<LogLevel, number> = {
-  error: 0,
-  warn: 1,
-  info: 2,
-  debug: 3,
-  trace: 4,
-};
-
-const LEVEL_ORDER: LogLevel[] = ["error", "warn", "info", "debug", "trace"];
-const LEVEL_FILTERS: Array<{ id: LogLevel | "all"; label: string }> = [
-  { id: "all", label: "All" },
-  ...LEVEL_ORDER.map((level) => ({ id: level, label: level })),
-];
-const SOURCES: Array<{ id: LogSource | "all"; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "backend", label: "Backend" },
-  { id: "frontend", label: "Frontend" },
-];
-
 const MAX_ROWS = 1500;
-const CRATE_PREFIX = "basalt_launcher_lib::";
 
-function shortTarget(target: string) {
-  if (target === "basalt_launcher_lib") return "launcher";
-  return target.startsWith(CRATE_PREFIX) ? target.slice(CRATE_PREFIX.length) : target;
-}
-
-const LEVEL_TEXT: Record<LogLevel, string> = {
-  error: "text-danger",
-  warn: "text-warn",
-  info: "text-content",
-  debug: "text-content-muted",
-  trace: "text-content-faint",
+const LEVEL_LABELS: Record<LogLevel | "all", string> = {
+  all: "All",
+  error: "Error",
+  warn: "Warn",
+  info: "Info",
+  debug: "Debug",
+  trace: "Trace",
 };
 
-const LEVEL_PILL: Record<LogLevel, string> = {
-  error: "border-danger/30 bg-danger/10 text-danger",
-  warn: "border-warn/30 bg-warn/10 text-warn",
-  info: "border-border bg-surface-2 text-content-muted",
-  debug: "border-border-soft bg-surface-2 text-content-faint",
-  trace: "border-border-soft bg-surface-2 text-content-faint",
+const SOURCE_LABELS: Record<LogSource | "all", string> = {
+  all: "All",
+  backend: "Backend",
+  frontend: "Frontend",
 };
 
-function formatTime(ts: number) {
-  const date = new Date(ts);
-  const pad = (n: number, width = 2) => String(n).padStart(width, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
-    date.getSeconds(),
-  )}.${pad(date.getMilliseconds(), 3)}`;
+const LINE_LEVEL_LABELS: Record<LineLevel | "all", string> = {
+  all: "All",
+  error: "Error",
+  warn: "Warn",
+  info: "Info",
+  debug: "Debug",
+};
+
+function keyOf<T extends string>(labels: Record<T, string>, label: string, fallback: T): T {
+  return (Object.keys(labels) as T[]).find((key) => labels[key] === label) ?? fallback;
 }
 
-function haystack(record: LogRecord) {
-  return [
-    record.message,
-    record.target,
-    record.span ?? "",
-    ...Object.entries(record.fields).map(([key, value]) => `${key}=${value}`),
-  ]
-    .join(" ")
-    .toLowerCase();
-}
-
-function toText(records: LogRecord[]) {
-  return records
-    .map((r) => {
-      const fields = Object.entries(r.fields)
-        .map(([key, value]) => ` ${key}=${value}`)
-        .join("");
-      const span = r.span ? ` [${r.span}]` : "";
-      return `${new Date(r.ts).toISOString()} ${r.level.toUpperCase().padEnd(5)} ${
-        r.target
-      }${span} ${r.message}${fields}`;
-    })
-    .join("\n");
-}
-
-function plural(count: number, noun: string) {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
-
-function Dot() {
-  return <span className="text-content-faint/50">·</span>;
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors",
-        active
-          ? "bg-surface-3 text-content"
-          : "text-content-faint hover:text-content-muted",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
 
 function ToolButton({
   onClick,
@@ -130,54 +61,25 @@ function ToolButton({
     <button
       onClick={onClick}
       title={title}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
     >
       {children}
     </button>
   );
 }
 
-function LogRow({ record }: { record: LogRecord }) {
-  const fields = Object.entries(record.fields);
-  return (
-    <div className="flex gap-3 border-b border-border-soft/50 px-4 py-1 hover:bg-surface/60">
-      <span className="shrink-0 self-start tabular-nums text-content-faint/70">
-        {formatTime(record.ts)}
-      </span>
-      <span
-        className={cn(
-          "mt-0.5 w-12 shrink-0 self-start rounded border px-1 text-center text-[10px] font-semibold uppercase leading-4 tracking-wide",
-          LEVEL_PILL[record.level],
-        )}
-      >
-        {record.level}
-      </span>
-      <span
-        className="w-36 shrink-0 self-start break-words text-content-faint"
-        title={record.span ? `${record.target} · ${record.span}` : record.target}
-      >
-        {shortTarget(record.target)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <span className={cn("whitespace-pre-wrap break-words", LEVEL_TEXT[record.level])}>
-          {record.message}
-        </span>
-        {fields.length > 0 && (
-          <span className="ml-2 break-words text-content-faint">
-            {fields.map(([key, value]) => (
-              <span key={key} className="mr-2">
-                <span className="text-content-faint/60">{key}=</span>
-                {value}
-              </span>
-            ))}
-          </span>
-        )}
-        {record.span && (
-          <div className="break-words text-[11px] text-content-faint/60">{record.span}</div>
-        )}
-      </div>
-    </div>
-  );
+function useUptime(startedAt: number, live: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [live]);
+  const secs = Math.max(0, Math.floor(now / 1000) - startedAt);
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 export function LogsView() {
@@ -185,89 +87,97 @@ export function LogsView() {
   const config = useStore((s) => s.logConfig);
   const clearLogs = useStore((s) => s.clearLogs);
   const refreshLogs = useStore((s) => s.refreshLogs);
+  const running = useStore((s) => s.running);
+  const logsMap = useStore((s) => s.logs);
+  const instances = useStore((s) => s.instances);
+  const killInstance = useStore((s) => s.killInstance);
+  const closeRunning = useStore((s) => s.closeRunning);
+  const logsTab = useStore((s) => s.logsTab);
+  const setLogsTab = useStore((s) => s.setLogsTab);
+  const activeRunningId = useStore((s) => s.activeRunningId);
 
+  const [selection, setSelection] = useState<LogSelection>({ kind: "launcher" });
   const [minLevel, setMinLevel] = useState<LogLevel | "all">("info");
+  const [lineLevel, setLineLevel] = useState<LineLevel | "all">("all");
+  const [fileResult, setFileResult] = useState<LogSearch | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [treeVersion, setTreeVersion] = useState(0);
   const [source, setSource] = useState<LogSource | "all">("all");
   const [query, setQuery] = useState("");
   const [autoscroll, setAutoscroll] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     if (!config) void refreshLogs();
   }, [config, refreshLogs]);
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const ceiling = minLevel === "all" ? Infinity : RANK[minLevel];
-    return records.filter((record) => {
-      if (RANK[record.level] > ceiling) return false;
-      if (source !== "all" && record.source !== source) return false;
-      if (needle && !haystack(record).includes(needle)) return false;
-      return true;
-    });
-  }, [records, minLevel, source, query]);
+  useEffect(() => {
+    if (logsTab === "game" && activeRunningId) {
+      setSelection({ kind: "run", runningId: activeRunningId });
+    }
+  }, [logsTab, activeRunningId]);
 
-  const visible = useMemo(
-    () => (filtered.length > MAX_ROWS ? filtered.slice(-MAX_ROWS) : filtered),
-    [filtered],
+  const select = (next: LogSelection) => {
+    setSelection(next);
+    setQuery("");
+    setConfirmDelete(false);
+    if (next.kind === "file") setFileResult(null);
+    setLogsTab(next.kind === "run" ? "game" : next.kind === "file" ? "files" : "launcher");
+  };
+
+  const runs = useMemo(
+    () => Object.values(running).sort((a, b) => b.started_at - a.started_at),
+    [running],
   );
 
-  const counts = useMemo(() => {
-    let errors = 0;
-    let warnings = 0;
-    for (const record of records) {
-      if (record.level === "error") errors += 1;
-      else if (record.level === "warn") warnings += 1;
-    }
-    return { errors, warnings };
-  }, [records]);
+  const issues = useMemo(
+    () => records.filter((r) => r.level === "error" || r.level === "warn").length,
+    [records],
+  );
 
-  const summary = useMemo(() => {
-    const parts: ReactNode[] = [];
-    if (counts.errors > 0) {
-      parts.push(
-        <span className="font-medium text-danger">{plural(counts.errors, "error")}</span>,
-      );
-    }
-    if (counts.warnings > 0) {
-      parts.push(
-        <span className="font-medium text-warn">{plural(counts.warnings, "warning")}</span>,
-      );
-    }
-    if (parts.length === 0) {
-      parts.push(
-        <span>
-          {records.length === 0 ? "Waiting for the first line" : "No errors or warnings"}
-        </span>,
-      );
-    }
-    if (config) {
-      const name = config.file.split(/[\\/]/).pop() ?? config.file;
-      parts.push(
-        <button
-          onClick={() => void openPath(config.directory)}
-          title={config.file}
-          className="inline-flex items-center gap-1.5 font-mono text-xs text-content-faint transition-colors hover:text-content"
-        >
-          <FolderOpen className="size-3.5" />
-          {name}
-        </button>,
-      );
-    }
-    return parts;
-  }, [counts, records.length, config]);
+  const filtered = useMemo(
+    () => filterRecords(records, minLevel, source, query),
+    [records, minLevel, source, query],
+  );
+  const visible = filtered.length > MAX_ROWS ? filtered.slice(-MAX_ROWS) : filtered;
 
-  useEffect(() => {
-    if (autoscroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [visible, autoscroll]);
+  const run = selection.kind === "run" ? running[selection.runningId] : undefined;
+  const runInstance = instances.find((i) => i.id === run?.instance_id);
+  const live = run?.state === "running";
+  const uptime = useUptime(run?.started_at ?? 0, !!live);
+
+  const fileInstance =
+    selection.kind === "file" ? instances.find((i) => i.id === selection.instanceId) : undefined;
+
+  const runLines = useMemo(() => {
+    if (selection.kind !== "run") return [];
+    const all = (logsMap[selection.runningId] ?? []).map((entry) => entry.line);
+    const needle = query.trim().toLowerCase();
+    return needle ? all.filter((line) => line.toLowerCase().includes(needle)) : all;
+  }, [selection, logsMap, query]);
+
+  const copyCount =
+    selection.kind === "launcher"
+      ? filtered.length
+      : selection.kind === "run"
+        ? runLines.length
+        : (fileResult?.hits.length ?? 0);
+
+  const narrowed =
+    selection.kind === "launcher"
+      ? !!query.trim() || minLevel !== "all" || source !== "all"
+      : !!query.trim() || lineLevel !== "all";
 
   const copy = async () => {
+    const text =
+      selection.kind === "launcher"
+        ? recordsToText(filtered)
+        : selection.kind === "run"
+          ? runLines.join("\n")
+          : (fileResult?.hits ?? []).map((hit) => hit.line).join("\n");
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(toText(filtered));
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch (e) {
@@ -275,129 +185,253 @@ export function LogsView() {
     }
   };
 
+  const removeFile = async () => {
+    if (selection.kind !== "file") return;
+    try {
+      await api.deleteInstanceLog(selection.instanceId, selection.name);
+      setTreeVersion((v) => v + 1);
+      select({ kind: "launcher" });
+    } catch (e) {
+      log.warn("logs", `could not delete the log file: ${String(e)}`);
+    }
+  };
+
+  const onFileResult = useCallback((search: LogSearch | null) => setFileResult(search), []);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader
-        title="Logs"
-        subtitle={
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {summary.map((part, i) => (
-              <Fragment key={i}>
-                {i > 0 && <Dot />}
-                {part}
-              </Fragment>
-            ))}
+    <div className="flex min-h-0 flex-1">
+      <LogSourceTree
+        selection={selection}
+        onSelect={select}
+        runs={runs}
+        issues={issues}
+        version={treeVersion}
+      />
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border-soft px-4 py-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-2 pr-1">
+            <span className="truncate font-display text-[13px] font-semibold text-content">
+              {selection.kind === "launcher"
+                ? "Launcher"
+                : selection.kind === "run"
+                  ? (runInstance?.name ?? "Instance")
+                  : selection.name}
+            </span>
+            {selection.kind === "run" && run && (
+              <>
+                <span
+                  className={cn(
+                    "shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                    run.state === "running"
+                      ? "border-ok/30 bg-ok/10 text-ok"
+                      : run.state === "crashed"
+                        ? "border-danger/30 bg-danger/10 text-danger"
+                        : "border-border bg-surface-2 text-content-muted",
+                  )}
+                >
+                  {run.state}
+                  {run.exit_code != null && run.state !== "running" ? ` (${run.exit_code})` : ""}
+                </span>
+                <span className="shrink-0 text-[11px] text-content-faint">{uptime}</span>
+              </>
+            )}
+            {selection.kind === "file" && fileInstance && (
+              <span className="shrink-0 text-[11px] text-content-faint">{fileInstance.name}</span>
+            )}
+        </div>
+
+        <div className="relative min-w-56 max-w-md flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-content-faint" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter lines"
+            className="w-full rounded-lg border border-border bg-base py-1.5 pl-8 pr-2.5 text-xs text-content outline-none transition-colors placeholder:text-content-faint focus:border-[var(--accent)]"
+          />
+        </div>
+
+        {selection.kind === "launcher" && (
+          <>
+            <div className="w-36 shrink-0">
+              <Select
+                compact
+                label="Level"
+                value={LEVEL_LABELS[minLevel]}
+                options={Object.values(LEVEL_LABELS)}
+                onChange={(label) => setMinLevel(keyOf(LEVEL_LABELS, label, "all"))}
+              />
+            </div>
+
+            <div className="w-40 shrink-0">
+              <Select
+                compact
+                label="Source"
+                value={SOURCE_LABELS[source]}
+                options={Object.values(SOURCE_LABELS)}
+                onChange={(label) => setSource(keyOf(SOURCE_LABELS, label, "all"))}
+              />
+            </div>
+          </>
+        )}
+
+        {selection.kind !== "launcher" && (
+          <div className="w-36 shrink-0">
+            <Select
+              compact
+              label="Level"
+              value={LINE_LEVEL_LABELS[lineLevel]}
+              options={Object.values(LINE_LEVEL_LABELS)}
+              onChange={(label) => setLineLevel(keyOf(LINE_LEVEL_LABELS, label, "all"))}
+            />
           </div>
-        }
-        actions={
-          <div className="flex items-center gap-2">
-            <ToolButton onClick={copy} title="Copy the filtered lines">
-              {copied ? (
-                <Check className="size-3.5 text-ok" />
-              ) : (
-                <Copy className="size-3.5" />
-              )}
-              {copied ? "Copied" : "Copy"}
-            </ToolButton>
+        )}
+
+        <span className="flex-1" />
+
+        {selection.kind !== "file" && (
+          <button
+            onClick={() => setAutoscroll((v) => !v)}
+            className={cn(
+              "shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              autoscroll
+                ? "border-lava/40 bg-lava/10 text-ember"
+                : "border-border bg-surface-2 text-content-muted hover:text-content",
+            )}
+          >
+            Autoscroll
+          </button>
+        )}
+
+        <ToolButton
+          onClick={copy}
+          title={
+            narrowed
+              ? `Copy the ${copyCount} lines matching this filter`
+              : `Copy all ${copyCount} lines`
+          }
+        >
+          {copied ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
+          {copied ? "Copied" : narrowed ? `Copy ${copyCount}` : "Copy all"}
+        </ToolButton>
+
+        {selection.kind === "launcher" && (
+          <>
+            {config && (
+              <ToolButton onClick={() => void openPath(config.directory)} title={config.file}>
+                <FolderOpen className="size-3.5" />
+                Folder
+              </ToolButton>
+            )}
             <ToolButton onClick={() => void clearLogs()} title="Clear the log view">
               <Trash2 className="size-3.5" />
               Clear
             </ToolButton>
-          </div>
-        }
-      />
-
-      <div className="flex flex-wrap items-center gap-3 border-b border-border-soft px-6 py-3">
-        <div
-          role="group"
-          aria-label="Level filter"
-          className="flex items-center gap-0.5 rounded-lg border border-border-soft bg-surface-2/60 p-0.5"
-        >
-          {LEVEL_FILTERS.map((option) => (
-            <Chip
-              key={option.id}
-              active={minLevel === option.id}
-              onClick={() => setMinLevel(option.id)}
-            >
-              {option.label}
-            </Chip>
-          ))}
-        </div>
-
-        <div
-          role="group"
-          aria-label="Source filter"
-          className="flex items-center gap-0.5 rounded-lg border border-border-soft bg-surface-2/60 p-0.5"
-        >
-          {SOURCES.map((option) => (
-            <Chip
-              key={option.id}
-              active={source === option.id}
-              onClick={() => setSource(option.id)}
-            >
-              {option.label}
-            </Chip>
-          ))}
-        </div>
-
-        <div className="relative min-w-56 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-content-faint" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter by message, target or field"
-            className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-[var(--accent)]"
-          />
-        </div>
-
-        <button
-          onClick={() => setAutoscroll((v) => !v)}
-          className={cn(
-            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-            autoscroll
-              ? "border-lava/40 bg-lava/10 text-ember"
-              : "border-border bg-surface-2 text-content-muted hover:text-content",
-          )}
-        >
-          Autoscroll
-        </button>
-
-      </div>
-
-      {config?.env_override && (
-        <div className="border-b border-border-soft bg-warn/5 px-6 py-2 text-xs text-warn">
-          BASALT_LOG={config.env_override} overrides the capture level for this session.
-        </div>
-      )}
-
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto bg-base font-mono text-xs leading-relaxed"
-      >
-        {visible.length === 0 ? (
-          <div className="py-16 text-center text-content-faint">
-            {records.length === 0 ? "Nothing logged yet." : "No lines match this filter."}
-          </div>
-        ) : (
-          <>
-            {filtered.length > visible.length && (
-              <div className="px-4 py-2 text-content-faint/70">
-                {filtered.length - visible.length} older lines hidden. Narrow the filter or
-                open the log file.
-              </div>
-            )}
-            {visible.map((record) => (
-              <LogRow key={record.seq} record={record} />
-            ))}
           </>
         )}
-      </div>
 
-      <div className="flex items-center gap-4 border-t border-border-soft px-6 py-2 text-xs text-content-faint">
-        <span>
-          {filtered.length} of {records.length} lines
-        </span>
-        <span>capture {config?.level ?? "info"}</span>
+        {selection.kind === "run" && run && (
+          <>
+            {live ? (
+              <button
+                onClick={() => killInstance(run.running_id)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-[11px] font-semibold text-danger transition-colors hover:bg-danger/20"
+              >
+                <CircleStop className="size-3.5" />
+                Stop
+              </button>
+            ) : (
+              <ToolButton
+                onClick={() => {
+                  void closeRunning(run.running_id);
+                  select({ kind: "launcher" });
+                }}
+                title="Drop this run from the list"
+              >
+                <Trash2 className="size-3.5" />
+                Discard
+              </ToolButton>
+            )}
+          </>
+        )}
+
+        {selection.kind === "file" && fileInstance && (
+          <>
+            <ToolButton
+              onClick={() => void openPath(`${fileInstance.dir}/logs`)}
+              title="Open the folder"
+            >
+              <FolderOpen className="size-3.5" />
+              Folder
+            </ToolButton>
+            {confirmDelete ? (
+              <button
+                onClick={() => void removeFile()}
+                onBlur={() => setConfirmDelete(false)}
+                autoFocus
+                title="This cannot be undone"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-[11px] font-semibold text-danger transition-colors hover:bg-danger/20"
+              >
+                <TriangleAlert className="size-3.5" />
+                Delete for good
+              </button>
+            ) : (
+              <ToolButton onClick={() => setConfirmDelete(true)} title="Delete this log file">
+                <Trash2 className="size-3.5" />
+                Delete
+              </ToolButton>
+            )}
+          </>
+        )}
+        </div>
+
+        {selection.kind === "launcher" && config?.env_override && (
+          <div className="border-b border-border-soft bg-warn/5 px-4 py-1.5 text-[11px] text-warn">
+            BASALT_LOG={config.env_override} overrides the capture level for this session.
+          </div>
+        )}
+
+        {selection.kind === "launcher" && (
+          <>
+            <LauncherLogPanel
+              visible={visible}
+              hidden={filtered.length - visible.length}
+              empty={records.length === 0}
+              autoscroll={autoscroll}
+              query={query}
+            />
+            <div className="flex items-center gap-4 border-t border-border-soft px-4 py-1.5 text-[11px] text-content-faint">
+              <span>
+                {filtered.length} of {records.length} lines
+              </span>
+              <span>capture {config?.level ?? "info"}</span>
+            </div>
+          </>
+        )}
+
+        {selection.kind === "run" &&
+          (run ? (
+            <GameLogPanel
+              runningId={selection.runningId}
+              query={query}
+              minLevel={lineLevel}
+              autoscroll={autoscroll}
+            />
+          ) : (
+            <div className="grid flex-1 place-items-center bg-base text-sm text-content-muted">
+              That run is gone.
+            </div>
+          ))}
+
+        {selection.kind === "file" && (
+          <FileLogPanel
+            instanceId={selection.instanceId}
+            name={selection.name}
+            query={query}
+            minLevel={lineLevel}
+            onResult={onFileResult}
+          />
+        )}
       </div>
     </div>
   );
