@@ -152,6 +152,7 @@ interface AppStore {
 }
 
 let listenersBound = false;
+let initializing = false;
 let batching = false;
 let unlisteners: Array<() => void> = [];
 
@@ -334,6 +335,9 @@ export const useStore = create<AppStore>((set) => ({
     })),
 
   init: async () => {
+    if (initializing || useStore.getState().ready) return;
+    initializing = true;
+
     if (!listenersBound) {
       listenersBound = true;
       const track = (fn: () => void) => unlisteners.push(fn);
@@ -415,14 +419,29 @@ export const useStore = create<AppStore>((set) => ({
     }
 
     try {
-      const [settings, instances, accounts, installedVersions, tasks, interrupted] = await Promise.all([
+      const [
+        settings,
+        instances,
+        accounts,
+        installedVersions,
+        tasks,
+        interrupted,
+        recoveredRuns,
+      ] = await Promise.all([
         api.getSettings(),
         api.listInstances(),
         api.listAccounts(),
         api.listInstalledVersions(),
         api.listTasks().catch(() => [] as Task[]),
         api.recoverInterrupted().catch(() => [] as PendingOperation[]),
+        api.listRunning().catch(() => [] as RunningInfo[]),
       ]);
+      const recoveredLogs = await Promise.all(
+        recoveredRuns.map(async (run) => [
+          run.running_id,
+          await api.getLogs(run.running_id).catch(() => [] as LogLine[]),
+        ] as const),
+      );
       log.setLevel(settings.log_level);
       const installedIds = instances
         .filter((i) => isInstanceInstalled(i, installedVersions))
@@ -439,6 +458,24 @@ export const useStore = create<AppStore>((set) => ({
         tasks: Object.fromEntries(tasks.map((t) => [t.id, t])),
         taskOrder: tasks.map((t) => t.id),
         interrupted,
+        running: {
+          ...Object.fromEntries(recoveredRuns.map((run) => [run.running_id, run])),
+          ...s.running,
+        },
+        logs: recoveredLogs.reduce(
+          (logs, [runningId, backfill]) => {
+            const streamed = logs[runningId] ?? [];
+            logs[runningId] = backfill.length >= streamed.length ? backfill : streamed;
+            return logs;
+          },
+          { ...s.logs },
+        ),
+        activeRunningId:
+          s.activeRunningId ??
+          recoveredRuns
+            .filter((run) => run.state === "running")
+            .sort((a, b) => b.started_at - a.started_at)[0]?.running_id ??
+          null,
       }));
 
       if (instances.some((i) => i.pack_project_id && !i.logo)) {
@@ -458,6 +495,8 @@ export const useStore = create<AppStore>((set) => ({
     } catch (e) {
       log.error("app", `startup failed: ${String(e)}`);
       set({ error: String(e), ready: true });
+    } finally {
+      initializing = false;
     }
   },
 
