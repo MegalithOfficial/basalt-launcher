@@ -16,6 +16,7 @@ import {
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { notifyRemoved } from "../../lib/notify";
 import { relativeTime } from "../../lib/time";
 import type {
   Instance,
@@ -544,6 +545,7 @@ export function WorldsPanel({
     setError(null);
     try {
       await api.deleteInstanceWorld(instance.id, world.folder_name);
+      notifyRemoved(`Deleted ${world.name}`, `from ${instance.name}`);
       await refresh();
     } catch (cause) {
       setError(String(cause));

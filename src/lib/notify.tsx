@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { Check, Package, TriangleAlert } from "lucide-react";
+import { Check, Package, Trash2, TriangleAlert } from "lucide-react";
 
 import { cn } from "./cn";
 import type { InstalledItem, Task } from "./types";
@@ -114,6 +114,29 @@ export function notifyInstalled(items: InstalledItem[], into: string) {
       { id: `installed:${into}:${item.file_name}`, duration: 4500 },
     );
   }
+}
+
+export function notifyRemoved(title: string, description?: string) {
+  toast.custom(
+    (id) => (
+      <div
+        onClick={() => toast.dismiss(id)}
+        className="flex w-[22rem] cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-muted">
+          <Trash2 className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold text-content">{title}</div>
+          {description && (
+            <div className="mt-0.5 truncate text-[11px] text-content-muted">{description}</div>
+          )}
+        </div>
+        <span className="h-9 w-1 shrink-0 rounded-full bg-border" />
+      </div>
+    ),
+    { duration: 4000 },
+  );
 }
 
 export function notifySummary(message: string) {

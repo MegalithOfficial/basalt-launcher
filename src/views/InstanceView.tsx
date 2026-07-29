@@ -22,6 +22,7 @@ import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
+import { notifyRemoved } from "../lib/notify";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc, mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
@@ -337,9 +338,20 @@ export function InstanceView() {
     if (tab === "worlds") return;
     setConfirmDelete(null);
     await api.deleteInstanceContent(instance.id, tab, item.file_name);
+    let extra = 0;
     for (const fileName of alsoRemove) {
-      await api.deleteInstanceContent(instance.id, tab, fileName).catch(() => {});
+      const dropped = await api
+        .deleteInstanceContent(instance.id, tab, fileName)
+        .then(() => true)
+        .catch(() => false);
+      if (dropped) extra += 1;
     }
+    notifyRemoved(
+      `Removed ${item.source?.title ?? item.file_name}`,
+      extra > 0
+        ? `and ${extra} unused ${extra === 1 ? "dependency" : "dependencies"} from ${instance.name}`
+        : `from ${instance.name}`,
+    );
     await refresh();
   };
 

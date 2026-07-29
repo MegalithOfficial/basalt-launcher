@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { api } from "../lib/api";
+import { notifyRemoved } from "../lib/notify";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
 import { useStore } from "../store";
@@ -288,6 +289,7 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
   const removeSkin = async (id: string) => {
     try {
       await api.deleteSkin(id);
+      notifyRemoved("Deleted skin");
       if (previewId === id) setPreviewId(null);
       await refreshSkins();
     } catch (e) {

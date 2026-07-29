@@ -1,7 +1,12 @@
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
-import { notifyInstalled, notifySummary, notifyTaskFinished } from "./lib/notify";
+import {
+  notifyInstalled,
+  notifyRemoved,
+  notifySummary,
+  notifyTaskFinished,
+} from "./lib/notify";
 
 import { api } from "./lib/api";
 import { emptyFilters, type FilterState } from "./components/FilterRail";
@@ -686,7 +691,9 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   removeAccount: async (id) => {
+    const name = useStore.getState().accounts.find((a) => a.id === id)?.name;
     await api.removeAccount(id);
+    notifyRemoved(name ? `Signed out ${name}` : "Account removed");
     await useStore.getState().refreshAccounts();
   },
 
@@ -857,7 +864,9 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   deleteInstance: async (id) => {
+    const name = useStore.getState().instances.find((i) => i.id === id)?.name;
     await api.deleteInstance(id);
+    notifyRemoved(name ? `Deleted ${name}` : "Instance deleted", "Its files are gone from disk");
     set((s) => {
       const instances = s.instances.filter((i) => i.id !== id);
       return {

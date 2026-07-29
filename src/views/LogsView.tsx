@@ -16,6 +16,7 @@ import { useUptime } from "../lib/useUptime";
 import { Select } from "../components/Select";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
+import { notifyRemoved } from "../lib/notify";
 import type { LogLevel, LogSearch, LogSource } from "../lib/types";
 import { useStore } from "../store";
 
@@ -176,6 +177,7 @@ export function LogsView() {
     if (selection.kind !== "file") return;
     try {
       await api.deleteInstanceLog(selection.instanceId, selection.name);
+      notifyRemoved(`Deleted ${selection.name}`, fileInstance?.name);
       setTreeVersion((v) => v + 1);
       select({ kind: "launcher" });
     } catch (e) {
