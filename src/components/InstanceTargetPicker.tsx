@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Boxes, Check, ChevronDown, Compass, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
@@ -87,7 +88,33 @@ export function InstanceTargetPicker({
   isInstalled?: (instance: Instance) => boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const isModal = modalFor != null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const close = () => setOpen(false);
+    const onScroll = (e: Event) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open]);
   const close = () => (onCancel ? onCancel() : onSelect(null));
   const ranked = isCompatible
     ? [...instances].sort(
@@ -137,7 +164,11 @@ export function InstanceTargetPicker({
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        ref={triggerRef}
+        onClick={() => {
+          if (!open && triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+          setOpen((v) => !v);
+        }}
         className={cn(
           "inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors",
           selected
@@ -152,10 +183,19 @@ export function InstanceTargetPicker({
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
       </button>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-50 mt-1.5 max-h-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1.5 shadow-2xl">
+      {open &&
+        rect &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              top: Math.min(rect.bottom + 6, window.innerHeight - 8),
+              left: Math.max(8, rect.right - 288),
+              maxHeight: Math.max(160, window.innerHeight - rect.bottom - 16),
+            }}
+            className="z-[80] w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1.5 shadow-2xl shadow-black/50"
+          >
             <button
               onClick={() => {
                 onSelect(null);
@@ -197,9 +237,9 @@ export function InstanceTargetPicker({
                 />
               ))
             )}
-          </div>
-        </>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
