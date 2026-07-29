@@ -1,15 +1,19 @@
-use std::collections::HashMap;
-use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    process::Stdio,
+    sync::{Arc, Mutex},
+};
 
 use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, BufReader},
+    process::Command,
+    sync::oneshot,
+};
 
 use crate::db::Db;
-use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
-use tokio::process::Command;
-use tokio::sync::oneshot;
 
 const MAX_LOG_LINES: usize = 6000;
 
@@ -58,8 +62,13 @@ impl RunningHandle {
     }
 }
 
-fn spawn_reader<R>(app: AppHandle, running_id: String, stream: &'static str, reader: R, logs: Arc<Mutex<Vec<LogLine>>>)
-where
+fn spawn_reader<R>(
+    app: AppHandle,
+    running_id: String,
+    stream: &'static str,
+    reader: R,
+    logs: Arc<Mutex<Vec<LogLine>>>,
+) where
     R: AsyncRead + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
@@ -108,7 +117,13 @@ pub fn spawn_process(
         tracing::error!(program, error = %e, "could not spawn game process");
     })?;
     let pid = child.id().unwrap_or(0);
-    tracing::info!(instance_id, running_id, pid, program, "game process started");
+    tracing::info!(
+        instance_id,
+        running_id,
+        pid,
+        program,
+        "game process started"
+    );
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
@@ -120,10 +135,22 @@ pub fn spawn_process(
     let (kill_tx, kill_rx) = oneshot::channel::<()>();
 
     if let Some(stdout) = stdout {
-        spawn_reader(app.clone(), running_id.to_string(), "stdout", stdout, logs.clone());
+        spawn_reader(
+            app.clone(),
+            running_id.to_string(),
+            "stdout",
+            stdout,
+            logs.clone(),
+        );
     }
     if let Some(stderr) = stderr {
-        spawn_reader(app.clone(), running_id.to_string(), "stderr", stderr, logs.clone());
+        spawn_reader(
+            app.clone(),
+            running_id.to_string(),
+            "stderr",
+            stderr,
+            logs.clone(),
+        );
     }
 
     let sup_app = app.clone();

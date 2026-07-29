@@ -1,14 +1,15 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::error::{Error, Result};
-use crate::network::NetworkManager;
+use crate::{
+    error::{Error, Result},
+    network::NetworkManager,
+};
 
 pub const CLIENT_ID: &str = "90a06a16-16a9-4fae-ab23-6ec5fdd44978";
 const SCOPE: &str = "XboxLive.signin offline_access";
 
-const DEVICE_CODE_URL: &str =
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
+const DEVICE_CODE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
 const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 const XBOX_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
@@ -93,13 +94,11 @@ struct TokenErrorResp {
 }
 
 pub async fn poll_token(client: &NetworkManager, device_code: &str) -> Result<PollOutcome> {
-    let request = client
-        .post(TOKEN_URL)
-        .form(&[
-            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-            ("client_id", CLIENT_ID),
-            ("device_code", device_code),
-        ]);
+    let request = client.post(TOKEN_URL).form(&[
+        ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+        ("client_id", CLIENT_ID),
+        ("device_code", device_code),
+    ]);
     let resp = client.send_once(request).await?;
     let status = resp.status();
     let text = resp.text().await?;
@@ -113,8 +112,9 @@ pub async fn poll_token(client: &NetworkManager, device_code: &str) -> Result<Po
         }));
     }
 
-    let err: TokenErrorResp =
-        serde_json::from_str(&text).unwrap_or(TokenErrorResp { error: "unknown".into() });
+    let err: TokenErrorResp = serde_json::from_str(&text).unwrap_or(TokenErrorResp {
+        error: "unknown".into(),
+    });
     match err.error.as_str() {
         "authorization_pending" => Ok(PollOutcome::Pending),
         "slow_down" => {
@@ -128,14 +128,12 @@ pub async fn poll_token(client: &NetworkManager, device_code: &str) -> Result<Po
 }
 
 pub async fn refresh(client: &NetworkManager, refresh_token: &str) -> Result<MsToken> {
-    let request = client
-        .post(TOKEN_URL)
-        .form(&[
-            ("grant_type", "refresh_token"),
-            ("client_id", CLIENT_ID),
-            ("refresh_token", refresh_token),
-            ("scope", SCOPE),
-        ]);
+    let request = client.post(TOKEN_URL).form(&[
+        ("grant_type", "refresh_token"),
+        ("client_id", CLIENT_ID),
+        ("refresh_token", refresh_token),
+        ("scope", SCOPE),
+    ]);
     let resp = client.send(request).await?.error_for_status()?;
     let token: MsTokenResp = resp.json().await?;
     Ok(MsToken {
@@ -196,17 +194,15 @@ pub async fn authenticate_minecraft(
     client: &NetworkManager,
     ms_access_token: &str,
 ) -> Result<McAuth> {
-    let xbox_request = client
-        .post(XBOX_URL)
-        .json(&json!({
-            "Properties": {
-                "AuthMethod": "RPS",
-                "SiteName": "user.auth.xboxlive.com",
-                "RpsTicket": format!("d={ms_access_token}")
-            },
-            "RelyingParty": "http://auth.xboxlive.com",
-            "TokenType": "JWT"
-        }));
+    let xbox_request = client.post(XBOX_URL).json(&json!({
+        "Properties": {
+            "AuthMethod": "RPS",
+            "SiteName": "user.auth.xboxlive.com",
+            "RpsTicket": format!("d={ms_access_token}")
+        },
+        "RelyingParty": "http://auth.xboxlive.com",
+        "TokenType": "JWT"
+    }));
     let xbox: XboxResp = client
         .send(xbox_request)
         .await?
@@ -214,16 +210,14 @@ pub async fn authenticate_minecraft(
         .json()
         .await?;
 
-    let xsts_request = client
-        .post(XSTS_URL)
-        .json(&json!({
-            "Properties": {
-                "SandboxId": "RETAIL",
-                "UserTokens": [xbox.token]
-            },
-            "RelyingParty": "rp://api.minecraftservices.com/",
-            "TokenType": "JWT"
-        }));
+    let xsts_request = client.post(XSTS_URL).json(&json!({
+        "Properties": {
+            "SandboxId": "RETAIL",
+            "UserTokens": [xbox.token]
+        },
+        "RelyingParty": "rp://api.minecraftservices.com/",
+        "TokenType": "JWT"
+    }));
     let xsts_resp = client.send(xsts_request).await?;
 
     if !xsts_resp.status().is_success() {
@@ -253,9 +247,7 @@ pub async fn authenticate_minecraft(
         .json()
         .await?;
 
-    let profile_request = client
-        .get(PROFILE_URL)
-        .bearer_auth(&mc.access_token);
+    let profile_request = client.get(PROFILE_URL).bearer_auth(&mc.access_token);
     let profile_resp = client.send(profile_request).await?;
     if profile_resp.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(Error::other(

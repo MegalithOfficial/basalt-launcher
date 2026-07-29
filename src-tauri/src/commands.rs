@@ -4,24 +4,33 @@ use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::auth::account::{Account, AccountView};
-use crate::auth::microsoft::{self, PollOutcome};
-use crate::config::{Instance, LauncherSettings};
-use crate::content::{self, ContentItem};
-use crate::db::Db;
-use crate::error::{Error, Result};
-use crate::install;
-use crate::java::{self, JavaStatus};
-use crate::launch::{self, process::{LogLine, RunningInfo}};
-use crate::loaders;
-use crate::logging::{self, LogConfig, LogRecord, LogState};
-use crate::meta::manifest::{self, VersionEntry};
-use crate::meta::media::{self, VersionMedia};
-use crate::search;
-use crate::skin::{self, Appearance, SkinEntry};
-use crate::state::AppState;
-use crate::sysinfo_probe::{self, SystemStats, SystemUsage};
-use crate::update::{self, UpdateInfo};
+use crate::{
+    auth::{
+        account::{Account, AccountView},
+        microsoft::{self, PollOutcome},
+    },
+    config::{Instance, LauncherSettings},
+    content::{self, ContentItem},
+    db::Db,
+    error::{Error, Result},
+    install,
+    java::{self, JavaStatus},
+    launch::{
+        self,
+        process::{LogLine, RunningInfo},
+    },
+    loaders,
+    logging::{self, LogConfig, LogRecord, LogState},
+    meta::{
+        manifest::{self, VersionEntry},
+        media::{self, VersionMedia},
+    },
+    search,
+    skin::{self, Appearance, SkinEntry},
+    state::AppState,
+    sysinfo_probe::{self, SystemStats, SystemUsage},
+    update::{self, UpdateInfo},
+};
 
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
@@ -109,7 +118,9 @@ pub fn create_instance(
         pack_project_id: None,
         pack_version_id: None,
     };
-    state.files.ensure_dir(state.paths.instance_dir(&instance.id))?;
+    state
+        .files
+        .ensure_dir(state.paths.instance_dir(&instance.id))?;
     state.db.insert_instance(&instance)?;
     tracing::info!(
         instance_id = %instance.id,
@@ -248,10 +259,7 @@ pub async fn set_instance_banner(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
-pub async fn clear_instance_banner(
-    state: State<'_, AppState>,
-    instance_id: String,
-) -> Result<()> {
+pub async fn clear_instance_banner(state: State<'_, AppState>, instance_id: String) -> Result<()> {
     media::clear_custom_banner(&state.files, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     Ok(())
@@ -281,9 +289,10 @@ pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Insta
         if instance.logo.is_some() {
             continue;
         }
-        let (Some(provider), Some(project_id)) =
-            (instance.pack_provider.as_deref(), instance.pack_project_id.as_deref())
-        else {
+        let (Some(provider), Some(project_id)) = (
+            instance.pack_provider.as_deref(),
+            instance.pack_project_id.as_deref(),
+        ) else {
             continue;
         };
         let Ok(provider) = search::Provider::parse(provider) else {
@@ -323,7 +332,10 @@ fn sweep_partials(files: &crate::files::FileManager, dir: &std::path::Path) -> u
     };
     let mut removed = 0;
     for path in entries {
-        if files.metadata(&path).is_ok_and(|metadata| metadata.is_dir()) {
+        if files
+            .metadata(&path)
+            .is_ok_and(|metadata| metadata.is_dir())
+        {
             removed += sweep_partials(files, &path);
         } else if path.extension().is_some_and(|e| e == "part") {
             if files.remove_file_if_exists(&path).is_ok() {
@@ -361,7 +373,11 @@ pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::Pend
 }
 
 fn version_jar_exists(state: &AppState, id: &str, depth: u8) -> bool {
-    if state.files.is_file(state.paths.version_jar(id)).unwrap_or(false) {
+    if state
+        .files
+        .is_file(state.paths.version_jar(id))
+        .unwrap_or(false)
+    {
         return true;
     }
     if depth == 0 {
@@ -395,7 +411,11 @@ pub fn list_installed_versions(state: State<AppState>) -> Result<Vec<String>> {
         Err(error) => return Err(error),
     };
     for path in entries {
-        let id = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let id = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         if state
             .files
             .is_file(state.paths.version_json(&id))
@@ -558,7 +578,9 @@ pub fn delete_instance_content(
 ) -> Result<()> {
     content::delete(&state.files, &instance_id, &kind, &file_name)?;
     tracing::info!("content deleted");
-    state.db.delete_content_file(&instance_id, &kind, &file_name)
+    state
+        .db
+        .delete_content_file(&instance_id, &kind, &file_name)
 }
 
 #[tauri::command]
@@ -939,11 +961,17 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
     tokio::spawn(async move {
         match run_auth_flow(network, db, device_code, interval).await {
             Ok(view) => {
-                let _ = app.emit("auth:state", json!({ "status": "success", "account": view }));
+                let _ = app.emit(
+                    "auth:state",
+                    json!({ "status": "success", "account": view }),
+                );
             }
             Err(e) => {
                 tracing::error!(error = %e, "microsoft sign-in failed");
-                let _ = app.emit("auth:state", json!({ "status": "error", "message": e.to_string() }));
+                let _ = app.emit(
+                    "auth:state",
+                    json!({ "status": "error", "message": e.to_string() }),
+                );
             }
         }
     });
@@ -1010,7 +1038,10 @@ pub fn kill_instance(state: State<AppState>, running_id: String) -> Result<()> {
 #[tracing::instrument(skip_all, err)]
 pub fn list_running(state: State<AppState>) -> Result<Vec<RunningInfo>> {
     let registry = state.running.lock().unwrap();
-    Ok(registry.iter().map(|(id, handle)| handle.info(id)).collect())
+    Ok(registry
+        .iter()
+        .map(|(id, handle)| handle.info(id))
+        .collect())
 }
 
 #[tauri::command]

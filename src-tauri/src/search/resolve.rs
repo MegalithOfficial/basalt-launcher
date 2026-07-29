@@ -3,15 +3,15 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use tauri::AppHandle;
 
-use crate::content;
-use crate::db::ContentFile;
-use crate::download::{self, DownloadSpec};
-use crate::error::Result;
-use crate::state::AppState;
-use crate::tasks::{TaskKind, TaskSpec};
-
-use super::model::*;
-use super::{download_url, fetch_version, resolve_projects};
+use super::{download_url, fetch_version, model::*, resolve_projects};
+use crate::{
+    content,
+    db::ContentFile,
+    download::{self, DownloadSpec},
+    error::Result,
+    state::AppState,
+    tasks::{TaskKind, TaskSpec},
+};
 
 const MAX_DEPTH: u8 = 5;
 
@@ -93,7 +93,10 @@ pub fn normalize_stem(file_name: &str) -> String {
         .unwrap_or(file_name)
         .to_lowercase();
 
-    let mut parts: Vec<&str> = base.split(['-', '_', '+']).filter(|p| !p.is_empty()).collect();
+    let mut parts: Vec<&str> = base
+        .split(['-', '_', '+'])
+        .filter(|p| !p.is_empty())
+        .collect();
     while parts.len() > 1 && is_trailing_noise(parts[parts.len() - 1]) {
         parts.pop();
     }
@@ -165,10 +168,7 @@ fn planned_from(
     })
 }
 
-pub fn rollback_written(
-    files: &crate::files::FileManager,
-    task: &crate::tasks::TaskHandle,
-) {
+pub fn rollback_written(files: &crate::files::FileManager, task: &crate::tasks::TaskHandle) {
     let paths = std::mem::take(&mut *task.written().lock().unwrap());
     for path in paths {
         let _ = files.remove_file_if_exists(path);
@@ -213,11 +213,7 @@ pub async fn plan(
         .filter(|name| name != &version.file_name);
 
     plan.primary = Some(planned_from(
-        &version,
-        summary,
-        project_id,
-        false,
-        replaces,
+        &version, summary, project_id, false, replaces,
     )?);
 
     if !with_dependencies || !kind.uses_loaders() {
@@ -436,7 +432,9 @@ pub async fn apply(
             },
             task.as_ref().map(|t| t.token()),
             task.as_ref().map(|t| t.written()),
-            retry_hook.as_ref().map(|h| h as &(dyn Fn(u32, u32, &str) + Send + Sync)),
+            retry_hook
+                .as_ref()
+                .map(|h| h as &(dyn Fn(u32, u32, &str) + Send + Sync)),
         )
         .await
     };
@@ -523,9 +521,8 @@ pub fn dependents_of(
                     .as_deref()
                     .and_then(|raw| serde_json::from_str::<Vec<VersionDependency>>(raw).ok())
                     .is_some_and(|deps| {
-                        deps.iter().any(|d| {
-                            d.dependency_type == "required" && d.project_id == project_id
-                        })
+                        deps.iter()
+                            .any(|d| d.dependency_type == "required" && d.project_id == project_id)
                     })
         })
         .map(|file| file.title.unwrap_or(file.file_name))
@@ -550,7 +547,10 @@ mod tests {
             normalize_stem("sodium-fabric-0.8.12+mc1.21.1.jar"),
             "sodium"
         );
-        assert_eq!(normalize_stem("lithium-fabric-mc1.21.1-0.13.1.jar"), "lithium");
+        assert_eq!(
+            normalize_stem("lithium-fabric-mc1.21.1-0.13.1.jar"),
+            "lithium"
+        );
         assert_eq!(normalize_stem("mcmod-helper-1.0.jar"), "mcmod-helper");
     }
 
@@ -571,6 +571,9 @@ mod tests {
     #[test]
     fn leading_loader_words_are_kept() {
         assert_eq!(normalize_stem("fabric-api-0.92.2.jar"), "fabric-api");
-        assert_eq!(normalize_stem("forge-config-api-port-9.0.jar"), "forge-config-api-port");
+        assert_eq!(
+            normalize_stem("forge-config-api-port-9.0.jar"),
+            "forge-config-api-port"
+        );
     }
 }

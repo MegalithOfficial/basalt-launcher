@@ -215,6 +215,7 @@ Before opening a pull request:
 - Rebase or merge the latest `main` branch and resolve conflicts in your branch.
 - Review the full diff for accidental files, debug code, secrets, and unrelated
   changes.
+- Run `bun run format` so Rust code follows the repository's formatting.
 - Run the relevant checks and test the feature in the application.
 - Update documentation when behavior, setup, or contributor expectations change.
 - Keep generated files, build output, launcher data, and credentials out of the

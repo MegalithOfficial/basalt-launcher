@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
-use crate::files::FileManager;
-use crate::network::NetworkManager;
-use crate::paths::Paths;
+use crate::{error::Result, files::FileManager, network::NetworkManager, paths::Paths};
 
 const PATCH_NOTES_URL: &str = "https://launchercontent.mojang.com/v2/javaPatchNotes.json";
 const CONTENT_BASE: &str = "https://launchercontent.mojang.com";
@@ -93,7 +90,11 @@ fn accent_from_pixels(img: &image::RgbImage) -> Option<String> {
     let _ = w;
 
     let max = r.max(g).max(b);
-    let boost = if max > 0.0 { (0.82 / max).clamp(1.0, 1.8) } else { 1.0 };
+    let boost = if max > 0.0 {
+        (0.82 / max).clamp(1.0, 1.8)
+    } else {
+        1.0
+    };
     let to_byte = |v: f32| ((v * boost).clamp(0.0, 1.0) * 255.0) as u8;
     Some(format!(
         "#{:02x}{:02x}{:02x}",
@@ -115,7 +116,11 @@ async fn accent_for(
 
     if let Ok(cached) = files.read_string_async(&accent_path).await {
         let cached = cached.trim().to_string();
-        return if cached.is_empty() { None } else { Some(cached) };
+        return if cached.is_empty() {
+            None
+        } else {
+            Some(cached)
+        };
     }
 
     let bytes = match files.read_async(&img_path).await {
@@ -160,7 +165,10 @@ fn banner_paths(paths: &Paths, instance_id: &str) -> Vec<std::path::PathBuf> {
 }
 
 fn banner_accent_path(paths: &Paths, instance_id: &str) -> std::path::PathBuf {
-    paths.root.join("media").join(format!("instance-{instance_id}.accent"))
+    paths
+        .root
+        .join("media")
+        .join(format!("instance-{instance_id}.accent"))
 }
 
 pub async fn custom_banner(files: &FileManager, instance_id: &str) -> Option<VersionMedia> {
@@ -180,7 +188,11 @@ pub async fn custom_banner(files: &FileManager, instance_id: &str) -> Option<Ver
     let accent = match files.read_string_async(&accent_path).await {
         Ok(cached) => {
             let cached = cached.trim().to_string();
-            if cached.is_empty() { None } else { Some(cached) }
+            if cached.is_empty() {
+                None
+            } else {
+                Some(cached)
+            }
         }
         Err(_) => {
             let bytes = files.read_async(&img_path).await.ok()?;

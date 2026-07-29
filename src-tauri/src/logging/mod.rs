@@ -1,25 +1,38 @@
-use std::cell::Cell;
-use std::collections::{BTreeMap, VecDeque};
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::{
+    cell::Cell,
+    collections::{BTreeMap, VecDeque},
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, OnceLock,
+    },
+    time::Duration,
+};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tracing::field::{Field, Visit};
-use tracing::span::Attributes;
-use tracing::{Event, Subscriber};
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::{Builder as RollingBuilder, Rotation};
-use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
-use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{reload, EnvFilter, Registry};
+use tracing::{
+    field::{Field, Visit},
+    span::Attributes,
+    Event, Subscriber,
+};
+use tracing_appender::{
+    non_blocking::WorkerGuard,
+    rolling::{Builder as RollingBuilder, Rotation},
+};
+use tracing_subscriber::{
+    layer::{Context, Layer, SubscriberExt},
+    registry::LookupSpan,
+    reload,
+    util::SubscriberInitExt,
+    EnvFilter, Registry,
+};
 
-use crate::error::{Error, Result};
-use crate::files::FileManager;
+use crate::{
+    error::{Error, Result},
+    files::FileManager,
+};
 
 const RING_CAPACITY: usize = 5000;
 const LOG_FILE_RETENTION: usize = 7;
@@ -396,8 +409,9 @@ pub fn record_frontend(level: &str, scope: &str, message: &str, data: Option<&st
 
 #[cfg(test)]
 mod tests {
-    use super::{directives, normalize_level, LogBuffer, LogRecord};
     use std::collections::BTreeMap;
+
+    use super::{directives, normalize_level, LogBuffer, LogRecord};
 
     fn record(message: &str) -> LogRecord {
         LogRecord {

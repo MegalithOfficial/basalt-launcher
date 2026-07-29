@@ -193,7 +193,12 @@ pub async fn find_for_major(
     if let Some(path) = explicit.map(str::trim).filter(|p| !p.is_empty()) {
         match probe(path).await {
             Some(info) => {
-                tracing::info!(path, major = info.major, required, "using the pinned java runtime");
+                tracing::info!(
+                    path,
+                    major = info.major,
+                    required,
+                    "using the pinned java runtime"
+                );
                 return Some(info);
             }
             None => tracing::warn!(
@@ -206,7 +211,9 @@ pub async fn find_for_major(
     let found = candidates(files, None).await;
     let picked = pick(&found, required);
     match &picked {
-        Some(java) => tracing::debug!(required, major = java.major, path = %java.path, "java selected"),
+        Some(java) => {
+            tracing::debug!(required, major = java.major, path = %java.path, "java selected")
+        }
         None => tracing::warn!(required, "no java runtime found on this system"),
     }
     picked
@@ -215,8 +222,7 @@ pub async fn find_for_major(
 #[cfg(test)]
 mod tests {
     use super::{install_roots, java_binary, parse_major, pick, runtime_binaries_in, JavaInfo};
-    use crate::files::FileManager;
-    use crate::paths::Paths;
+    use crate::{files::FileManager, paths::Paths};
 
     fn java(major: u32) -> JavaInfo {
         JavaInfo {
@@ -228,7 +234,11 @@ mod tests {
     #[test]
     fn finds_runtimes_in_every_supported_layout() {
         let root = std::env::temp_dir().join(format!("basalt-jvm-{}", uuid::Uuid::new_v4()));
-        for relative in ["jdk-21/bin", "zulu-17/Contents/Home/bin", "legacy-8/jre/bin"] {
+        for relative in [
+            "jdk-21/bin",
+            "zulu-17/Contents/Home/bin",
+            "legacy-8/jre/bin",
+        ] {
             let dir = root.join(relative);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join(java_binary()), b"").unwrap();
@@ -259,7 +269,11 @@ mod tests {
     fn prefers_the_closest_runtime_that_meets_the_requirement() {
         let found = vec![java(8), java(17), java(21), java(25)];
         assert_eq!(pick(&found, 17).unwrap().major, 17);
-        assert_eq!(pick(&found, 18).unwrap().major, 21, "should not jump past 21 to 25");
+        assert_eq!(
+            pick(&found, 18).unwrap().major,
+            21,
+            "should not jump past 21 to 25"
+        );
         assert_eq!(pick(&found, 8).unwrap().major, 8);
         assert!(pick(&[], 21).is_none());
     }

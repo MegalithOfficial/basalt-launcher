@@ -1,7 +1,9 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -170,7 +172,10 @@ impl Tasks {
             Self::prune(&mut list);
         }
         let token = CancellationToken::new();
-        self.tokens.lock().unwrap().insert(id.clone(), token.clone());
+        self.tokens
+            .lock()
+            .unwrap()
+            .insert(id.clone(), token.clone());
 
         if is_recoverable(kind) {
             let _ = self.db.begin_operation(&crate::db::PendingOperation {

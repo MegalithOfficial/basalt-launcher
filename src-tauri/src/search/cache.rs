@@ -1,9 +1,7 @@
-use reqwest::header::IF_NONE_MATCH;
-use reqwest::{RequestBuilder, StatusCode};
+use reqwest::{header::IF_NONE_MATCH, RequestBuilder, StatusCode};
 use serde::de::DeserializeOwned;
 
-use crate::error::Result;
-use crate::state::AppState;
+use crate::{error::Result, state::AppState};
 
 pub const TTL_TAGS: i64 = 60 * 60 * 24;
 pub const TTL_SEARCH: i64 = 60 * 5;

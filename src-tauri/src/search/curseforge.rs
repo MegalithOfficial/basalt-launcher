@@ -1,10 +1,10 @@
 use serde::Deserialize;
 
-use crate::error::{Error, Result};
-use crate::state::AppState;
-
-use super::cache;
-use super::model::*;
+use super::{cache, model::*};
+use crate::{
+    error::{Error, Result},
+    state::AppState,
+};
 
 const API: &str = "https://api.curseforge.com/v1";
 const GAME_MINECRAFT: u32 = 432;
@@ -270,7 +270,11 @@ fn summary(item: Mod) -> ProjectSummary {
         icon_url: item.logo.and_then(|l| l.thumbnail_url),
         downloads: item.download_count as u64,
         follows: item.thumbs_up_count,
-        author: item.authors.first().map(|a| a.name.clone()).unwrap_or_default(),
+        author: item
+            .authors
+            .first()
+            .map(|a| a.name.clone())
+            .unwrap_or_default(),
         categories: item
             .categories
             .into_iter()
@@ -617,11 +621,7 @@ pub async fn match_fingerprints(
     Ok(response.data.exact_matches)
 }
 
-pub async fn changelog(
-    state: &AppState,
-    project_id: &str,
-    version_id: &str,
-) -> Result<Changelog> {
+pub async fn changelog(state: &AppState, project_id: &str, version_id: &str) -> Result<Changelog> {
     let api_key = key(state)?;
     let response: Wrapped<String> = cache::fetch(
         state,

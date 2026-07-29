@@ -1,6 +1,8 @@
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use futures::{Stream, StreamExt};
 use reqwest::{IntoUrl, Method, Request, RequestBuilder, Response, StatusCode};
@@ -215,10 +217,7 @@ impl ManagedResponse {
     }
 
     pub async fn bytes(self) -> Result<Vec<u8>> {
-        let ManagedResponse {
-            response,
-            _lease,
-        } = self;
+        let ManagedResponse { response, _lease } = self;
         if let Some(actual) = response.content_length() {
             if actual > MAX_BUFFERED_BODY as u64 {
                 return Err(Error::ResponseTooLarge {
@@ -251,10 +250,7 @@ impl ManagedResponse {
     pub fn bytes_stream(
         self,
     ) -> impl Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> {
-        let ManagedResponse {
-            response,
-            _lease,
-        } = self;
+        let ManagedResponse { response, _lease } = self;
         response.bytes_stream().map(move |item| {
             let _ = &_lease;
             item
@@ -350,12 +346,14 @@ pub struct Fetched {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use reqwest::Method;
+
     use super::{
         backoff, method_is_retryable, parse_retry_after, NetworkManager, RateLimiter, MAX_BACKOFF,
         MAX_RETRY_AFTER,
     };
-    use reqwest::Method;
-    use std::time::Duration;
 
     #[test]
     fn window_allows_up_to_limit_then_asks_for_a_wait() {
@@ -388,14 +386,8 @@ mod tests {
         let now = std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         assert_eq!(parse_retry_after("12", now), Some(Duration::from_secs(12)));
         let date = httpdate::fmt_http_date(now + Duration::from_secs(45));
-        assert_eq!(
-            parse_retry_after(&date, now),
-            Some(Duration::from_secs(45))
-        );
-        assert_eq!(
-            parse_retry_after("999999", now),
-            Some(MAX_RETRY_AFTER)
-        );
+        assert_eq!(parse_retry_after(&date, now), Some(Duration::from_secs(45)));
+        assert_eq!(parse_retry_after("999999", now), Some(MAX_RETRY_AFTER));
     }
 
     #[tokio::test]
@@ -458,7 +450,11 @@ mod tests {
             Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"payload"))
         }));
         let response = network
-            .send(network.post(format!("http://{address}/mutation")).body(body))
+            .send(
+                network
+                    .post(format!("http://{address}/mutation"))
+                    .body(body),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
@@ -468,12 +464,16 @@ mod tests {
     async fn concurrency_lease_lasts_until_the_response_is_dropped() {
         let limiter = RateLimiter::new(10, Duration::from_secs(60), 1);
         let first = limiter.acquire().await;
-        assert!(tokio::time::timeout(Duration::from_millis(25), limiter.acquire())
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(25), limiter.acquire())
+                .await
+                .is_err()
+        );
         drop(first);
-        assert!(tokio::time::timeout(Duration::from_millis(25), limiter.acquire())
-            .await
-            .is_ok());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(25), limiter.acquire())
+                .await
+                .is_ok()
+        );
     }
 }

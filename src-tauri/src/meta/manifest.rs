@@ -1,11 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
-use crate::files::FileManager;
-use crate::network::NetworkManager;
+use crate::{error::Result, files::FileManager, network::NetworkManager};
 
-const MANIFEST_URL: &str =
-    "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json";
+const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LatestVersions {

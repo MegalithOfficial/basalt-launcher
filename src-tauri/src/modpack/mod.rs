@@ -1,17 +1,20 @@
-use std::collections::HashMap;
-use std::io::Read;
-use std::path::{Component, Path, PathBuf};
+use std::{
+    collections::HashMap,
+    io::Read,
+    path::{Component, Path, PathBuf},
+};
 
 use serde::Deserialize;
 use tauri::AppHandle;
 
-use crate::config::Instance;
-use crate::download::{self, DownloadSpec};
-use crate::error::{Error, Result};
-use crate::install;
-use crate::loaders;
-use crate::search::{self, Provider};
-use crate::state::AppState;
+use crate::{
+    config::Instance,
+    download::{self, DownloadSpec},
+    error::{Error, Result},
+    install, loaders,
+    search::{self, Provider},
+    state::AppState,
+};
 
 const MODRINTH: &str = "https://api.modrinth.com/v2";
 
@@ -60,7 +63,13 @@ fn loader_from_dependencies(deps: &HashMap<String, String>) -> Result<Option<(St
             return Ok(Some((loader.to_string(), version.clone())));
         }
     }
-    let known = ["minecraft", "fabric-loader", "quilt-loader", "neoforge", "forge"];
+    let known = [
+        "minecraft",
+        "fabric-loader",
+        "quilt-loader",
+        "neoforge",
+        "forge",
+    ];
     if let Some(unknown) = deps.keys().find(|k| !known.contains(&k.as_str())) {
         return Err(Error::other(format!(
             "This pack needs an unsupported loader: {unknown}"
@@ -150,11 +159,7 @@ struct HashVersion {
 }
 
 #[tracing::instrument(skip_all, fields(files = files.len()))]
-async fn link_pack_files(
-    state: &AppState,
-    instance_id: &str,
-    files: &[(String, String)],
-) {
+async fn link_pack_files(state: &AppState, instance_id: &str, files: &[(String, String)]) {
     let hashes: Vec<String> = files.iter().map(|(_, sha1)| sha1.clone()).collect();
     if hashes.is_empty() {
         return;
@@ -164,8 +169,7 @@ async fn link_pack_files(
         .network
         .post(format!("{MODRINTH}/version_files"))
         .json(&serde_json::json!({ "hashes": hashes, "algorithm": "sha1" }));
-    let Ok(resp) = state.network.send(request).await
-    else {
+    let Ok(resp) = state.network.send(request).await else {
         return;
     };
     let Ok(by_hash) = resp.json::<HashMap<String, HashVersion>>().await else {
@@ -187,8 +191,12 @@ async fn link_pack_files(
 
     let now = chrono::Utc::now().timestamp();
     for (path, sha1) in files {
-        let Some(version) = by_hash.get(sha1) else { continue };
-        let Some(kind) = kind_for_path(path) else { continue };
+        let Some(version) = by_hash.get(sha1) else {
+            continue;
+        };
+        let Some(kind) = kind_for_path(path) else {
+            continue;
+        };
         let Some(file_name) = Path::new(path).file_name().and_then(|f| f.to_str()) else {
             continue;
         };
@@ -414,7 +422,10 @@ async fn install_pack_body(
         }
     }
     let concurrency = state.db.load_settings()?.concurrent_downloads;
-    task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
+    task.set_total(
+        specs.len() as u64,
+        specs.iter().filter_map(|s| s.size).sum(),
+    );
     let downloaded = download::download_many_cancellable(
         &state.network,
         &state.files,
@@ -468,8 +479,9 @@ async fn install_pack_body(
 
 #[cfg(test)]
 mod tests {
-    use super::{kind_for_path, loader_from_dependencies, sanitize_relative};
     use std::collections::HashMap;
+
+    use super::{kind_for_path, loader_from_dependencies, sanitize_relative};
 
     #[test]
     fn rejects_unsafe_paths() {

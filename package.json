@@ -24,9 +24,11 @@
     "dev:frontend": "vite",
     "build": "BASALT_BUILD_CHANNEL=release tauri build",
     "build:frontend": "tsc && vite build",
+    "format": "cargo fmt --manifest-path src-tauri/Cargo.toml --all",
+    "format:check": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
     "check": "bun run check:frontend && bun run check:rust",
     "check:frontend": "bun run build:frontend",
-    "check:rust": "cargo test --manifest-path src-tauri/Cargo.toml && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets",
+    "check:rust": "bun run format:check && cargo test --manifest-path src-tauri/Cargo.toml && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets",
     "preview": "vite preview",
     "tauri": "tauri"
   },

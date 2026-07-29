@@ -1,17 +1,9 @@
-use std::collections::HashMap;
-use std::io::Read;
-use std::path::Path;
+use std::{collections::HashMap, io::Read, path::Path};
 
 use serde::Deserialize;
 
-use crate::content;
-use crate::db::ContentFile;
-use crate::error::Result;
-use crate::state::AppState;
-
-use super::curseforge;
-use super::modrinth;
-use super::model::Provider;
+use super::{curseforge, model::Provider, modrinth};
+use crate::{content, db::ContentFile, error::Result, state::AppState};
 
 const MURMUR_M: u32 = 0x5bd1_e995;
 const MURMUR_R: u32 = 24;
@@ -162,11 +154,7 @@ pub fn read_metadata(
 
     if let Some(body) = read_entry(&mut zip, "fabric.mod.json") {
         if let Ok(parsed) = serde_json::from_str::<FabricMod>(&body) {
-            return Some((
-                Some(parsed.id),
-                clean(parsed.version),
-                clean(parsed.name),
-            ));
+            return Some((Some(parsed.id), clean(parsed.version), clean(parsed.name)));
         }
     }
 
@@ -272,7 +260,9 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         );
         if existing.is_none() {
             if let Some(name) = &identity.display_name {
-                let _ = state.db.set_fallback_title(instance_id, kind, &item.file_name, name);
+                let _ = state
+                    .db
+                    .set_fallback_title(instance_id, kind, &item.file_name, name);
             }
         }
         hashed.push((item.file_name.clone(), identity.sha1, identity.murmur2));
@@ -280,11 +270,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
 
     let unlinked: Vec<&(String, String, u32)> = hashed
         .iter()
-        .filter(|(name, _, _)| {
-            known
-                .get(name)
-                .map_or(true, |f| f.project_id.is_none())
-        })
+        .filter(|(name, _, _)| known.get(name).map_or(true, |f| f.project_id.is_none()))
         .collect();
 
     if unlinked.is_empty() {
@@ -392,7 +378,10 @@ mod tests {
             curseforge_fingerprint(b"abc"),
             curseforge_fingerprint(b" a\tb\r\nc ")
         );
-        assert_ne!(curseforge_fingerprint(b"abc"), curseforge_fingerprint(b"abd"));
+        assert_ne!(
+            curseforge_fingerprint(b"abc"),
+            curseforge_fingerprint(b"abd")
+        );
     }
 
     #[test]

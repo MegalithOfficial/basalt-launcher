@@ -2,18 +2,21 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::auth::account::{Account, AccountStore};
-use crate::config::{Instance, LauncherSettings};
-use crate::error::Result;
-use crate::files::FileManager;
+use crate::{
+    auth::account::{Account, AccountStore},
+    config::{Instance, LauncherSettings},
+    error::Result,
+    files::FileManager,
+};
 
 #[derive(Clone)]
 pub struct Db(Arc<Mutex<Connection>>);
 
 #[cfg(test)]
 mod tests {
-    use super::{column_exists, migrate};
     use rusqlite::Connection;
+
+    use super::{column_exists, migrate};
 
     #[test]
     fn migrate_is_idempotent() {
@@ -326,18 +329,27 @@ impl Db {
             if let Ok(settings) = serde_json::from_slice::<LauncherSettings>(&bytes) {
                 self.save_settings(&settings)?;
             }
-            let _ = files.rename(&settings_file, settings_file.with_extension("json.migrated"));
+            let _ = files.rename(
+                &settings_file,
+                settings_file.with_extension("json.migrated"),
+            );
         }
 
         let instances_file = paths.instances_file();
         if let Ok(bytes) = files.read(&instances_file) {
             if let Ok(instances) = serde_json::from_slice::<Vec<Instance>>(&bytes) {
-                tracing::info!(count = instances.len(), "importing instances from legacy json");
+                tracing::info!(
+                    count = instances.len(),
+                    "importing instances from legacy json"
+                );
                 for instance in &instances {
                     self.insert_instance(instance)?;
                 }
             }
-            let _ = files.rename(&instances_file, instances_file.with_extension("json.migrated"));
+            let _ = files.rename(
+                &instances_file,
+                instances_file.with_extension("json.migrated"),
+            );
         }
 
         let accounts_file = paths.accounts_file();
@@ -345,7 +357,10 @@ impl Db {
             if let Ok(store) = serde_json::from_slice::<AccountStore>(&bytes) {
                 self.save_accounts(&store)?;
             }
-            let _ = files.rename(&accounts_file, accounts_file.with_extension("json.migrated"));
+            let _ = files.rename(
+                &accounts_file,
+                accounts_file.with_extension("json.migrated"),
+            );
         }
 
         Ok(())
@@ -354,9 +369,11 @@ impl Db {
     pub fn load_settings(&self) -> Result<LauncherSettings> {
         let conn = self.0.lock().unwrap();
         let value: Option<String> = conn
-            .query_row("SELECT value FROM settings WHERE key = 'launcher'", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'launcher'",
+                [],
+                |row| row.get(0),
+            )
             .optional()?;
         let mut settings: LauncherSettings = match value {
             Some(json) => serde_json::from_str(&json)?,
@@ -391,9 +408,11 @@ impl Db {
     pub fn get_kv(&self, key: &str) -> Result<Option<String>> {
         let conn = self.0.lock().unwrap();
         let value = conn
-            .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |row| {
-                row.get::<_, String>(0)
-            })
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            )
             .optional()?;
         Ok(value)
     }
@@ -484,7 +503,16 @@ impl Db {
                      loader = ?6, loader_version = ?7, version_id = ?8,
                      launch_version_id = NULL
                  WHERE id = ?1",
-                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version, version_id],
+                params![
+                    instance_id,
+                    name,
+                    min_memory_mb,
+                    max_memory_mb,
+                    java_path,
+                    loader,
+                    loader_version,
+                    version_id
+                ],
             )?;
         } else {
             conn.execute(
@@ -492,7 +520,16 @@ impl Db {
                  SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
                      loader = ?6, loader_version = ?7, version_id = ?8
                  WHERE id = ?1",
-                params![instance_id, name, min_memory_mb, max_memory_mb, java_path, loader, loader_version, version_id],
+                params![
+                    instance_id,
+                    name,
+                    min_memory_mb,
+                    max_memory_mb,
+                    java_path,
+                    loader,
+                    loader_version,
+                    version_id
+                ],
             )?;
         }
         Ok(())
@@ -513,7 +550,12 @@ impl Db {
         Ok(())
     }
 
-    pub fn record_playtime(&self, instance_id: &str, played_secs: i64, ended_at: i64) -> Result<()> {
+    pub fn record_playtime(
+        &self,
+        instance_id: &str,
+        played_secs: i64,
+        ended_at: i64,
+    ) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
             "UPDATE instances
@@ -583,7 +625,16 @@ impl Db {
                 murmur2 = coalesce(excluded.murmur2, murmur2),
                 mod_id = coalesce(excluded.mod_id, mod_id),
                 mod_version = coalesce(excluded.mod_version, mod_version)",
-            params![instance_id, kind, file_name, sha1, sha512, murmur2, mod_id, mod_version],
+            params![
+                instance_id,
+                kind,
+                file_name,
+                sha1,
+                sha512,
+                murmur2,
+                mod_id,
+                mod_version
+            ],
         )?;
         Ok(())
     }
@@ -609,7 +660,14 @@ impl Db {
                 icon_url = coalesce(?8, icon_url)
              WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
             params![
-                instance_id, kind, file_name, provider, project_id, version_id, title, icon_url
+                instance_id,
+                kind,
+                file_name,
+                provider,
+                project_id,
+                version_id,
+                title,
+                icon_url
             ],
         )?;
         Ok(())
@@ -802,7 +860,14 @@ impl Db {
             "INSERT OR REPLACE INTO pending_operations
                 (id, kind, instance_id, title, payload, started_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![op.id, op.kind, op.instance_id, op.title, op.payload, op.started_at],
+            params![
+                op.id,
+                op.kind,
+                op.instance_id,
+                op.title,
+                op.payload,
+                op.started_at
+            ],
         )?;
         Ok(())
     }
@@ -951,21 +1016,25 @@ impl Db {
 
     pub fn update_skin_hash(&self, id: &str, hash: &str) -> Result<()> {
         let conn = self.0.lock().unwrap();
-        conn.execute("UPDATE skins SET hash = ?2 WHERE id = ?1", params![id, hash])?;
+        conn.execute(
+            "UPDATE skins SET hash = ?2 WHERE id = ?1",
+            params![id, hash],
+        )?;
         Ok(())
     }
 
     pub fn enforce_unique_skin_hashes(&self) -> Result<()> {
         let conn = self.0.lock().unwrap();
-        conn.execute_batch(
-            "CREATE UNIQUE INDEX IF NOT EXISTS skins_hash_unique ON skins(hash)",
-        )?;
+        conn.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS skins_hash_unique ON skins(hash)")?;
         Ok(())
     }
 
     pub fn rename_skin(&self, id: &str, name: &str) -> Result<()> {
         let conn = self.0.lock().unwrap();
-        conn.execute("UPDATE skins SET name = ?2 WHERE id = ?1", params![id, name])?;
+        conn.execute(
+            "UPDATE skins SET name = ?2 WHERE id = ?1",
+            params![id, name],
+        )?;
         Ok(())
     }
 
@@ -1033,7 +1102,10 @@ impl Db {
             }
             accounts.push(account);
         }
-        Ok(AccountStore { accounts, active_id })
+        Ok(AccountStore {
+            accounts,
+            active_id,
+        })
     }
 
     pub fn save_accounts(&self, store: &AccountStore) -> Result<()> {

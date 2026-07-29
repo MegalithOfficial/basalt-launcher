@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
-use crate::network::NetworkManager;
+use crate::{error::Result, network::NetworkManager};
 
 pub const REPO: &str = "MegalithOfficial/basalt-launcher";
 pub const REPO_URL: &str = "https://github.com/MegalithOfficial/basalt-launcher";

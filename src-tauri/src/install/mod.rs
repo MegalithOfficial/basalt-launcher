@@ -1,14 +1,17 @@
-use std::io::Read;
-use std::path::Path;
+use std::{io::Read, path::Path};
 
 use serde::Serialize;
 use tauri::AppHandle;
 
-use crate::download::{self, DownloadProgress, DownloadSpec};
-use crate::error::{Error, Result};
-use crate::meta::manifest;
-use crate::meta::version::{merge_versions, AssetIndex, NativeSpec, VersionJson};
-use crate::state::AppState;
+use crate::{
+    download::{self, DownloadProgress, DownloadSpec},
+    error::{Error, Result},
+    meta::{
+        manifest,
+        version::{merge_versions, AssetIndex, NativeSpec, VersionJson},
+    },
+    state::AppState,
+};
 
 #[derive(Clone, Serialize)]
 struct StagePayload {
@@ -150,9 +153,11 @@ pub async fn install_version(
     let mut specs: Vec<DownloadSpec> = Vec::new();
     specs.extend(resolved.classpath.iter().cloned());
     specs.extend(resolved.natives.iter().map(|n| n.spec.clone()));
-    specs.push(version.client_spec(&state.paths).ok_or_else(|| {
-        Error::other(format!("version {} has no client download", version.id))
-    })?);
+    specs.push(
+        version.client_spec(&state.paths).ok_or_else(|| {
+            Error::other(format!("version {} has no client download", version.id))
+        })?,
+    );
     specs.extend(asset_index.specs(&state.paths));
 
     let concurrency = state.db.load_settings()?.concurrent_downloads;
@@ -166,7 +171,10 @@ pub async fn install_version(
     );
 
     task.stage("downloading");
-    task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
+    task.set_total(
+        specs.len() as u64,
+        specs.iter().filter_map(|s| s.size).sum(),
+    );
     download::download_many_cancellable(
         &state.network,
         &state.files,
@@ -194,6 +202,9 @@ pub async fn install_version(
         .await
         .map_err(|e| Error::other(format!("native extraction task failed: {e}")))??;
 
-    tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "install finished");
+    tracing::info!(
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "install finished"
+    );
     Ok(())
 }

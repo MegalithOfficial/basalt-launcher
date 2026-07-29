@@ -1,17 +1,20 @@
-use std::path::PathBuf;
-use std::time::Duration;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::{
+    path::PathBuf,
+    sync::atomic::{AtomicU64, AtomicUsize, Ordering},
+    time::Duration,
+};
 
 use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use sha1_smol::Sha1;
 use tokio::io::AsyncWriteExt;
-
 use tokio_util::sync::CancellationToken;
 
-use crate::error::{Error, Result};
-use crate::files::FileManager;
-use crate::network::NetworkManager;
+use crate::{
+    error::{Error, Result},
+    files::FileManager,
+    network::NetworkManager,
+};
 
 #[derive(Debug, Clone)]
 pub struct DownloadSpec {
@@ -71,7 +74,8 @@ pub fn is_retryable(error: &Error) -> bool {
 }
 
 pub fn retry_delay(attempt: u32) -> Duration {
-    Duration::from_millis(RETRY_BASE.as_millis() as u64 * 2u64.pow(attempt.min(6))).min(RETRY_CEILING)
+    Duration::from_millis(RETRY_BASE.as_millis() as u64 * 2u64.pow(attempt.min(6)))
+        .min(RETRY_CEILING)
 }
 
 pub type RetryHook<'a> = Option<&'a (dyn Fn(u32, u32, &str) + Send + Sync)>;
@@ -212,7 +216,17 @@ pub async fn download_many<F>(
 where
     F: Fn(DownloadProgress) + Send + Sync,
 {
-    download_many_cancellable(client, files, specs, concurrency, on_progress, None, None, None).await
+    download_many_cancellable(
+        client,
+        files,
+        specs,
+        concurrency,
+        on_progress,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 pub async fn download_many_cancellable<F>(
@@ -296,8 +310,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::sha1_hex;
+    use super::{sha1_hex, *};
 
     fn network() -> NetworkManager {
         NetworkManager::with_client(reqwest::Client::new())
@@ -357,7 +370,9 @@ mod tests {
             expected: "x".into(),
             actual: "y".into(),
         }));
-        assert!(!is_retryable(&Error::Io(std::io::Error::other("disk full"))));
+        assert!(!is_retryable(&Error::Io(std::io::Error::other(
+            "disk full"
+        ))));
         assert!(!is_retryable(&Error::other("nope")));
     }
 
@@ -425,19 +440,14 @@ mod tests {
         let started = std::time::Instant::now();
         let network = network();
         let files = files(&dir);
-        let result = download_many_cancellable(
-            &network,
-            &files,
-            specs,
-            4,
-            |_| {},
-            Some(token),
-            None,
-            None,
-        )
-        .await;
+        let result =
+            download_many_cancellable(&network, &files, specs, 4, |_| {}, Some(token), None, None)
+                .await;
 
-        assert!(matches!(result, Err(Error::Cancelled)), "expected Cancelled, got {result:?}");
+        assert!(
+            matches!(result, Err(Error::Cancelled)),
+            "expected Cancelled, got {result:?}"
+        );
         assert!(
             started.elapsed() < std::time::Duration::from_secs(5),
             "cancel should abort in flight requests, took {:?}",
@@ -490,9 +500,11 @@ mod tests {
         .await;
 
         assert!(matches!(result, Err(Error::Cancelled)));
-        assert!(std::fs::read_dir(&dir)
+        assert!(std::fs::read_dir(&dir).unwrap().all(|entry| !entry
             .unwrap()
-            .all(|entry| !entry.unwrap().file_name().to_string_lossy().contains(".part")));
+            .file_name()
+            .to_string_lossy()
+            .contains(".part")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -527,7 +539,10 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        assert!(written.lock().unwrap().is_empty(), "pre-existing file must not be rollback eligible");
+        assert!(
+            written.lock().unwrap().is_empty(),
+            "pre-existing file must not be rollback eligible"
+        );
         assert!(dest.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }

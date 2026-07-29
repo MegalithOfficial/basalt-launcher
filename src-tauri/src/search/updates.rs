@@ -1,11 +1,7 @@
 use std::collections::HashMap;
 
-use crate::db::ContentUpdate;
-use crate::error::Result;
-use crate::state::AppState;
-
-use super::model::*;
-use super::{curseforge, modrinth};
+use super::{curseforge, model::*, modrinth};
+use crate::{db::ContentUpdate, error::Result, state::AppState};
 
 pub const KINDS: &[&str] = &["mods", "resourcepacks", "shaderpacks"];
 
@@ -25,7 +21,10 @@ async fn modrinth_updates(
     game_version: &str,
     loader: Option<&str>,
 ) -> Vec<ContentUpdate> {
-    let files = state.db.content_files(instance_id, kind).unwrap_or_default();
+    let files = state
+        .db
+        .content_files(instance_id, kind)
+        .unwrap_or_default();
     let candidates: Vec<(String, String, String)> = files
         .iter()
         .filter(|f| f.provider.as_deref() == Some("modrinth"))
@@ -96,7 +95,10 @@ async fn curseforge_updates(
         return Vec::new();
     };
 
-    let files = state.db.content_files(instance_id, kind).unwrap_or_default();
+    let files = state
+        .db
+        .content_files(instance_id, kind)
+        .unwrap_or_default();
     let tracked: Vec<(String, String, Option<String>)> = files
         .iter()
         .filter(|f| f.provider.as_deref() == Some("curseforge"))

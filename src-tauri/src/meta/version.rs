@@ -2,8 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Deserialize;
 
-use crate::download::DownloadSpec;
-use crate::paths::Paths;
+use crate::{download::DownloadSpec, paths::Paths};
 
 const DEFAULT_MAVEN: &str = "https://libraries.minecraft.net/";
 
@@ -239,8 +238,15 @@ impl Library {
             }
         }
         let path = maven_path(&self.name)?;
-        let base = self.url.clone().unwrap_or_else(|| DEFAULT_MAVEN.to_string());
-        let base = if base.ends_with('/') { base } else { format!("{base}/") };
+        let base = self
+            .url
+            .clone()
+            .unwrap_or_else(|| DEFAULT_MAVEN.to_string());
+        let base = if base.ends_with('/') {
+            base
+        } else {
+            format!("{base}/")
+        };
         Some(DownloadSpec {
             url: format!("{base}{path}"),
             dest: paths.libraries().join(&path),
@@ -320,8 +326,8 @@ impl VersionJson {
             }
 
             if let Some(spec) = lib.to_spec(paths) {
-                let is_native = name_classifier(&lib.name)
-                    .map_or(false, |c| c.starts_with("natives"));
+                let is_native =
+                    name_classifier(&lib.name).map_or(false, |c| c.starts_with("natives"));
                 if is_native {
                     resolved.natives.push(NativeSpec { spec, exclude });
                 } else {
@@ -444,7 +450,10 @@ mod tests {
         let merged = merge_versions(parent, child);
         assert_eq!(merged.id, "fabric-loader-0.16.9-1.21.1");
         assert_eq!(merged.jar_id(), "1.21.1");
-        assert_eq!(merged.main_class, "net.fabricmc.loader.impl.launch.knot.KnotClient");
+        assert_eq!(
+            merged.main_class,
+            "net.fabricmc.loader.impl.launch.knot.KnotClient"
+        );
         assert_eq!(merged.required_java_major(), 21);
         assert_eq!(merged.assets_name(), "17");
         assert_eq!(merged.libraries.len(), 1);

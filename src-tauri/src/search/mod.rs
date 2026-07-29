@@ -8,8 +8,10 @@ pub mod updates;
 
 pub use model::*;
 
-use crate::error::{Error, Result};
-use crate::state::AppState;
+use crate::{
+    error::{Error, Result},
+    state::AppState,
+};
 
 pub async fn search(
     state: &AppState,
@@ -203,6 +205,12 @@ mod tests {
 
     #[test]
     fn returns_nothing_when_all_incompatible() {
-        assert!(pick_best(vec![version("bad", "release", "2026-07-20T00:00:00Z", false)]).is_none());
+        assert!(pick_best(vec![version(
+            "bad",
+            "release",
+            "2026-07-20T00:00:00Z",
+            false
+        )])
+        .is_none());
     }
 }

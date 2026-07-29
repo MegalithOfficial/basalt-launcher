@@ -3,13 +3,14 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use tauri::AppHandle;
 
-use crate::config::Instance;
-use crate::download::{self, DownloadSpec};
-use crate::error::{Error, Result};
-use crate::install;
-use crate::java;
-use crate::network::NetworkManager;
-use crate::state::AppState;
+use crate::{
+    config::Instance,
+    download::{self, DownloadSpec},
+    error::{Error, Result},
+    install, java,
+    network::NetworkManager,
+    state::AppState,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Loader {
@@ -124,21 +125,20 @@ pub async fn list_loader_versions(
 }
 
 #[tracing::instrument(skip(state), err)]
-async fn install_profile_json(
-    state: &AppState,
-    url: &str,
-) -> Result<String> {
+async fn install_profile_json(state: &AppState, url: &str) -> Result<String> {
     let profile: serde_json::Value = fetch_json(&state.network, url).await?;
     let id = profile
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::other("loader profile has no id"))?
         .to_string();
-    state.files.write_atomic_async(
-        state.paths.version_json(&id),
-        serde_json::to_vec_pretty(&profile)?,
-    )
-    .await?;
+    state
+        .files
+        .write_atomic_async(
+            state.paths.version_json(&id),
+            serde_json::to_vec_pretty(&profile)?,
+        )
+        .await?;
     tracing::info!(version_id = %id, "loader profile written");
     Ok(id)
 }
@@ -206,7 +206,10 @@ async fn run_installer(
             .rev()
             .collect::<Vec<_>>()
             .join("\n");
-        tracing::error!(expected_id, "loader installer produced no version json:\n{tail}");
+        tracing::error!(
+            expected_id,
+            "loader installer produced no version json:\n{tail}"
+        );
         return Err(Error::other(format!(
             "Loader installer failed for {expected_id}:\n{tail}"
         )));

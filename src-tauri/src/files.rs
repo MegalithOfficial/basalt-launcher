@@ -1,13 +1,19 @@
-use std::io::Write;
-use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    io::Write,
+    path::{Component, Path, PathBuf},
+    sync::Arc,
+};
 
-use cap_std::ambient_authority;
-use cap_std::fs::{Dir, Metadata, OpenOptions};
+use cap_std::{
+    ambient_authority,
+    fs::{Dir, Metadata, OpenOptions},
+};
 use tokio::io::AsyncWriteExt;
 
-use crate::error::{Error, Result};
-use crate::paths::Paths;
+use crate::{
+    error::{Error, Result},
+    paths::Paths,
+};
 
 #[derive(Clone)]
 pub struct FileManager {
@@ -48,7 +54,10 @@ impl FileManager {
 
     fn relative<'a>(&self, path: &'a Path) -> Result<&'a Path> {
         let relative = path.strip_prefix(&self.paths.root).map_err(|_| {
-            Error::other(format!("refusing to access unmanaged path {}", path.display()))
+            Error::other(format!(
+                "refusing to access unmanaged path {}",
+                path.display()
+            ))
         })?;
         if relative.components().any(|component| {
             matches!(
@@ -104,9 +113,7 @@ impl FileManager {
         let files = self.clone();
         let path = path.as_ref().to_path_buf();
         tokio::task::spawn_blocking(move || {
-            Ok(files
-                .root
-                .read_to_string(files.relative(&path)?)?)
+            Ok(files.root.read_to_string(files.relative(&path)?)?)
         })
         .await
         .map_err(|error| Error::other(format!("read task failed: {error}")))?
@@ -234,10 +241,7 @@ impl FileManager {
         self.remove_dir_all_if_exists(path)
     }
 
-    pub async fn begin_staged_write(
-        &self,
-        destination: impl AsRef<Path>,
-    ) -> Result<StagedFile> {
+    pub async fn begin_staged_write(&self, destination: impl AsRef<Path>) -> Result<StagedFile> {
         let destination = destination.as_ref().to_path_buf();
         self.relative(&destination)?;
         if let Some(parent) = destination.parent() {
@@ -262,8 +266,8 @@ impl FileManager {
     async fn commit_staged(&self, temporary: PathBuf, destination: PathBuf) -> Result<()> {
         let files = self.clone();
         tokio::task::spawn_blocking(move || files.replace_staged(&temporary, &destination))
-        .await
-        .map_err(|error| Error::other(format!("commit task failed: {error}")))?
+            .await
+            .map_err(|error| Error::other(format!("commit task failed: {error}")))?
     }
 
     pub fn remove_file_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
@@ -402,9 +406,10 @@ fn temporary_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use tokio::io::AsyncWriteExt;
+
     use super::FileManager;
     use crate::paths::Paths;
-    use tokio::io::AsyncWriteExt;
 
     #[test]
     fn rejects_paths_outside_the_managed_root() {
@@ -416,9 +421,7 @@ mod tests {
         assert!(files
             .write_atomic(files.paths().root.join("../escape"), b"no")
             .is_err());
-        assert!(files
-            .remove_dir_all_if_exists(&files.paths().root)
-            .is_err());
+        assert!(files.remove_dir_all_if_exists(&files.paths().root).is_err());
     }
 
     #[test]

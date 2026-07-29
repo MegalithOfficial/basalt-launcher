@@ -1,9 +1,11 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
-use crate::db::SkinRecord;
-use crate::error::{Error, Result};
-use crate::state::AppState;
+use crate::{
+    db::SkinRecord,
+    error::{Error, Result},
+    state::AppState,
+};
 
 const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 const NAME_LOOKUP_URL: &str = "https://api.mojang.com/users/profiles/minecraft";
@@ -141,15 +143,8 @@ async fn token(state: &AppState) -> Result<String> {
 }
 
 async fn profile(state: &AppState, token: &str) -> Result<Appearance> {
-    let request = state
-        .network
-        .get(PROFILE_URL)
-        .bearer_auth(token);
-    let response = state
-        .network
-        .send(request)
-        .await?
-        .error_for_status()?;
+    let request = state.network.get(PROFILE_URL).bearer_auth(token);
+    let response = state.network.send(request).await?.error_for_status()?;
     let parsed: ProfileResponse = response.json().await?;
     Ok(parsed.into())
 }
@@ -246,8 +241,8 @@ fn validate_png(bytes: &[u8]) -> Result<()> {
     if !bytes.starts_with(PNG_MAGIC) {
         return Err(Error::other("A skin must be a PNG image."));
     }
-    let decoded = image::load_from_memory(bytes)
-        .map_err(|_| Error::other("That PNG could not be read."))?;
+    let decoded =
+        image::load_from_memory(bytes).map_err(|_| Error::other("That PNG could not be read."))?;
     let (width, height) = (decoded.width(), decoded.height());
     if !is_skin_shaped(width, height) {
         return Err(Error::other(format!(
@@ -297,11 +292,7 @@ pub async fn reset(state: &AppState) -> Result<Appearance> {
         .network
         .delete(format!("{PROFILE_URL}/skins/active"))
         .bearer_auth(&token);
-    state
-        .network
-        .send(request)
-        .await?
-        .error_for_status()?;
+    state.network.send(request).await?.error_for_status()?;
     tracing::info!("skin reset to default");
     profile(state, &token).await
 }
@@ -399,7 +390,10 @@ fn textures_from(session: SessionProfile, label: &str) -> Result<ResolvedPlayer>
         .decode(&encoded.value)
         .map_err(|e| Error::other(format!("could not decode textures: {e}")))?;
     let payload: TexturePayload = serde_json::from_slice(&decoded)?;
-    let name = payload.profile_name.clone().unwrap_or_else(|| label.to_string());
+    let name = payload
+        .profile_name
+        .clone()
+        .unwrap_or_else(|| label.to_string());
     let skin = payload
         .textures
         .skin
@@ -446,7 +440,6 @@ pub async fn resolve_player(state: &AppState, name: &str) -> Result<ResolvedPlay
     tracing::info!(player = %resolved.name, variant = resolved.variant.as_str(), "resolved player skin");
     Ok(resolved)
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkinRef {
@@ -538,9 +531,14 @@ pub fn parse_reference(input: &str) -> Result<SkinRef> {
         return Ok(SkinRef::Uuid(uuid));
     }
 
-    let bare = trimmed.trim_start_matches("http://").trim_start_matches("https://");
+    let bare = trimmed
+        .trim_start_matches("http://")
+        .trim_start_matches("https://");
     if bare.len() == 64 && bare.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Ok(SkinRef::Texture(format!("{TEXTURE_BASE}{}", bare.to_lowercase())));
+        return Ok(SkinRef::Texture(format!(
+            "{TEXTURE_BASE}{}",
+            bare.to_lowercase()
+        )));
     }
     if let Some(uuid) = normalized_uuid(bare) {
         return Ok(SkinRef::Uuid(uuid));
@@ -549,7 +547,11 @@ pub fn parse_reference(input: &str) -> Result<SkinRef> {
         return Ok(SkinRef::NameMc(bare.to_lowercase()));
     }
 
-    if trimmed.len() > 16 || !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    if trimmed.len() > 16
+        || !trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
         return Err(Error::other(
             "That does not look like a player name, UUID or skin link.",
         ));
@@ -626,7 +628,13 @@ pub fn library(state: &AppState) -> Result<Vec<SkinEntry>> {
         .collect())
 }
 
-fn store(state: &AppState, bytes: &[u8], name: &str, variant: Variant, source: Option<&str>) -> Result<SkinEntry> {
+fn store(
+    state: &AppState,
+    bytes: &[u8],
+    name: &str,
+    variant: Variant,
+    source: Option<&str>,
+) -> Result<SkinEntry> {
     validate_png(bytes)?;
     let hash = content_hash(bytes);
     if let Some(existing) = state.db.find_skin_by_hash(&hash)? {
@@ -660,7 +668,12 @@ fn store(state: &AppState, bytes: &[u8], name: &str, variant: Variant, source: O
 }
 
 #[tracing::instrument(skip(state), err)]
-pub fn add_from_file(state: &AppState, path: &str, name: Option<&str>, variant: &str) -> Result<SkinEntry> {
+pub fn add_from_file(
+    state: &AppState,
+    path: &str,
+    name: Option<&str>,
+    variant: &str,
+) -> Result<SkinEntry> {
     let bytes = state.files.read_external(path)?;
     let fallback = std::path::Path::new(path)
         .file_stem()
@@ -723,7 +736,13 @@ pub async fn add_from_reference(state: &AppState, reference: &str) -> Result<Ski
             match download(state, &url).await {
                 Ok(bytes) => {
                     let variant = detect_variant(&bytes);
-                    store(state, &bytes, &format!("NameMC {}", &id[..8]), variant, Some("namemc"))
+                    store(
+                        state,
+                        &bytes,
+                        &format!("NameMC {}", &id[..8]),
+                        variant,
+                        Some("namemc"),
+                    )
                 }
                 Err(Error::NotFound(_)) => {
                     tracing::debug!(id, "not a namemc skin, trying it as a player name");
@@ -784,7 +803,10 @@ async fn remember_remote(state: &AppState, id: &str, applied: &Appearance) {
     };
     let hash = content_hash(&bytes);
     match state.db.set_skin_remote_hash(id, &hash) {
-        Ok(()) => tracing::debug!(id, "linked the re-encoded texture back to the library entry"),
+        Ok(()) => tracing::debug!(
+            id,
+            "linked the re-encoded texture back to the library entry"
+        ),
         Err(e) => tracing::warn!(error = %e, "could not link the re-encoded texture"),
     }
 }
@@ -856,9 +878,7 @@ mod tests {
         content_hash, is_active, is_skin_shaped, parse_reference, reconcile_library, store,
         validate_png, SkinRef, Variant,
     };
-    use crate::db::SkinRecord;
-    use crate::paths::Paths;
-    use crate::state::AppState;
+    use crate::{db::SkinRecord, paths::Paths, state::AppState};
 
     const PNG_HEADER: &[u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -950,7 +970,8 @@ mod tests {
     fn scratch_state() -> (AppState, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!("basalt-skins-{}", uuid::Uuid::new_v4()));
         let paths = Paths { root: root.clone() };
-        crate::files::FileManager::new(paths.clone()).unwrap()
+        crate::files::FileManager::new(paths.clone())
+            .unwrap()
             .ensure_base_dirs()
             .unwrap();
         let files = crate::files::FileManager::new(paths).unwrap();
@@ -982,8 +1003,14 @@ mod tests {
         assert_eq!(first.id, second.id, "the same skin was stored twice");
         assert_eq!(state.db.list_skins().unwrap().len(), 1);
 
-        let other = store(&state, &png_of([10, 20, 30, 255]), "Player", Variant::Classic, None)
-            .unwrap();
+        let other = store(
+            &state,
+            &png_of([10, 20, 30, 255]),
+            "Player",
+            Variant::Classic,
+            None,
+        )
+        .unwrap();
         assert_ne!(first.id, other.id);
         assert_eq!(state.db.list_skins().unwrap().len(), 2);
         std::fs::remove_dir_all(root).ok();

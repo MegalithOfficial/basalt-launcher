@@ -2,11 +2,8 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::error::Result;
-use crate::state::AppState;
-
-use super::cache;
-use super::model::*;
+use super::{cache, model::*};
+use crate::{error::Result, state::AppState};
 
 pub const API: &str = "https://api.modrinth.com/v2";
 
@@ -564,9 +561,10 @@ pub async fn versions_by_hash(
     for chunk in hashes.chunks(500) {
         let response: HashMap<String, Version> = cache::post(
             state,
-            state.network.post(format!("{API}/version_files")).json(
-                &serde_json::json!({ "hashes": chunk, "algorithm": "sha1" }),
-            ),
+            state
+                .network
+                .post(format!("{API}/version_files"))
+                .json(&serde_json::json!({ "hashes": chunk, "algorithm": "sha1" })),
         )
         .await?;
         out.extend(response);

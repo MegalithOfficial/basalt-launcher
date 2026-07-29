@@ -4,14 +4,14 @@ use std::collections::HashMap;
 
 use tauri::AppHandle;
 
-use crate::auth::account::Account;
-use crate::auth::microsoft;
-use crate::config::Instance;
-use crate::error::{Error, Result};
-use crate::install;
-use crate::java;
-use crate::meta::version::{rules_allow, Arg, ArgValue, VersionJson};
-use crate::state::AppState;
+use crate::{
+    auth::{account::Account, microsoft},
+    config::Instance,
+    error::{Error, Result},
+    install, java,
+    meta::version::{rules_allow, Arg, ArgValue, VersionJson},
+    state::AppState,
+};
 
 fn now() -> i64 {
     chrono::Utc::now().timestamp()
@@ -93,12 +93,21 @@ pub struct LaunchPreview {
     pub game: Vec<String>,
 }
 
-pub fn sample_placeholders(paths: &crate::paths::Paths, settings: &crate::config::LauncherSettings) -> HashMap<&'static str, String> {
+pub fn sample_placeholders(
+    paths: &crate::paths::Paths,
+    settings: &crate::config::LauncherSettings,
+) -> HashMap<&'static str, String> {
     HashMap::from([
         ("min_ram", settings.min_memory_mb.to_string()),
         ("max_ram", settings.max_memory_mb.to_string()),
-        ("natives_directory", paths.natives_dir("1.21.4").display().to_string()),
-        ("game_dir", paths.instances().join("example").display().to_string()),
+        (
+            "natives_directory",
+            paths.natives_dir("1.21.4").display().to_string(),
+        ),
+        (
+            "game_dir",
+            paths.instances().join("example").display().to_string(),
+        ),
         ("instance_name", "Example instance".to_string()),
         ("version", "1.21.4".to_string()),
         ("launcher_name", "basalt".to_string()),
@@ -106,7 +115,10 @@ pub fn sample_placeholders(paths: &crate::paths::Paths, settings: &crate::config
     ])
 }
 
-pub fn preview(paths: &crate::paths::Paths, settings: &crate::config::LauncherSettings) -> LaunchPreview {
+pub fn preview(
+    paths: &crate::paths::Paths,
+    settings: &crate::config::LauncherSettings,
+) -> LaunchPreview {
     let values = sample_placeholders(paths, settings);
     let template = if settings.jvm_args.trim().is_empty() {
         crate::config::DEFAULT_JVM_ARGS
@@ -123,7 +135,10 @@ pub fn preview(paths: &crate::paths::Paths, settings: &crate::config::LauncherSe
         game.push("--height".to_string());
         game.push(settings.window_height.to_string());
     }
-    game.extend(split_args(&render_placeholders(&settings.game_args, &values)));
+    game.extend(split_args(&render_placeholders(
+        &settings.game_args,
+        &values,
+    )));
 
     let pinned = settings
         .java_path
@@ -266,7 +281,13 @@ pub async fn launch_instance(
             .iter()
             .map(|native| native.spec.dest.display().to_string()),
     );
-    classpath.push(state.paths.version_jar(version.jar_id()).display().to_string());
+    classpath.push(
+        state
+            .paths
+            .version_jar(version.jar_id())
+            .display()
+            .to_string(),
+    );
     let classpath = classpath.join(classpath_separator());
 
     let natives_dir = state.paths.natives_dir(&version.id);
@@ -283,7 +304,10 @@ pub async fn launch_instance(
     subs.insert("launcher_version", env!("CARGO_PKG_VERSION").to_string());
     subs.insert("classpath", classpath.clone());
     subs.insert("classpath_separator", classpath_separator().to_string());
-    subs.insert("library_directory", state.paths.libraries().display().to_string());
+    subs.insert(
+        "library_directory",
+        state.paths.libraries().display().to_string(),
+    );
     subs.insert("auth_player_name", account.name.clone());
     subs.insert("version_name", version.id.clone());
     subs.insert("game_directory", game_dir.display().to_string());
@@ -387,11 +411,15 @@ pub async fn launch_instance(
 
 #[cfg(test)]
 mod tests {
-    use super::{render_placeholders, split_args};
     use std::collections::HashMap;
 
+    use super::{render_placeholders, split_args};
+
     fn values() -> HashMap<&'static str, String> {
-        HashMap::from([("min_ram", "512".to_string()), ("max_ram", "4096".to_string())])
+        HashMap::from([
+            ("min_ram", "512".to_string()),
+            ("max_ram", "4096".to_string()),
+        ])
     }
 
     #[test]
@@ -403,13 +431,22 @@ mod tests {
 
     #[test]
     fn tolerates_spacing_and_unknown_placeholders() {
-        assert_eq!(render_placeholders("-Xmx{{ max_ram }}M", &values()), "-Xmx4096M");
+        assert_eq!(
+            render_placeholders("-Xmx{{ max_ram }}M", &values()),
+            "-Xmx4096M"
+        );
         assert_eq!(
             render_placeholders("-Xmx{{max_ram}}M {{nope}}", &values()),
             "-Xmx4096M {{nope}}"
         );
-        assert_eq!(render_placeholders("-Xmx{{max_ram", &values()), "-Xmx{{max_ram");
-        assert_eq!(render_placeholders("no placeholders", &values()), "no placeholders");
+        assert_eq!(
+            render_placeholders("-Xmx{{max_ram", &values()),
+            "-Xmx{{max_ram"
+        );
+        assert_eq!(
+            render_placeholders("no placeholders", &values()),
+            "no placeholders"
+        );
     }
 
     #[test]

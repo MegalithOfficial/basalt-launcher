@@ -1,13 +1,17 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
-use crate::db::Db;
-use crate::files::FileManager;
-use crate::launch::process::RunningHandle;
-use crate::meta::media::{PatchNotes, VersionMedia};
-use crate::network::NetworkManager;
-use crate::paths::Paths;
-use crate::tasks::Tasks;
+use crate::{
+    db::Db,
+    files::FileManager,
+    launch::process::RunningHandle,
+    meta::media::{PatchNotes, VersionMedia},
+    network::NetworkManager,
+    paths::Paths,
+    tasks::Tasks,
+};
 
 pub struct AppState {
     pub network: Arc<NetworkManager>,

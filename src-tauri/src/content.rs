@@ -1,9 +1,11 @@
 use serde::Serialize;
 
-use crate::db::ContentFile;
-use crate::error::{Error, Result};
-use crate::files::FileManager;
-use crate::paths::Paths;
+use crate::{
+    db::ContentFile,
+    error::{Error, Result},
+    files::FileManager,
+    paths::Paths,
+};
 
 const DISABLED_SUFFIX: &str = ".disabled";
 
@@ -54,7 +56,9 @@ pub fn list(files: &FileManager, instance_id: &str, kind: &str) -> Result<Vec<Co
 
     let mut items = Vec::new();
     for path in entries {
-        let Ok(meta) = files.metadata(&path) else { continue };
+        let Ok(meta) = files.metadata(&path) else {
+            continue;
+        };
         if !meta.is_file() {
             continue;
         }
@@ -132,7 +136,12 @@ pub fn resolve_path(
     enabled
 }
 
-pub fn add(files: &FileManager, instance_id: &str, kind: &str, sources: &[String]) -> Result<usize> {
+pub fn add(
+    files: &FileManager,
+    instance_id: &str,
+    kind: &str,
+    sources: &[String],
+) -> Result<usize> {
     let paths = files.paths();
     let dir = content_dir(paths, instance_id, kind)?;
     files.ensure_dir(&dir)?;

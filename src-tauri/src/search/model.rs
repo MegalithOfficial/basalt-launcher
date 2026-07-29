@@ -305,10 +305,7 @@ pub fn is_installable_loader(value: &str) -> bool {
 }
 
 pub fn looks_like_game_version(value: &str) -> bool {
-    value
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_ascii_digit())
+    value.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
 #[cfg(test)]

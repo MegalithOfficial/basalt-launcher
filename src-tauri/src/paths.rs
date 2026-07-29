@@ -89,8 +89,9 @@ impl Paths {
 
 #[cfg(test)]
 mod tests {
-    use super::Paths;
     use std::path::PathBuf;
+
+    use super::Paths;
 
     fn paths() -> Paths {
         Paths {
@@ -111,7 +112,9 @@ mod tests {
     #[test]
     fn real_ids_resolve_under_instances() {
         let p = paths();
-        let dir = p.instance_dir_checked("c4dbff5d-a385-47fb-9710-7d33bd154c3f").unwrap();
+        let dir = p
+            .instance_dir_checked("c4dbff5d-a385-47fb-9710-7d33bd154c3f")
+            .unwrap();
         assert_eq!(dir.parent().unwrap(), p.instances());
     }
 }
