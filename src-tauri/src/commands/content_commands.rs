@@ -96,6 +96,23 @@ pub async fn list_instance_content_bundle(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
+pub fn plan_content_removal(
+    state: State<AppState>,
+    instance_id: String,
+    kind: String,
+    file_name: String,
+) -> Result<search::resolve::RemovalPlan> {
+    let kind = search::ContentKind::parse(&kind)?;
+    Ok(search::resolve::plan_removal(
+        &state,
+        &instance_id,
+        kind,
+        &file_name,
+    ))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn toggle_instance_content(
     state: State<AppState>,
     instance_id: String,

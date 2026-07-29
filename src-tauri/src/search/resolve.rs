@@ -514,6 +514,115 @@ pub async fn apply(
     Ok(written)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct OrphanFile {
+    pub file_name: String,
+    pub title: String,
+    pub icon_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RemovalPlan {
+    pub dependents: Vec<String>,
+    pub from_pack: bool,
+    pub orphans: Vec<OrphanFile>,
+}
+
+fn required_project_ids(file: &crate::db::ContentFile) -> Vec<String> {
+    file.dependencies
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Vec<VersionDependency>>(raw).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|d| d.dependency_type == "required")
+        .map(|d| d.project_id)
+        .collect()
+}
+
+fn requires(file: &crate::db::ContentFile, project_id: &str) -> bool {
+    required_project_ids(file).iter().any(|id| id == project_id)
+}
+
+pub fn plan_removal(
+    state: &AppState,
+    instance_id: &str,
+    kind: ContentKind,
+    file_name: &str,
+) -> RemovalPlan {
+    let files = state
+        .db
+        .content_files(instance_id, kind.as_str())
+        .unwrap_or_default();
+
+    let Some(target) = files.iter().find(|f| f.file_name == file_name).cloned() else {
+        return RemovalPlan {
+            dependents: Vec::new(),
+            from_pack: false,
+            orphans: Vec::new(),
+        };
+    };
+
+    let dependents = target
+        .project_id
+        .as_deref()
+        .map(|project_id| {
+            files
+                .iter()
+                .filter(|f| {
+                    f.file_name != file_name
+                        && f.project_id.as_deref() != Some(project_id)
+                        && requires(f, project_id)
+                })
+                .map(|f| f.title.clone().unwrap_or_else(|| f.file_name.clone()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let from_pack = target.origin == "pack";
+    let mut removing: std::collections::HashSet<String> =
+        std::collections::HashSet::from([file_name.to_string()]);
+    let mut orphans = Vec::new();
+    let mut queue = vec![target];
+
+    while let Some(current) = queue.pop() {
+        for project_id in required_project_ids(&current) {
+            let Some(candidate) = files.iter().find(|f| {
+                f.origin == "dependency"
+                    && f.project_id.as_deref() == Some(project_id.as_str())
+                    && !removing.contains(&f.file_name)
+            }) else {
+                continue;
+            };
+
+            let still_needed = files.iter().any(|f| {
+                f.file_name != candidate.file_name
+                    && !removing.contains(&f.file_name)
+                    && requires(f, &project_id)
+            });
+            if still_needed {
+                continue;
+            }
+
+            removing.insert(candidate.file_name.clone());
+            orphans.push(OrphanFile {
+                file_name: candidate.file_name.clone(),
+                title: candidate
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| candidate.file_name.clone()),
+                icon_url: candidate.icon_url.clone(),
+            });
+            queue.push(candidate.clone());
+        }
+    }
+
+    RemovalPlan {
+        dependents,
+        from_pack,
+        orphans,
+    }
+}
+
 pub fn dependents_of(
     state: &AppState,
     instance_id: &str,

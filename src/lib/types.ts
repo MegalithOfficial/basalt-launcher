@@ -292,6 +292,18 @@ export interface ContentProgress {
   current: string;
 }
 
+export interface OrphanFile {
+  file_name: string;
+  title: string;
+  icon_url: string | null;
+}
+
+export interface RemovalPlan {
+  dependents: string[];
+  from_pack: boolean;
+  orphans: OrphanFile[];
+}
+
 export interface InstalledItem {
   file_name: string;
   title: string;

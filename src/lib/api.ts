@@ -25,6 +25,7 @@ import type {
   LogSearch,
   LogRecord,
   ProjectDetails,
+  RemovalPlan,
   ProjectSummary,
   ProjectVersion,
   RunningInfo,
@@ -174,6 +175,8 @@ export const api = {
     call<ContentUpdate[]>("get_content_updates", { instanceId }),
   applyContentUpdate: (instanceId: string, kind: string, fileName: string) =>
     call<string>("apply_content_update", { instanceId, kind, fileName }),
+  planContentRemoval: (instanceId: string, kind: string, fileName: string) =>
+    call<RemovalPlan>("plan_content_removal", { instanceId, kind, fileName }),
   getContentDependents: (instanceId: string, kind: string, fileName: string) =>
     call<string[]>("get_content_dependents", { instanceId, kind, fileName }),
   updateInstance: (
