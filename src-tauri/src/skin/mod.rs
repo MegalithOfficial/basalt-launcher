@@ -950,10 +950,10 @@ mod tests {
     fn scratch_state() -> (AppState, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!("basalt-skins-{}", uuid::Uuid::new_v4()));
         let paths = Paths { root: root.clone() };
-        crate::files::FileManager::new(paths.clone())
+        crate::files::FileManager::new(paths.clone()).unwrap()
             .ensure_base_dirs()
             .unwrap();
-        let files = crate::files::FileManager::new(paths);
+        let files = crate::files::FileManager::new(paths).unwrap();
         let db = crate::db::Db::open(&files).unwrap();
         (AppState::new(files, db), root)
     }

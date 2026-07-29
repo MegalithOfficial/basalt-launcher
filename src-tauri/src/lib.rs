@@ -42,7 +42,7 @@ pub fn run() {
                 let _ = window.set_icon(icon);
             }
             let paths = Paths::resolve(app.handle())?;
-            let files = FileManager::new(paths.clone());
+            let files = FileManager::new(paths.clone())?;
             files.ensure_base_dirs()?;
 
             let log_state = logging::init(app.handle(), &paths, logging::DEFAULT_LEVEL)?;

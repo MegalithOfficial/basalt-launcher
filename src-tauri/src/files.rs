@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{Error, Result};
@@ -6,11 +7,17 @@ use crate::paths::Paths;
 #[derive(Clone)]
 pub struct FileManager {
     paths: Paths,
+    canonical_root: PathBuf,
 }
 
 impl FileManager {
-    pub fn new(paths: Paths) -> Self {
-        Self { paths }
+    pub fn new(paths: Paths) -> Result<Self> {
+        std::fs::create_dir_all(&paths.root)?;
+        let canonical_root = paths.root.canonicalize()?;
+        Ok(Self {
+            paths,
+            canonical_root,
+        })
     }
 
     pub fn paths(&self) -> &Paths {
@@ -43,6 +50,13 @@ impl FileManager {
             return Err(Error::other(format!(
                 "refusing to access unmanaged path {}",
                 path.display()
+            )));
+        }
+        let existing = nearest_existing(path)?;
+        if !existing.canonicalize()?.starts_with(&self.canonical_root) {
+            return Err(Error::other(format!(
+                "refusing to follow a managed path outside {}",
+                self.paths.root.display()
             )));
         }
         Ok(path)
@@ -81,11 +95,11 @@ impl FileManager {
     pub fn write_atomic(&self, path: impl AsRef<Path>, bytes: &[u8]) -> Result<()> {
         let path = self.managed(path.as_ref())?;
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            self.ensure_dir(parent)?;
         }
-        let temporary = temporary_path(path);
-        std::fs::write(&temporary, bytes)?;
-        replace(&temporary, path)?;
+        let mut file = atomic_write_file::AtomicWriteFile::open(path)?;
+        file.write_all(bytes)?;
+        file.commit()?;
         Ok(())
     }
 
@@ -94,21 +108,12 @@ impl FileManager {
         path: impl AsRef<Path>,
         bytes: impl AsRef<[u8]>,
     ) -> Result<()> {
-        let path = self.managed(path.as_ref())?;
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        let temporary = temporary_path(path);
-        tokio::fs::write(&temporary, bytes).await?;
-        if let Err(error) = tokio::fs::rename(&temporary, path).await {
-            if error.kind() != std::io::ErrorKind::AlreadyExists {
-                let _ = tokio::fs::remove_file(&temporary).await;
-                return Err(error.into());
-            }
-            tokio::fs::remove_file(path).await?;
-            tokio::fs::rename(&temporary, path).await?;
-        }
-        Ok(())
+        let files = self.clone();
+        let path = path.as_ref().to_path_buf();
+        let bytes = bytes.as_ref().to_vec();
+        tokio::task::spawn_blocking(move || files.write_atomic(path, &bytes))
+            .await
+            .map_err(|error| Error::other(format!("atomic write task failed: {error}")))?
     }
 
     pub async fn copy_external_into(
@@ -116,10 +121,12 @@ impl FileManager {
         source: impl AsRef<Path>,
         destination: impl AsRef<Path>,
     ) -> Result<u64> {
-        let bytes = tokio::fs::read(source).await?;
-        let size = bytes.len() as u64;
-        self.write_atomic_async(destination, bytes).await?;
-        Ok(size)
+        let files = self.clone();
+        let source = source.as_ref().to_path_buf();
+        let destination = destination.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || files.copy_external_into_sync(source, destination))
+            .await
+            .map_err(|error| Error::other(format!("copy task failed: {error}")))?
     }
 
     pub fn copy_external_into_sync(
@@ -127,9 +134,14 @@ impl FileManager {
         source: impl AsRef<Path>,
         destination: impl AsRef<Path>,
     ) -> Result<u64> {
-        let bytes = std::fs::read(source)?;
-        let size = bytes.len() as u64;
-        self.write_atomic(destination, &bytes)?;
+        let destination = self.managed(destination.as_ref())?;
+        if let Some(parent) = destination.parent() {
+            self.ensure_dir(parent)?;
+        }
+        let mut source = std::fs::File::open(source)?;
+        let mut target = atomic_write_file::AtomicWriteFile::open(destination)?;
+        let size = std::io::copy(&mut source, &mut target)?;
+        target.commit()?;
         Ok(size)
     }
 
@@ -192,16 +204,16 @@ impl FileManager {
         temporary: impl AsRef<Path>,
         destination: impl AsRef<Path>,
     ) -> Result<()> {
-        let temporary = self.managed(temporary.as_ref())?;
-        let destination = self.managed(destination.as_ref())?;
-        if let Err(error) = tokio::fs::rename(temporary, destination).await {
-            if error.kind() != std::io::ErrorKind::AlreadyExists {
-                return Err(error.into());
-            }
-            tokio::fs::remove_file(destination).await?;
-            tokio::fs::rename(temporary, destination).await?;
-        }
-        Ok(())
+        let files = self.clone();
+        let temporary = self.managed(temporary.as_ref())?.to_path_buf();
+        let destination = self.managed(destination.as_ref())?.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            files.copy_external_into_sync(&temporary, destination)?;
+            files.remove_file_if_exists(temporary)?;
+            Ok(())
+        })
+        .await
+        .map_err(|error| Error::other(format!("commit task failed: {error}")))?
     }
 
     pub fn remove_file_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
@@ -213,10 +225,7 @@ impl FileManager {
         }
     }
 
-    pub async fn remove_file_if_exists_async(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<bool> {
+    pub async fn remove_file_if_exists_async(&self, path: impl AsRef<Path>) -> Result<bool> {
         let path = self.managed(path.as_ref())?;
         match tokio::fs::remove_file(path).await {
             Ok(()) => Ok(true),
@@ -235,16 +244,17 @@ fn temporary_path(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-fn replace(source: &Path, destination: &Path) -> std::io::Result<()> {
-    match std::fs::rename(source, destination) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            std::fs::remove_file(destination)?;
-            std::fs::rename(source, destination)
-        }
-        Err(error) => {
-            let _ = std::fs::remove_file(source);
-            Err(error)
+fn nearest_existing(path: &Path) -> Result<&Path> {
+    let mut candidate = path;
+    loop {
+        match std::fs::symlink_metadata(candidate) {
+            Ok(_) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                candidate = candidate
+                    .parent()
+                    .ok_or_else(|| Error::other("managed path has no existing ancestor"))?;
+            }
+            Err(error) => return Err(error.into()),
         }
     }
 }
@@ -258,7 +268,8 @@ mod tests {
     fn rejects_paths_outside_the_managed_root() {
         let files = FileManager::new(Paths {
             root: std::env::temp_dir().join("basalt-files-test"),
-        });
+        })
+        .unwrap();
         assert!(files.read("/tmp/not-basalt").is_err());
         assert!(files
             .write_atomic(files.paths().root.join("../escape"), b"no")
@@ -267,13 +278,33 @@ mod tests {
 
     #[test]
     fn atomic_write_creates_parents_and_replaces_content() {
-        let root =
-            std::env::temp_dir().join(format!("basalt-files-test-{}", uuid::Uuid::new_v4()));
-        let files = FileManager::new(Paths { root: root.clone() });
+        let root = std::env::temp_dir().join(format!("basalt-files-test-{}", uuid::Uuid::new_v4()));
+        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
         let path = root.join("nested").join("value");
         files.write_atomic(&path, b"first").unwrap();
         files.write_atomic(&path, b"second").unwrap();
         assert_eq!(files.read(&path).unwrap(), b"second");
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinks_that_escape_the_managed_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!("basalt-files-root-{}", uuid::Uuid::new_v4()));
+        let outside =
+            std::env::temp_dir().join(format!("basalt-files-outside-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&outside).unwrap();
+        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        symlink(&outside, root.join("escape")).unwrap();
+
+        assert!(files
+            .write_atomic(root.join("escape/value"), b"no")
+            .is_err());
+        assert!(!outside.join("value").exists());
+
+        std::fs::remove_dir_all(root).ok();
+        std::fs::remove_dir_all(outside).ok();
     }
 }

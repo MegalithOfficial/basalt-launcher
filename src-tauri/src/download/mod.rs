@@ -283,6 +283,7 @@ mod tests {
         FileManager::new(crate::paths::Paths {
             root: root.to_path_buf(),
         })
+        .unwrap()
     }
 
     #[tokio::test]
