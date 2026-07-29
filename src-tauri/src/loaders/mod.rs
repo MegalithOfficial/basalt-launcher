@@ -134,9 +134,7 @@ async fn install_profile_json(
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::other("loader profile has no id"))?
         .to_string();
-    let dir = state.paths.version_dir(&id);
-    tokio::fs::create_dir_all(&dir).await?;
-    tokio::fs::write(
+    state.files.write_atomic_async(
         state.paths.version_json(&id),
         serde_json::to_vec_pretty(&profile)?,
     )
@@ -163,6 +161,7 @@ async fn run_installer(
     let installer_path = installer_dir.join(installer_name);
     download::download_one(
         &state.network,
+        &state.files,
         &DownloadSpec {
             url: installer_url.to_string(),
             dest: installer_path.clone(),
@@ -173,8 +172,11 @@ async fn run_installer(
     .await?;
 
     let profiles_stub = state.paths.root.join("launcher_profiles.json");
-    if !profiles_stub.exists() {
-        tokio::fs::write(&profiles_stub, b"{\"profiles\":{}}").await?;
+    if !state.files.exists(&profiles_stub)? {
+        state
+            .files
+            .write_atomic_async(&profiles_stub, b"{\"profiles\":{}}")
+            .await?;
     }
 
     let vanilla = install::load_merged_version(state, &instance.version_id).await?;

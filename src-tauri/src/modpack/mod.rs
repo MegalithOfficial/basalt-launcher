@@ -241,6 +241,7 @@ pub async fn install_modpack(
     let archive_path = cache_dir.join(&archive.file_name);
     download::download_one(
         &state.network,
+        &state.files,
         &DownloadSpec {
             url,
             dest: archive_path.clone(),
@@ -414,6 +415,7 @@ async fn install_pack_body(
     task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
     let downloaded = download::download_many_cancellable(
         &state.network,
+        &state.files,
         specs,
         concurrency,
         |progress| {

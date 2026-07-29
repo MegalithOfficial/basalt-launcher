@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{Error, Result};
+use crate::files::FileManager;
 use crate::network::NetworkManager;
 
 #[derive(Debug, Clone)]
@@ -35,8 +36,8 @@ pub fn sha1_hex(bytes: &[u8]) -> String {
     hasher.digest().to_string()
 }
 
-async fn already_valid(spec: &DownloadSpec) -> bool {
-    let bytes = match tokio::fs::read(&spec.dest).await {
+async fn already_valid(files: &FileManager, spec: &DownloadSpec) -> bool {
+    let bytes = match files.read_async(&spec.dest).await {
         Ok(bytes) => bytes,
         Err(_) => return false,
     };
@@ -75,18 +76,23 @@ pub fn retry_delay(attempt: u32) -> Duration {
 
 pub type RetryHook<'a> = Option<&'a (dyn Fn(u32, u32, &str) + Send + Sync)>;
 
-pub async fn download_one(client: &NetworkManager, spec: &DownloadSpec) -> Result<bool> {
-    download_one_reporting(client, spec, None).await
+pub async fn download_one(
+    client: &NetworkManager,
+    files: &FileManager,
+    spec: &DownloadSpec,
+) -> Result<bool> {
+    download_one_reporting(client, files, spec, None).await
 }
 
 pub async fn download_one_reporting(
     client: &NetworkManager,
+    files: &FileManager,
     spec: &DownloadSpec,
     on_retry: RetryHook<'_>,
 ) -> Result<bool> {
     let mut attempt = 0;
     loop {
-        match download_once(client, spec).await {
+        match download_once(client, files, spec).await {
             Ok(created) => return Ok(created),
             Err(e) => {
                 attempt += 1;
@@ -119,13 +125,17 @@ fn short_reason(error: &Error) -> String {
     }
 }
 
-async fn download_once(client: &NetworkManager, spec: &DownloadSpec) -> Result<bool> {
-    if already_valid(spec).await {
+async fn download_once(
+    client: &NetworkManager,
+    files: &FileManager,
+    spec: &DownloadSpec,
+) -> Result<bool> {
+    if already_valid(files, spec).await {
         tracing::trace!(dest = %spec.dest.display(), "already on disk, skipped");
         return Ok(false);
     }
     if let Some(parent) = spec.dest.parent() {
-        tokio::fs::create_dir_all(parent).await?;
+        files.ensure_dir_async(parent).await?;
     }
 
     let resp = client
@@ -134,7 +144,7 @@ async fn download_once(client: &NetworkManager, spec: &DownloadSpec) -> Result<b
         .error_for_status()?;
     let mut stream = resp.bytes_stream();
 
-    let tmp = spec.dest.with_extension("part");
+    let tmp = files.temporary_for(&spec.dest)?;
     let mut file = tokio::fs::File::create(&tmp).await?;
     let mut hasher = Sha1::new();
 
@@ -154,7 +164,7 @@ async fn download_once(client: &NetworkManager, spec: &DownloadSpec) -> Result<b
                 actual = %actual,
                 "checksum mismatch, discarding download"
             );
-            let _ = tokio::fs::remove_file(&tmp).await;
+            let _ = files.remove_file_if_exists_async(&tmp).await;
             return Err(Error::Checksum {
                 path: spec.dest.display().to_string(),
                 expected: expected.clone(),
@@ -163,13 +173,14 @@ async fn download_once(client: &NetworkManager, spec: &DownloadSpec) -> Result<b
         }
     }
 
-    tokio::fs::rename(&tmp, &spec.dest).await?;
+    files.commit_temporary(&tmp, &spec.dest).await?;
     tracing::trace!(url = %spec.url, dest = %spec.dest.display(), "downloaded");
     Ok(true)
 }
 
 pub async fn download_many<F>(
     client: &NetworkManager,
+    files: &FileManager,
     specs: Vec<DownloadSpec>,
     concurrency: usize,
     on_progress: F,
@@ -177,11 +188,12 @@ pub async fn download_many<F>(
 where
     F: Fn(DownloadProgress) + Send + Sync,
 {
-    download_many_cancellable(client, specs, concurrency, on_progress, None, None, None).await
+    download_many_cancellable(client, files, specs, concurrency, on_progress, None, None, None).await
 }
 
 pub async fn download_many_cancellable<F>(
     client: &NetworkManager,
+    files: &FileManager,
     specs: Vec<DownloadSpec>,
     concurrency: usize,
     on_progress: F,
@@ -218,9 +230,9 @@ where
             Some(token) => tokio::select! {
                 biased;
                 _ = token.cancelled() => return Err(Error::Cancelled),
-                result = download_one_reporting(client, &spec, on_retry) => result,
+                result = download_one_reporting(client, files, &spec, on_retry) => result,
             },
-            None => download_one_reporting(client, &spec, on_retry).await,
+            None => download_one_reporting(client, files, &spec, on_retry).await,
         }
         .inspect_err(|e| tracing::warn!(url = %spec.url, error = %e, "download failed"))?;
         if created {
@@ -267,6 +279,12 @@ mod tests {
         NetworkManager::with_client(reqwest::Client::new())
     }
 
+    fn files(root: &std::path::Path) -> FileManager {
+        FileManager::new(crate::paths::Paths {
+            root: root.to_path_buf(),
+        })
+    }
+
     #[tokio::test]
     async fn cancelled_before_start_downloads_nothing() {
         let dir = std::env::temp_dir().join(format!("basalt-cancel-{}", std::process::id()));
@@ -283,8 +301,10 @@ mod tests {
         }];
 
         let network = network();
+        let files = files(&dir);
         let result = download_many_cancellable(
             &network,
+            &files,
             specs,
             2,
             |_| {},
@@ -332,7 +352,8 @@ mod tests {
             sha1: None,
             size: None,
         };
-        let result = download_one(&network(), &spec).await;
+        let files = files(std::env::temp_dir().as_path());
+        let result = download_one(&network(), &files, &spec).await;
         let message = result.unwrap_err().to_string();
 
         assert!(
@@ -369,8 +390,10 @@ mod tests {
 
         let started = std::time::Instant::now();
         let network = network();
+        let files = files(&dir);
         let result = download_many_cancellable(
             &network,
+            &files,
             specs,
             4,
             |_| {},
@@ -403,11 +426,13 @@ mod tests {
             size: None,
         };
         let network = network();
-        assert!(!download_one(&network, &spec).await.unwrap());
+        let files = files(&dir);
+        assert!(!download_one(&network, &files, &spec).await.unwrap());
 
         let written = std::sync::Mutex::new(Vec::new());
         let result = download_many_cancellable(
             &network,
+            &files,
             vec![spec],
             2,
             |_| {},

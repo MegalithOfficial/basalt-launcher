@@ -26,7 +26,7 @@ struct ProgressPayload {
 #[tracing::instrument(skip(state), err)]
 pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<VersionJson> {
     let path = state.paths.version_json(version_id);
-    if let Ok(bytes) = tokio::fs::read(&path).await {
+    if let Ok(bytes) = state.files.read_async(&path).await {
         if let Ok(parsed) = serde_json::from_slice(&bytes) {
             tracing::debug!("version json read from cache");
             return Ok(parsed);
@@ -48,10 +48,7 @@ pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<Ver
         .error_for_status()?
         .bytes()
         .await?;
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    tokio::fs::write(&path, &bytes).await?;
+    state.files.write_atomic_async(&path, &bytes).await?;
     tracing::debug!(bytes = bytes.len(), "version json cached");
     Ok(serde_json::from_slice(&bytes)?)
 }
@@ -85,7 +82,7 @@ async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<Ass
         .paths
         .assets_indexes()
         .join(format!("{}.json", asset_index.id));
-    if let Ok(bytes) = tokio::fs::read(&path).await {
+    if let Ok(bytes) = state.files.read_async(&path).await {
         if let Ok(parsed) = serde_json::from_slice(&bytes) {
             return Ok(parsed);
         }
@@ -98,10 +95,7 @@ async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<Ass
         .error_for_status()?
         .bytes()
         .await?;
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    tokio::fs::write(&path, &bytes).await?;
+    state.files.write_atomic_async(&path, &bytes).await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -171,6 +165,7 @@ pub async fn install_version(
     task.set_total(specs.len() as u64, specs.iter().filter_map(|s| s.size).sum());
     download::download_many_cancellable(
         &state.network,
+        &state.files,
         specs,
         concurrency,
         |progress| {
