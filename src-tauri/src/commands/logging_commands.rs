@@ -1,4 +1,10 @@
-use super::*;
+use tauri::State;
+
+use crate::{
+    error::Result,
+    logging::{self, LogConfig, LogRecord, LogState},
+    state::AppState,
+};
 
 #[tauri::command]
 #[tracing::instrument(skip(logs), err)]

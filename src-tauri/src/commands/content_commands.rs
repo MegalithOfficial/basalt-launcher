@@ -1,4 +1,15 @@
-use super::*;
+use serde::Serialize;
+use tauri::{AppHandle, State};
+
+use crate::{
+    config::Instance,
+    content::{self, ContentItem},
+    error::{Error, Result},
+    search,
+    state::AppState,
+};
+
+use super::find_instance;
 
 #[tauri::command]
 pub async fn list_instance_content(
