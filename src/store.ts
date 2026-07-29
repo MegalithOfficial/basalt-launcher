@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { notifyInstalled, notifySummary, notifyTaskFinished } from "./lib/notify";
 
 import { api } from "./lib/api";
+import { emptyFilters, type FilterState } from "./components/FilterRail";
 import { isInstanceInstalled } from "./lib/loader";
 import { log } from "./lib/log";
 import type {
@@ -21,12 +22,41 @@ import type {
   LogLine,
   LogRecord,
   RunningInfo,
+  SearchPage,
   SearchProvider,
+  SortOrder,
   VersionMedia,
   View,
 } from "./lib/types";
 
 const MAX_LOG_RECORDS = 5000;
+
+export interface DiscoverBrowse {
+  provider: SearchProvider;
+  query: string;
+  sort: SortOrder;
+  filters: FilterState;
+  offset: number;
+  showFilters: boolean;
+  scrollTop: number;
+  page: SearchPage | null;
+  signature: string | null;
+  scope: string | null;
+}
+
+const emptyBrowse: DiscoverBrowse = {
+  provider: "modrinth",
+  query: "",
+  sort: "relevance",
+  filters: emptyFilters,
+  offset: 0,
+  showFilters: true,
+  scrollTop: 0,
+  page: null,
+  signature: null,
+  scope: null,
+};
+
 interface AuthPayload {
   status: "success" | "error";
   account?: AccountView;
@@ -104,6 +134,7 @@ interface AppStore {
   searchKind: ContentKind | null;
   discoverKind: ContentKind;
   discoverTargetId: string | null;
+  discoverBrowse: DiscoverBrowse;
   projectRef: { provider: SearchProvider; id: string } | null;
   contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
   updates: Record<string, ContentUpdate[]>;
@@ -156,6 +187,8 @@ interface AppStore {
   openProject: (provider: SearchProvider, id: string, kind?: ContentKind) => void;
   openDiscover: (kind?: ContentKind, targetInstanceId?: string | null) => void;
   setDiscoverKind: (kind: ContentKind) => void;
+  setDiscoverBrowse: (patch: Partial<DiscoverBrowse>) => void;
+  resetDiscoverBrowse: (patch: Partial<DiscoverBrowse>) => void;
   setDiscoverTarget: (instanceId: string | null) => void;
   installModpack: (
     provider: SearchProvider,
@@ -218,6 +251,7 @@ export const useStore = create<AppStore>((set) => ({
   searchKind: null,
   discoverKind: "mods",
   discoverTargetId: null,
+  discoverBrowse: emptyBrowse,
   projectRef: null,
   contentSources: {},
   updates: {},
@@ -256,6 +290,11 @@ export const useStore = create<AppStore>((set) => ({
     })),
 
   setDiscoverKind: (kind) => set({ discoverKind: kind, searchKind: kind }),
+
+  setDiscoverBrowse: (patch) =>
+    set((s) => ({ discoverBrowse: { ...s.discoverBrowse, ...patch } })),
+
+  resetDiscoverBrowse: (patch) => set({ discoverBrowse: { ...emptyBrowse, ...patch } }),
 
   setDiscoverTarget: (instanceId) => set({ discoverTargetId: instanceId }),
 
@@ -842,6 +881,15 @@ export const useStore = create<AppStore>((set) => ({
     }
   },
 }));
+
+const BROWSE_VIEWS = new Set<View>(["discover", "project"]);
+
+useStore.subscribe((state, previous) => {
+  if (state.view === previous.view) return;
+  if (BROWSE_VIEWS.has(previous.view) && !BROWSE_VIEWS.has(state.view)) {
+    state.resetDiscoverBrowse({});
+  }
+});
 
 if (import.meta.env.DEV) {
   (window as unknown as { __store: typeof useStore }).__store = useStore;

@@ -92,17 +92,29 @@ export function DiscoverView() {
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
 
-  const [provider, setProvider] = useState<SearchProvider>("modrinth");
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortOrder>("relevance");
-  const [filters, setFilters] = useState<FilterState>(emptyFilters);
-  const [page, setPage] = useState<SearchPage | null>(null);
-  const [offset, setOffset] = useState(0);
+  const browse = useStore((s) => s.discoverBrowse);
+  const setBrowse = useStore((s) => s.setDiscoverBrowse);
+  const resetBrowse = useStore((s) => s.resetDiscoverBrowse);
+
+  const { provider, query, sort, filters, offset, showFilters, page } = browse;
+  const setProvider = (next: SearchProvider) => setBrowse({ provider: next });
+  const setQuery = (next: string) => setBrowse({ query: next });
+  const setSort = (next: SortOrder) => setBrowse({ sort: next });
+  const setFilters = (next: FilterState | ((current: FilterState) => FilterState)) =>
+    setBrowse({
+      filters: typeof next === "function" ? next(browse.filters) : next,
+    });
+  const setPage = (next: SearchPage | null) => setBrowse({ page: next });
+  const setOffset = (next: number) => setBrowse({ offset: next });
+  const setShowFilters = (next: boolean | ((current: boolean) => boolean)) =>
+    setBrowse({
+      showFilters: typeof next === "function" ? next(browse.showFilters) : next,
+    });
+
   const [taxonomy, setTaxonomy] = useState<FilterTaxonomy | null>(null);
-  const [searching, setSearching] = useState(true);
+  const [searching, setSearching] = useState(browse.page === null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [showFilters, setShowFilters] = useState(true);
   const [resultView, setResultView] = useResultView("discover-view");
   const [pending, setPending] = useState<PendingInstall | null>(null);
   const [planning, setPlanning] = useState<string | null>(null);
@@ -132,12 +144,18 @@ export function DiscoverView() {
     };
   }, [provider, kind]);
 
-  useEffect(() => {
-    setOffset(0);
-    setFilters(emptyFilters);
-  }, [kind, provider]);
+  const scope = `${provider}:${kind}`;
 
   useEffect(() => {
+    if (browse.scope !== scope) resetBrowse({ provider, scope });
+  }, [scope, browse.scope, provider, resetBrowse]);
+
+  const lastParams = useRef(JSON.stringify({ query, sort, filters }));
+
+  useEffect(() => {
+    const params = JSON.stringify({ query, sort, filters });
+    if (lastParams.current === params) return;
+    lastParams.current = params;
     setOffset(0);
   }, [query, sort, filters]);
 
@@ -145,7 +163,17 @@ export function DiscoverView() {
     if (target && kind !== "modpacks") void refreshContentSources(target.id, kind);
   }, [target?.id, kind, refreshContentSources]);
 
+  const signature = JSON.stringify({ provider, kind, query, sort, filters, offset });
+  const firstRun = useRef(true);
+
   useEffect(() => {
+    const restored = firstRun.current && browse.page !== null && browse.signature === signature;
+    firstRun.current = false;
+    if (restored) {
+      setSearching(false);
+      return;
+    }
+
     const ticket = ++requestRef.current;
     setSearching(true);
     clearTimeout(debounceRef.current);
@@ -163,7 +191,7 @@ export function DiscoverView() {
           limit: PAGE_SIZE,
         });
         if (ticket !== requestRef.current) return;
-        setPage(result);
+        setBrowse({ page: result, signature });
         setError(null);
       } catch (e) {
         if (ticket !== requestRef.current) return;
@@ -175,6 +203,15 @@ export function DiscoverView() {
     }, 300);
     return () => clearTimeout(debounceRef.current);
   }, [provider, kind, query, sort, filters, offset]);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = browse.scrollTop;
+    return () => {
+      setBrowse({ scrollTop: node.scrollTop });
+    };
+  }, []);
 
   const goToOffset = useCallback((next: number) => {
     setOffset(next);
