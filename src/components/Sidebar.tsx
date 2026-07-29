@@ -65,7 +65,7 @@ function RailButton({
       {active && (
         <motion.span
           layoutId="rail-active"
-          className="absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
+          className="absolute left-0 top-1/2 h-7 w-0.75 -translate-y-1/2 rounded-r-full bg-(--accent) shadow-[0_0_10px_var(--accent-glow)]"
           transition={{ type: "spring", stiffness: 520, damping: 40 }}
         />
       )}
@@ -75,11 +75,11 @@ function RailButton({
         aria-label={label}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "group relative grid size-12 place-items-center rounded-xl outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+          "group relative grid size-12 place-items-center rounded-xl outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-(--accent)",
           disabled
             ? "cursor-not-allowed text-content-faint/40"
             : active
-              ? "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-[var(--accent-bright)]"
+              ? "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-(--accent-bright)"
               : "text-content-faint hover:bg-surface-2 hover:text-content",
         )}
       >
@@ -119,7 +119,7 @@ function RecentTile({
       {active && (
         <motion.span
           layoutId="rail-active"
-          className="absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
+          className="absolute left-0 top-1/2 h-7 w-0.75 -translate-y-1/2 rounded-r-full bg-(--accent) shadow-[0_0_10px_var(--accent-glow)]"
           transition={{ type: "spring", stiffness: 520, damping: 40 }}
         />
       )}
@@ -128,7 +128,7 @@ function RecentTile({
         onContextMenu={onContextMenu}
         aria-label={instance.name}
         aria-current={active ? "page" : undefined}
-        className="group relative grid size-11 place-items-center rounded-xl outline-none transition-transform duration-150 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="group relative grid size-11 place-items-center rounded-xl outline-none transition-transform duration-150 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--accent)"
       >
         <span className="absolute inset-0 grid place-items-center overflow-hidden rounded-[10px] bg-surface-2">
           {src ? (
@@ -151,11 +151,11 @@ function RecentTile({
         <span
           className={cn(
             "pointer-events-none absolute inset-0 rounded-[10px] ring-inset transition-colors",
-            active ? "ring-2 ring-[var(--accent)]" : running ? "ring-2 ring-ok" : "ring-1 ring-white/10",
+            active ? "ring-2 ring-(--accent)" : running ? "ring-2 ring-ok" : "ring-1 ring-white/10",
           )}
         />
         {pinned && (
-          <span className="pointer-events-none absolute -right-1 -top-1 grid size-[15px] place-items-center rounded-full bg-surface-3 text-content-muted ring-2 ring-base">
+          <span className="pointer-events-none absolute -right-1 -top-1 grid size-3.75 place-items-center rounded-full bg-surface-3 text-content-muted ring-2 ring-base">
             <Pin className="size-2.5" />
           </span>
         )}
@@ -256,7 +256,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="relative z-30 flex w-[74px] shrink-0 flex-col items-center border-r border-border-soft bg-surface/40 py-3">
+    <aside className="relative z-30 flex w-18.5 shrink-0 flex-col items-center border-r border-border-soft bg-surface/40 py-3">
       <button
         onClick={() => setView("home")}
         aria-label="Basalt"
@@ -275,7 +275,7 @@ export function Sidebar() {
       <nav className="flex w-full flex-col items-center gap-1">
         {NAV.map(({ id, label, icon: Icon }) => (
           <RailButton key={id} label={label} active={view === id} onClick={() => setView(id)}>
-            <Icon className="size-[21px]" />
+            <Icon className="size-5.25" />
           </RailButton>
         ))}
       </nav>
@@ -313,7 +313,7 @@ export function Sidebar() {
           onClick={() => setView("logs")}
         >
           <span className="relative">
-            <SquareChartGantt className="size-[21px]" />
+            <SquareChartGantt className="size-5.25" />
             {anyRunning && view !== "logs" && (
               <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-base" />
             )}
@@ -325,7 +325,7 @@ export function Sidebar() {
           active={view === "settings"}
           onClick={() => setView("settings")}
         >
-          <Settings className="size-[21px]" />
+          <Settings className="size-5.25" />
         </RailButton>
 
         <RailButton
@@ -336,7 +336,7 @@ export function Sidebar() {
           {activeAccount ? (
             <PlayerHead uuid={activeAccount.id} name={activeAccount.name} size={30} />
           ) : (
-            <UserCircle2 className="size-[21px]" />
+            <UserCircle2 className="size-5.25" />
           )}
         </RailButton>
       </div>

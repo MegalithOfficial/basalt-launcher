@@ -67,7 +67,7 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState | null; onClose
       onContextMenu={(e) => e.preventDefault()}
       style={{ left: pos?.left ?? menu.x, top: pos?.top ?? menu.y }}
       className={cn(
-        "fixed z-[100] min-w-52 origin-top-left rounded-xl border border-border bg-surface p-1 shadow-2xl shadow-black/60 transition-[opacity,transform] duration-100",
+        "fixed z-100 min-w-52 origin-top-left rounded-xl border border-border bg-surface p-1 shadow-2xl shadow-black/60 transition-[opacity,transform] duration-100",
         pos ? "scale-100 opacity-100" : "scale-95 opacity-0",
       )}
     >

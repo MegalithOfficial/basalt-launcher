@@ -80,7 +80,7 @@ export function Mark({
     parts.push(
       <mark
         key={`${from}-${to}`}
-        className="rounded-[3px] bg-[var(--accent)]/35 px-px text-content ring-1 ring-inset ring-[var(--accent)]/50"
+        className="rounded-[3px] bg-(--accent)/35 px-px text-content ring-1 ring-inset ring-(--accent)/50"
       >
         {text.slice(from - offset, to - offset)}
       </mark>,
@@ -114,7 +114,7 @@ export function OutputLine({
 
   if (!match) {
     return (
-      <div className={cn("whitespace-pre-wrap break-words", LEVEL_CLASS[level])}>
+      <div className={cn("whitespace-pre-wrap wrap-break-word", LEVEL_CLASS[level])}>
         <Mark text={line} ranges={ranges} />
       </div>
     );
@@ -125,7 +125,7 @@ export function OutputLine({
   const bodyAt = line.length - body.length;
 
   return (
-    <div className="whitespace-pre-wrap break-words">
+    <div className="whitespace-pre-wrap wrap-break-word">
       <span className="text-content-faint/60">
         <Mark text={time} ranges={ranges} />{" "}
       </span>
