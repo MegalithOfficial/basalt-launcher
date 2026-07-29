@@ -240,7 +240,7 @@ impl FileManager {
         reader: &mut impl std::io::Read,
         destination: impl AsRef<Path>,
     ) -> Result<u64> {
-        Ok(self.write_atomic_with(destination.as_ref(), |target| std::io::copy(reader, target))?)
+        self.write_atomic_with(destination.as_ref(), |target| std::io::copy(reader, target))
     }
 
     pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {
