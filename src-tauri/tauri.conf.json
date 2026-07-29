@@ -40,6 +40,14 @@
     "category": "Game",
     "shortDescription": "A polished, functional Minecraft launcher.",
     "longDescription": "Basalt Launcher is a visually polished Minecraft launcher with practical instance and content management.",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/single-main-window.desktop.hbs"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/single-main-window.desktop.hbs"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
