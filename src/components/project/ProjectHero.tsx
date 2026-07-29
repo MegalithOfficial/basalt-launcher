@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Clock, Download, Heart, Loader2, Package } from "lucide-react";
+import { Check, Clock, Download, Heart, Loader2, Package } from "lucide-react";
 
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
@@ -32,7 +32,6 @@ export function ProjectHero({
   target,
   onSelectTarget,
   showTargetPicker,
-  onBack,
   onInstall,
   onOpenInstalled,
 }: {
@@ -46,7 +45,6 @@ export function ProjectHero({
   target: Instance | null;
   onSelectTarget: (instance: Instance | null) => void;
   showTargetPicker: boolean;
-  onBack: () => void;
   onInstall: () => void;
   onOpenInstalled: () => void;
 }) {
@@ -77,14 +75,6 @@ export function ProjectHero({
       )}
 
       <div className="relative flex items-start gap-4 px-6 pb-5 pt-12">
-        <button
-          onClick={onBack}
-          aria-label="Back"
-          className="grid size-9 shrink-0 place-items-center rounded-full border border-white/10 bg-black/40 text-white/70 backdrop-blur transition-colors hover:bg-black/60 hover:text-white"
-        >
-          <ArrowLeft className="size-4" />
-        </button>
-
         {details?.icon_url ? (
           <img
             src={details.icon_url}
@@ -99,18 +89,22 @@ export function ProjectHero({
         )}
 
         <div className="min-w-0 flex-1 pt-0.5">
-          <h1 className="truncate font-display text-2xl font-bold tracking-tight text-white">
-            {details?.title ?? (loading ? "Loading" : "Project")}
-          </h1>
+          <div className="flex min-w-0 items-baseline gap-2.5">
+            <h1 className="truncate font-display text-2xl font-bold tracking-tight text-white">
+              {details?.title ?? (loading ? "Loading" : "Project")}
+            </h1>
+            {details?.author && (
+              <span className="shrink-0 truncate text-sm font-medium text-white/55">
+                by {details.author}
+              </span>
+            )}
+          </div>
           {details?.description && (
             <p className="mt-1 line-clamp-2 max-w-3xl text-sm text-white/70">
               {details.description}
             </p>
           )}
           <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            {details?.author && (
-              <span className="text-xs font-medium text-white/85">by {details.author}</span>
-            )}
             {details && <Stat icon={Download}>{formatCount(details.downloads)}</Stat>}
             {!!details?.follows && <Stat icon={Heart}>{formatCount(details.follows)}</Stat>}
             {details?.updated && (
