@@ -194,7 +194,7 @@ async fn run_installer(
         .output()
         .await?;
 
-    if !state.paths.version_json(expected_id).is_file() {
+    if !state.files.is_file(state.paths.version_json(expected_id))? {
         let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
         text.push_str(&String::from_utf8_lossy(&output.stderr));
         let tail: String = text

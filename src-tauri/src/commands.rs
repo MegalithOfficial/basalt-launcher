@@ -71,7 +71,7 @@ pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Re
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn list_instances(state: State<AppState>) -> Result<Vec<Instance>> {
-    state.db.list_instances(&state.paths)
+    state.db.list_instances(&state.files)
 }
 
 #[tauri::command]
@@ -275,7 +275,7 @@ pub async fn clear_instance_logo(state: State<'_, AppState>, instance_id: String
 
 #[tauri::command]
 pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Instance>> {
-    let instances = state.db.list_instances(&state.paths)?;
+    let instances = state.db.list_instances(&state.files)?;
 
     for instance in &instances {
         if instance.logo.is_some() {
@@ -299,7 +299,7 @@ pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Insta
         }
     }
 
-    state.db.list_instances(&state.paths)
+    state.db.list_instances(&state.files)
 }
 
 #[tauri::command]
@@ -426,7 +426,7 @@ pub async fn list_versions(
 fn find_instance(state: &AppState, instance_id: &str) -> Result<Instance> {
     state
         .db
-        .list_instances(&state.paths)?
+        .list_instances(&state.files)?
         .into_iter()
         .find(|i| i.id == instance_id)
         .ok_or_else(|| Error::NotFound(format!("instance {instance_id}")))

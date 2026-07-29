@@ -382,7 +382,7 @@ pub async fn apply(
     let task = app.map(|app| {
         let instance_name = state
             .db
-            .list_instances(&state.paths)
+            .list_instances(&state.files)
             .ok()
             .and_then(|list| list.into_iter().find(|i| i.id == instance_id))
             .map(|i| i.name);

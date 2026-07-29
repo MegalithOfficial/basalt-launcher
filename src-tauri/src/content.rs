@@ -142,7 +142,7 @@ pub fn add(files: &FileManager, instance_id: &str, kind: &str, sources: &[String
         let Some(file_name) = source_path.file_name() else {
             continue;
         };
-        if source_path.is_file() {
+        if files.is_external_file(source_path) {
             files.copy_external_into_sync(source_path, dir.join(file_name))?;
             copied += 1;
         }

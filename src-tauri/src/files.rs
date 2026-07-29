@@ -155,6 +155,10 @@ impl FileManager {
         Ok(self.managed(path.as_ref())?.is_file())
     }
 
+    pub fn is_external_file(&self, path: impl AsRef<Path>) -> bool {
+        path.as_ref().is_file()
+    }
+
     pub fn read_dir(&self, path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
         let entries = std::fs::read_dir(self.managed(path.as_ref())?)?
             .filter_map(|entry| entry.ok().map(|entry| entry.path()))

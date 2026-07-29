@@ -168,7 +168,7 @@ pub async fn custom_banner(files: &FileManager, instance_id: &str) -> Option<Ver
     let img_path = {
         let mut found = None;
         for candidate in banner_paths(paths, instance_id) {
-            if candidate.is_file() {
+            if files.is_file(&candidate).unwrap_or(false) {
                 found = Some(candidate);
                 break;
             }
@@ -261,10 +261,10 @@ fn logo_paths(paths: &Paths, instance_id: &str) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-pub fn instance_logo(paths: &Paths, instance_id: &str) -> Option<String> {
-    logo_paths(paths, instance_id)
+pub fn instance_logo(files: &FileManager, instance_id: &str) -> Option<String> {
+    logo_paths(files.paths(), instance_id)
         .into_iter()
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| files.is_file(candidate).unwrap_or(false))
         .map(|path| path.display().to_string())
 }
 

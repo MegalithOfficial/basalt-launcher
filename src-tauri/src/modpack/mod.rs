@@ -276,7 +276,7 @@ pub async fn install_modpack(
 
     let existing_names: Vec<String> = state
         .db
-        .list_instances(&state.paths)?
+        .list_instances(&state.files)?
         .into_iter()
         .map(|i| i.name)
         .collect();
@@ -360,7 +360,7 @@ pub async fn install_modpack(
 
     state
         .db
-        .list_instances(&state.paths)?
+        .list_instances(&state.files)?
         .into_iter()
         .find(|i| i.id == instance.id)
         .ok_or_else(|| Error::other("instance vanished after pack install"))

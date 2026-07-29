@@ -6,7 +6,6 @@ use crate::auth::account::{Account, AccountStore};
 use crate::config::{Instance, LauncherSettings};
 use crate::error::Result;
 use crate::files::FileManager;
-use crate::paths::Paths;
 
 #[derive(Clone)]
 pub struct Db(Arc<Mutex<Connection>>);
@@ -399,7 +398,8 @@ impl Db {
         Ok(value)
     }
 
-    pub fn list_instances(&self, paths: &Paths) -> Result<Vec<Instance>> {
+    pub fn list_instances(&self, files: &FileManager) -> Result<Vec<Instance>> {
+        let paths = files.paths();
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, version_id, created_at, min_memory_mb, max_memory_mb,
@@ -412,7 +412,7 @@ impl Db {
             let created_at: String = row.get(3)?;
             Ok(Instance {
                 dir: paths.instance_dir(&id).display().to_string(),
-                logo: crate::meta::media::instance_logo(paths, &id),
+                logo: crate::meta::media::instance_logo(files, &id),
                 id,
                 name: row.get(1)?,
                 version_id: row.get(2)?,
