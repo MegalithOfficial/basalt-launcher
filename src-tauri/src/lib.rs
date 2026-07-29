@@ -128,6 +128,8 @@ pub fn run() {
             commands::content_commands::delete_instance_content,
             commands::content_commands::add_instance_content,
             commands::worlds::list_instance_worlds,
+            commands::worlds::inspect_world_source,
+            commands::worlds::import_worlds,
             commands::launch_commands::launch_instance,
             commands::launch_commands::kill_instance,
             commands::launch_commands::list_running,

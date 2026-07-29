@@ -20,6 +20,7 @@ pub enum TaskKind {
     ModpackInstall,
     ContentInstall,
     ContentUpdate,
+    WorldImport,
 }
 
 impl TaskKind {
@@ -30,6 +31,7 @@ impl TaskKind {
             Self::ModpackInstall => "modpack_install",
             Self::ContentInstall => "content_install",
             Self::ContentUpdate => "content_update",
+            Self::WorldImport => "world_import",
         }
     }
 
@@ -40,6 +42,7 @@ impl TaskKind {
             "modpack_install" | "ModpackInstall" => Some(Self::ModpackInstall),
             "content_install" | "ContentInstall" => Some(Self::ContentInstall),
             "content_update" | "ContentUpdate" => Some(Self::ContentUpdate),
+            "world_import" | "WorldImport" => Some(Self::WorldImport),
             _ => None,
         }
     }
@@ -99,7 +102,10 @@ pub struct TaskSpec {
 fn is_recoverable(kind: TaskKind) -> bool {
     matches!(
         kind,
-        TaskKind::ModpackInstall | TaskKind::ContentInstall | TaskKind::ContentUpdate
+        TaskKind::ModpackInstall
+            | TaskKind::ContentInstall
+            | TaskKind::ContentUpdate
+            | TaskKind::WorldImport
     )
 }
 
@@ -131,6 +137,14 @@ impl Tasks {
 
     pub fn list(&self) -> Vec<Task> {
         self.inner.lock().unwrap().clone()
+    }
+
+    pub fn has_active(&self, instance_id: &str, kind: TaskKind) -> bool {
+        self.inner.lock().unwrap().iter().any(|task| {
+            task.instance_id.as_deref() == Some(instance_id)
+                && task.kind == kind
+                && task.state == TaskState::Running
+        })
     }
 
     pub fn clear_finished(&self) {

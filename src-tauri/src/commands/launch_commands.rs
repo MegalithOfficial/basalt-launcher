@@ -18,6 +18,14 @@ pub async fn launch_instance(
     state: State<'_, AppState>,
     instance_id: String,
 ) -> Result<String> {
+    if state
+        .tasks
+        .has_active(&instance_id, crate::tasks::TaskKind::WorldImport)
+    {
+        return Err(crate::error::Error::other(
+            "Wait for the world import to finish before launching this instance.",
+        ));
+    }
     let instance = find_instance(&state, &instance_id)?;
     launch::launch_instance(&app, &state, &instance).await
 }

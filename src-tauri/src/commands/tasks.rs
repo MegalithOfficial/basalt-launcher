@@ -27,7 +27,17 @@ fn sweep_partials(files: &crate::files::FileManager, dir: &std::path::Path) -> u
             .metadata(&path)
             .is_ok_and(|metadata| metadata.is_dir())
         {
-            removed += sweep_partials(files, &path);
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(".basalt-import-"))
+            {
+                if files.remove_managed_dir_all_if_exists(&path).is_ok() {
+                    removed += 1;
+                }
+            } else {
+                removed += sweep_partials(files, &path);
+            }
         } else if path.extension().is_some_and(|e| e == "part") {
             if files.remove_file_if_exists(&path).is_ok() {
                 removed += 1;

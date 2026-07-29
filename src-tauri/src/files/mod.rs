@@ -188,6 +188,14 @@ impl FileManager {
             .collect::<std::io::Result<Vec<_>>>()?)
     }
 
+    pub fn external_symlink_metadata(&self, path: impl AsRef<Path>) -> Result<std::fs::Metadata> {
+        Ok(std::fs::symlink_metadata(path)?)
+    }
+
+    pub fn open_external(&self, path: impl AsRef<Path>) -> Result<std::fs::File> {
+        Ok(std::fs::File::open(path)?)
+    }
+
     pub fn canonicalize_external(&self, path: impl AsRef<Path>) -> Result<PathBuf> {
         Ok(std::fs::canonicalize(path)?)
     }
@@ -227,6 +235,14 @@ impl FileManager {
             .into_std())
     }
 
+    pub fn copy_reader_into_sync(
+        &self,
+        reader: &mut impl std::io::Read,
+        destination: impl AsRef<Path>,
+    ) -> Result<u64> {
+        Ok(self.write_atomic_with(destination.as_ref(), |target| std::io::copy(reader, target))?)
+    }
+
     pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {
         let source = self.relative(source.as_ref())?;
         let destination_path = destination.as_ref();
@@ -248,6 +264,10 @@ impl FileManager {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
         }
+    }
+
+    pub fn remove_managed_dir_all_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
+        self.remove_dir_all_if_exists(path)
     }
 
     pub fn remove_instance_dir(&self, instance_id: &str) -> Result<bool> {
