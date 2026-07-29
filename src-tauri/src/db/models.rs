@@ -1,3 +1,14 @@
+use crate::tasks::TaskKind;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveRun {
+    pub running_id: String,
+    pub instance_id: String,
+    pub pid: u32,
+    pub process_started_at: u64,
+    pub started_at: i64,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SkinRecord {
     pub id: String,
@@ -53,4 +64,3 @@ pub struct CachedResponse {
     pub etag: Option<String>,
     pub fresh: bool,
 }
-use crate::tasks::TaskKind;

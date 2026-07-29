@@ -13,9 +13,12 @@ mod instances;
 mod migrations;
 mod models;
 mod operations;
+mod runs;
 mod settings;
 mod skins;
 
-pub use models::{CachedResponse, ContentFile, ContentUpdate, PendingOperation, SkinRecord};
+pub use models::{
+    ActiveRun, CachedResponse, ContentFile, ContentUpdate, PendingOperation, SkinRecord,
+};
 
 use migrations::{migrate, SCHEMA_VERSION};

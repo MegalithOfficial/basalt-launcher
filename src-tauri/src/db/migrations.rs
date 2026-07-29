@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 7;
+pub(super) const SCHEMA_VERSION: i64 = 8;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -105,6 +105,13 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             payload TEXT,
             started_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS active_runs(
+            running_id TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            process_started_at INTEGER NOT NULL,
+            started_at INTEGER NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS api_cache(
             key TEXT PRIMARY KEY,
             body TEXT NOT NULL,
@@ -168,6 +175,7 @@ mod tests {
         assert!(column_exists(&conn, "instances", "loader").unwrap());
         assert!(column_exists(&conn, "content_files", "origin").unwrap());
         assert!(super::table_exists(&conn, "api_cache").unwrap());
+        assert!(super::table_exists(&conn, "active_runs").unwrap());
     }
 
     #[test]
