@@ -1,6 +1,9 @@
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
+use cap_std::ambient_authority;
+use cap_std::fs::{Dir, Metadata, OpenOptions};
 use tokio::io::AsyncWriteExt;
 
 use crate::error::{Error, Result};
@@ -9,16 +12,16 @@ use crate::paths::Paths;
 #[derive(Clone)]
 pub struct FileManager {
     paths: Paths,
-    canonical_root: PathBuf,
+    root: Arc<Dir>,
 }
 
 impl FileManager {
     pub fn new(paths: Paths) -> Result<Self> {
-        std::fs::create_dir_all(&paths.root)?;
-        let canonical_root = paths.root.canonicalize()?;
+        Dir::create_ambient_dir_all(&paths.root, ambient_authority())?;
+        let root = Dir::open_ambient_dir(&paths.root, ambient_authority())?;
         Ok(Self {
             paths,
-            canonical_root,
+            root: Arc::new(root),
         })
     }
 
@@ -43,39 +46,42 @@ impl FileManager {
         Ok(())
     }
 
-    fn managed<'a>(&self, path: &'a Path) -> Result<&'a Path> {
-        if !path.starts_with(&self.paths.root)
-            || path
-                .components()
-                .any(|component| matches!(component, Component::ParentDir))
-        {
+    fn relative<'a>(&self, path: &'a Path) -> Result<&'a Path> {
+        let relative = path.strip_prefix(&self.paths.root).map_err(|_| {
+            Error::other(format!("refusing to access unmanaged path {}", path.display()))
+        })?;
+        if relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        }) {
             return Err(Error::other(format!(
                 "refusing to access unmanaged path {}",
                 path.display()
             )));
         }
-        let existing = nearest_existing(path)?;
-        if !existing.canonicalize()?.starts_with(&self.canonical_root) {
-            return Err(Error::other(format!(
-                "refusing to follow a managed path outside {}",
-                self.paths.root.display()
-            )));
+        if relative.as_os_str().is_empty() {
+            return Ok(Path::new("."));
         }
-        Ok(path)
+        Ok(relative)
     }
 
     pub fn ensure_dir(&self, path: impl AsRef<Path>) -> Result<()> {
-        std::fs::create_dir_all(self.managed(path.as_ref())?)?;
+        self.root.create_dir_all(self.relative(path.as_ref())?)?;
         Ok(())
     }
 
     pub async fn ensure_dir_async(&self, path: impl AsRef<Path>) -> Result<()> {
-        tokio::fs::create_dir_all(self.managed(path.as_ref())?).await?;
-        Ok(())
+        let files = self.clone();
+        let path = path.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || files.ensure_dir(path))
+            .await
+            .map_err(|error| Error::other(format!("directory task failed: {error}")))?
     }
 
     pub fn read(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
-        Ok(std::fs::read(self.managed(path.as_ref())?)?)
+        Ok(self.root.read(self.relative(path.as_ref())?)?)
     }
 
     pub fn read_external(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
@@ -83,7 +89,11 @@ impl FileManager {
     }
 
     pub async fn read_async(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
-        Ok(tokio::fs::read(self.managed(path.as_ref())?).await?)
+        let files = self.clone();
+        let path = path.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || files.read(path))
+            .await
+            .map_err(|error| Error::other(format!("read task failed: {error}")))?
     }
 
     pub async fn read_external_async(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
@@ -91,17 +101,19 @@ impl FileManager {
     }
 
     pub async fn read_string_async(&self, path: impl AsRef<Path>) -> Result<String> {
-        Ok(tokio::fs::read_to_string(self.managed(path.as_ref())?).await?)
+        let files = self.clone();
+        let path = path.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            Ok(files
+                .root
+                .read_to_string(files.relative(&path)?)?)
+        })
+        .await
+        .map_err(|error| Error::other(format!("read task failed: {error}")))?
     }
 
     pub fn write_atomic(&self, path: impl AsRef<Path>, bytes: &[u8]) -> Result<()> {
-        let path = self.managed(path.as_ref())?;
-        if let Some(parent) = path.parent() {
-            self.ensure_dir(parent)?;
-        }
-        let mut file = atomic_write_file::AtomicWriteFile::open(path)?;
-        file.write_all(bytes)?;
-        file.commit()?;
+        self.write_atomic_with(path.as_ref(), |file| file.write_all(bytes))?;
         Ok(())
     }
 
@@ -136,23 +148,27 @@ impl FileManager {
         source: impl AsRef<Path>,
         destination: impl AsRef<Path>,
     ) -> Result<u64> {
-        let destination = self.managed(destination.as_ref())?;
-        if let Some(parent) = destination.parent() {
-            self.ensure_dir(parent)?;
-        }
         let mut source = std::fs::File::open(source)?;
-        let mut target = atomic_write_file::AtomicWriteFile::open(destination)?;
-        let size = std::io::copy(&mut source, &mut target)?;
-        target.commit()?;
+        let size = self.write_atomic_with(destination.as_ref(), |target| {
+            std::io::copy(&mut source, target)
+        })?;
         Ok(size)
     }
 
     pub fn exists(&self, path: impl AsRef<Path>) -> Result<bool> {
-        Ok(self.managed(path.as_ref())?.exists())
+        match self.root.metadata(self.relative(path.as_ref())?) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub fn is_file(&self, path: impl AsRef<Path>) -> Result<bool> {
-        Ok(self.managed(path.as_ref())?.is_file())
+        match self.root.metadata(self.relative(path.as_ref())?) {
+            Ok(metadata) => Ok(metadata.is_file()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub fn is_external_file(&self, path: impl AsRef<Path>) -> bool {
@@ -160,33 +176,37 @@ impl FileManager {
     }
 
     pub fn read_dir(&self, path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
-        let entries = std::fs::read_dir(self.managed(path.as_ref())?)?
-            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        let path = path.as_ref();
+        let entries = self
+            .root
+            .read_dir(self.relative(path)?)?
+            .filter_map(|entry| entry.ok().map(|entry| path.join(entry.file_name())))
             .collect();
         Ok(entries)
     }
 
-    pub fn metadata(&self, path: impl AsRef<Path>) -> Result<std::fs::Metadata> {
-        Ok(std::fs::metadata(self.managed(path.as_ref())?)?)
+    pub fn metadata(&self, path: impl AsRef<Path>) -> Result<Metadata> {
+        Ok(self.root.metadata(self.relative(path.as_ref())?)?)
     }
 
     pub fn open(&self, path: impl AsRef<Path>) -> Result<std::fs::File> {
-        Ok(std::fs::File::open(self.managed(path.as_ref())?)?)
+        Ok(self.root.open(self.relative(path.as_ref())?)?.into_std())
     }
 
     pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {
-        let source = self.managed(source.as_ref())?;
-        let destination = self.managed(destination.as_ref())?;
-        if let Some(parent) = destination.parent() {
-            std::fs::create_dir_all(parent)?;
+        let source = self.relative(source.as_ref())?;
+        let destination_path = destination.as_ref();
+        if let Some(parent) = destination_path.parent() {
+            self.ensure_dir(parent)?;
         }
-        std::fs::rename(source, destination)?;
+        let destination = self.relative(destination_path)?;
+        self.root.rename(source, &self.root, destination)?;
         Ok(())
     }
 
     pub fn remove_dir_all_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
-        let path = self.managed(path.as_ref())?;
-        match std::fs::remove_dir_all(path) {
+        let path = self.relative(path.as_ref())?;
+        match self.root.remove_dir_all(path) {
             Ok(()) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
@@ -205,12 +225,19 @@ impl FileManager {
         &self,
         destination: impl AsRef<Path>,
     ) -> Result<StagedFile> {
-        let destination = self.managed(destination.as_ref())?.to_path_buf();
+        let destination = destination.as_ref().to_path_buf();
+        self.relative(&destination)?;
         if let Some(parent) = destination.parent() {
             self.ensure_dir_async(parent).await?;
         }
         let temporary = temporary_path(&destination);
-        let file = tokio::fs::File::create(&temporary).await?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        let file = self
+            .root
+            .open_with(self.relative(&temporary)?, &options)?
+            .into_std();
+        let file = tokio::fs::File::from_std(file);
         Ok(StagedFile {
             files: self.clone(),
             destination,
@@ -221,18 +248,14 @@ impl FileManager {
 
     async fn commit_staged(&self, temporary: PathBuf, destination: PathBuf) -> Result<()> {
         let files = self.clone();
-        tokio::task::spawn_blocking(move || {
-            files.copy_external_into_sync(&temporary, destination)?;
-            files.remove_file_if_exists(temporary)?;
-            Ok(())
-        })
+        tokio::task::spawn_blocking(move || files.replace_staged(&temporary, &destination))
         .await
         .map_err(|error| Error::other(format!("commit task failed: {error}")))?
     }
 
     pub fn remove_file_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
-        let path = self.managed(path.as_ref())?;
-        match std::fs::remove_file(path) {
+        let path = self.relative(path.as_ref())?;
+        match self.root.remove_file(path) {
             Ok(()) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
@@ -240,12 +263,57 @@ impl FileManager {
     }
 
     pub async fn remove_file_if_exists_async(&self, path: impl AsRef<Path>) -> Result<bool> {
-        let path = self.managed(path.as_ref())?;
-        match tokio::fs::remove_file(path).await {
-            Ok(()) => Ok(true),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(error) => Err(error.into()),
+        let files = self.clone();
+        let path = path.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || files.remove_file_if_exists(path))
+            .await
+            .map_err(|error| Error::other(format!("remove task failed: {error}")))?
+    }
+
+    fn write_atomic_with<T>(
+        &self,
+        destination: &Path,
+        write: impl FnOnce(&mut std::fs::File) -> std::io::Result<T>,
+    ) -> Result<T> {
+        self.relative(destination)?;
+        if let Some(parent) = destination.parent() {
+            self.ensure_dir(parent)?;
         }
+        let temporary = temporary_path(destination);
+        let temporary_relative = self.relative(&temporary)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        let mut file = self
+            .root
+            .open_with(temporary_relative, &options)?
+            .into_std();
+
+        let result = (|| {
+            let value = write(&mut file)?;
+            file.sync_all()?;
+            drop(file);
+            self.replace_staged(&temporary, destination)?;
+            Ok(value)
+        })();
+        if result.is_err() {
+            let _ = self.remove_file_if_exists(&temporary);
+        }
+        result
+    }
+
+    fn replace_staged(&self, temporary: &Path, destination: &Path) -> Result<()> {
+        let temporary = self.relative(temporary)?;
+        let destination = self.relative(destination)?;
+        self.root.rename(temporary, &self.root, destination)?;
+        #[cfg(unix)]
+        {
+            let parent = destination
+                .parent()
+                .filter(|path| !path.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."));
+            self.root.open(parent)?.into_std().sync_all()?;
+        }
+        Ok(())
     }
 }
 
@@ -289,7 +357,19 @@ impl Drop for StagedFile {
     fn drop(&mut self) {
         drop(self.file.take());
         if let Some(path) = self.temporary.take() {
-            let _ = self.files.remove_file_if_exists(path);
+            if self.files.remove_file_if_exists(&path).is_err() {
+                let files = self.files.clone();
+                if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                    runtime.spawn(async move {
+                        for _ in 0..5 {
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                            if files.remove_file_if_exists_async(&path).await.is_ok() {
+                                break;
+                            }
+                        }
+                    });
+                }
+            }
         }
     }
 }
@@ -301,21 +381,6 @@ fn temporary_path(path: &Path) -> PathBuf {
         .unwrap_or_default();
     name.push(format!(".{}.part", uuid::Uuid::new_v4()));
     path.with_file_name(name)
-}
-
-fn nearest_existing(path: &Path) -> Result<&Path> {
-    let mut candidate = path;
-    loop {
-        match std::fs::symlink_metadata(candidate) {
-            Ok(_) => return Ok(candidate),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                candidate = candidate
-                    .parent()
-                    .ok_or_else(|| Error::other("managed path has no existing ancestor"))?;
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
 }
 
 #[cfg(test)]
