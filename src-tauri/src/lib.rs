@@ -124,6 +124,7 @@ pub fn run() {
             commands::content_commands::apply_content_update,
             commands::content_commands::get_content_dependents,
             commands::content_commands::list_instance_content,
+            commands::content_commands::list_instance_content_bundle,
             commands::content_commands::toggle_instance_content,
             commands::content_commands::delete_instance_content,
             commands::content_commands::add_instance_content,

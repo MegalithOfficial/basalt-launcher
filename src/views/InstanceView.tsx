@@ -50,6 +50,8 @@ const WORLDS_TAB = {
 const SCHEMATIC_MOD_MARKERS = ["litematica", "worldedit", "schematica", "axiom", "schematic"];
 
 const NO_UPDATES: ContentUpdate[] = [];
+const EMPTY_ITEMS: ContentItem[] = [];
+const ALL_KINDS = ["mods", "resourcepacks", "shaderpacks", "schematics"];
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -102,8 +104,8 @@ export function InstanceView() {
   const [worldImport, setWorldImport] = useState(false);
   const [worldRefresh, setWorldRefresh] = useState(0);
   const [worldsLoading, setWorldsLoading] = useState(false);
-  const [items, setItems] = useState<ContentItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [itemsByTab, setItemsByTab] = useState<Record<string, ContentItem[]>>({});
+  const [loadingTab, setLoadingTab] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [hasSchematicMod, setHasSchematicMod] = useState(false);
@@ -118,22 +120,45 @@ export function InstanceView() {
   const refresh = useCallback(
     async (reconcile = false) => {
       if (!instance || tab === "worlds") return;
-      setLoading(true);
+      const target = tab;
+      setLoadingTab(target);
       try {
-        setItems(await api.listInstanceContent(instance.id, tab, reconcile));
-        void refreshContentSources(instance.id, tab);
+        const listed = await api.listInstanceContent(instance.id, target, reconcile);
+        setItemsByTab((current) => ({ ...current, [target]: listed }));
+        void refreshContentSources(instance.id, target);
       } catch {
-        setItems([]);
+        setItemsByTab((current) => ({ ...current, [target]: [] }));
       } finally {
-        setLoading(false);
+        setLoadingTab((current) => (current === target ? null : current));
       }
     },
     [instance?.id, tab, refreshContentSources],
   );
 
   useEffect(() => {
-    void refresh(true);
-  }, [refresh]);
+    if (!instance) return;
+    const id = instance.id;
+    let live = true;
+    setItemsByTab({});
+    setLoadingTab("*");
+    api
+      .listInstanceContentBundle(id, ALL_KINDS, true)
+      .then((bundle) => {
+        if (!live) return;
+        setItemsByTab(bundle);
+        for (const kind of ALL_KINDS) void refreshContentSources(id, kind);
+      })
+      .catch(() => {
+        if (!live) return;
+        setItemsByTab(Object.fromEntries(ALL_KINDS.map((kind) => [kind, []])));
+      })
+      .finally(() => {
+        if (live) setLoadingTab(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [instance?.id, refreshContentSources]);
 
   useEffect(() => {
     setTab(instance?.loader ? "mods" : "resourcepacks");
@@ -143,25 +168,38 @@ export function InstanceView() {
     if (instance) void refreshUpdates(instance.id);
   }, [instance?.id, refreshUpdates]);
 
+  const modItems = itemsByTab.mods;
+
   useEffect(() => {
     if (!instance) return;
+    if (modItems) {
+      setHasSchematicMod(
+        modItems.some((m) =>
+          SCHEMATIC_MOD_MARKERS.some((marker) =>
+            m.file_name.toLowerCase().includes(marker),
+          ),
+        ),
+      );
+      return;
+    }
     let live = true;
     api
       .listInstanceContent(instance.id, "mods")
       .then((mods) => {
         if (!live) return;
-        const found = mods.some((m) =>
-          SCHEMATIC_MOD_MARKERS.some((marker) =>
-            m.file_name.toLowerCase().includes(marker),
+        setHasSchematicMod(
+          mods.some((m) =>
+            SCHEMATIC_MOD_MARKERS.some((marker) =>
+              m.file_name.toLowerCase().includes(marker),
+            ),
           ),
         );
-        setHasSchematicMod(found);
       })
       .catch(() => live && setHasSchematicMod(false));
     return () => {
       live = false;
     };
-  }, [instance?.id, items]);
+  }, [instance?.id, modItems]);
 
   if (!instance) {
     return (
@@ -179,6 +217,8 @@ export function InstanceView() {
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
   const tabUpdates =
     tab === "worlds" ? NO_UPDATES : updates.filter((u) => u.kind === tab);
+  const items = itemsByTab[tab] ?? EMPTY_ITEMS;
+  const loading = loadingTab !== null && itemsByTab[tab] === undefined;
   const query = filter.trim().toLowerCase();
   const shownItems = query
     ? items.filter(

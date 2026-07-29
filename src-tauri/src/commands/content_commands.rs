@@ -47,6 +47,55 @@ pub async fn list_instance_content(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
+pub async fn list_instance_content_bundle(
+    state: State<'_, AppState>,
+    instance_id: String,
+    kinds: Vec<String>,
+    reconcile: Option<bool>,
+) -> Result<std::collections::HashMap<String, Vec<ContentItem>>> {
+    find_instance(&state, &instance_id)?;
+    let reconcile = reconcile.unwrap_or(false);
+
+    let mut sources_by_kind: std::collections::HashMap<String, Vec<crate::db::ContentFile>> =
+        std::collections::HashMap::new();
+    for kind in &kinds {
+        sources_by_kind.insert(kind.clone(), state.db.content_files(&instance_id, kind)?);
+    }
+    let all_updates = state.db.content_updates(&instance_id)?;
+
+    let mut bundle = std::collections::HashMap::with_capacity(kinds.len());
+    for kind in kinds {
+        if reconcile {
+            let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
+        }
+
+        let mut items = content::list(&state.files, &instance_id, &kind)?;
+        let mut sources: std::collections::HashMap<String, crate::db::ContentFile> = if reconcile {
+            state.db.content_files(&instance_id, &kind)?
+        } else {
+            sources_by_kind.remove(&kind).unwrap_or_default()
+        }
+        .into_iter()
+        .map(|f| (f.file_name.clone(), f))
+        .collect();
+        let mut updates: std::collections::HashMap<String, crate::db::ContentUpdate> = all_updates
+            .iter()
+            .filter(|u| u.kind == kind)
+            .map(|u| (u.file_name.clone(), u.clone()))
+            .collect();
+
+        for item in &mut items {
+            item.source = sources.remove(&item.file_name);
+            item.update = updates.remove(&item.file_name);
+        }
+        bundle.insert(kind, items);
+    }
+
+    Ok(bundle)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn toggle_instance_content(
     state: State<AppState>,
     instance_id: String,

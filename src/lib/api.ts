@@ -86,6 +86,12 @@ export const api = {
     candidateIds: string[],
   ) =>
     call<number>("import_worlds", { instanceId, sourcePath, candidateIds }),
+  listInstanceContentBundle: (instanceId: string, kinds: string[], reconcile = false) =>
+    call<Record<string, ContentItem[]>>("list_instance_content_bundle", {
+      instanceId,
+      kinds,
+      reconcile,
+    }),
   toggleInstanceContent: (instanceId: string, kind: string, fileName: string) =>
     call<boolean>("toggle_instance_content", { instanceId, kind, fileName }),
   deleteInstanceContent: (instanceId: string, kind: string, fileName: string) =>
