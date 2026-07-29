@@ -180,8 +180,8 @@ impl FileManager {
         let entries = self
             .root
             .read_dir(self.relative(path)?)?
-            .filter_map(|entry| entry.ok().map(|entry| path.join(entry.file_name())))
-            .collect();
+            .map(|entry| entry.map(|entry| path.join(entry.file_name())))
+            .collect::<std::io::Result<Vec<_>>>()?;
         Ok(entries)
     }
 
@@ -204,8 +204,11 @@ impl FileManager {
         Ok(())
     }
 
-    pub fn remove_dir_all_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
+    fn remove_dir_all_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
         let path = self.relative(path.as_ref())?;
+        if path == Path::new(".") {
+            return Err(Error::other("refusing to remove the managed root"));
+        }
         match self.root.remove_dir_all(path) {
             Ok(()) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -402,6 +405,9 @@ mod tests {
         assert!(files.read("/tmp/not-basalt").is_err());
         assert!(files
             .write_atomic(files.paths().root.join("../escape"), b"no")
+            .is_err());
+        assert!(files
+            .remove_dir_all_if_exists(&files.paths().root)
             .is_err());
     }
 
