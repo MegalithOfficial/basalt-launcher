@@ -45,11 +45,11 @@ pub fn run() {
             let files = FileManager::new(paths.clone())?;
             files.ensure_base_dirs()?;
 
-            let log_state = logging::init(app.handle(), &paths, logging::DEFAULT_LEVEL)?;
+            let log_state = logging::init(app.handle(), &files, logging::DEFAULT_LEVEL)?;
             tracing::info!(
                 version = env!("CARGO_PKG_VERSION"),
                 data_dir = %paths.root.display(),
-                log_file = %logging::log_file(&paths).display(),
+                log_file = %logging::log_file(&files).display(),
                 "basalt starting"
             );
             app.manage(log_state);

@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::files::FileManager;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct JavaInfo {
     pub path: String,
@@ -53,16 +55,15 @@ fn home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-pub fn runtime_binaries_in(root: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(root) else {
+pub fn runtime_binaries_in(files: &FileManager, root: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = files.read_external_dir(root) else {
         return Vec::new();
     };
     let mut found = Vec::new();
-    for entry in entries.flatten() {
-        let base = entry.path();
+    for base in entries {
         for relative in ["bin", "Contents/Home/bin", "jre/bin"] {
             let bin = base.join(relative).join(java_binary());
-            if bin.is_file() {
+            if files.is_external_file(&bin) {
                 found.push(bin);
             }
         }
@@ -105,7 +106,7 @@ fn install_roots() -> Vec<PathBuf> {
     roots
 }
 
-async fn candidates(explicit: Option<&str>) -> Vec<JavaInfo> {
+async fn candidates(files: &FileManager, explicit: Option<&str>) -> Vec<JavaInfo> {
     let mut paths: Vec<String> = Vec::new();
     if let Some(path) = explicit {
         paths.push(path.to_string());
@@ -130,7 +131,7 @@ async fn candidates(explicit: Option<&str>) -> Vec<JavaInfo> {
     }
     for root in install_roots() {
         paths.extend(
-            runtime_binaries_in(&root)
+            runtime_binaries_in(files, &root)
                 .into_iter()
                 .map(|p| p.display().to_string()),
         );
@@ -138,7 +139,8 @@ async fn candidates(explicit: Option<&str>) -> Vec<JavaInfo> {
 
     let mut seen = std::collections::HashSet::new();
     paths.retain(|path| {
-        let key = std::fs::canonicalize(path)
+        let key = files
+            .canonicalize_external(path)
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| path.clone());
         seen.insert(key)
@@ -155,15 +157,12 @@ async fn candidates(explicit: Option<&str>) -> Vec<JavaInfo> {
     found
 }
 
-pub async fn detect(explicit: Option<&str>) -> Option<JavaInfo> {
-    candidates(explicit).await.into_iter().next()
-}
-
-pub async fn list_all() -> Vec<JavaInfo> {
+pub async fn list_all(files: &FileManager) -> Vec<JavaInfo> {
     let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();
-    for info in candidates(None).await {
-        let canonical = std::fs::canonicalize(&info.path)
+    for info in candidates(files, None).await {
+        let canonical = files
+            .canonicalize_external(&info.path)
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| info.path.clone());
         if seen.insert(canonical.clone()) {
@@ -186,7 +185,11 @@ pub fn pick(found: &[JavaInfo], required: u32) -> Option<JavaInfo> {
         .cloned()
 }
 
-pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<JavaInfo> {
+pub async fn find_for_major(
+    files: &FileManager,
+    required: u32,
+    explicit: Option<&str>,
+) -> Option<JavaInfo> {
     if let Some(path) = explicit.map(str::trim).filter(|p| !p.is_empty()) {
         match probe(path).await {
             Some(info) => {
@@ -200,7 +203,7 @@ pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<Jav
         }
     }
 
-    let found = candidates(None).await;
+    let found = candidates(files, None).await;
     let picked = pick(&found, required);
     match &picked {
         Some(java) => tracing::debug!(required, major = java.major, path = %java.path, "java selected"),
@@ -212,6 +215,8 @@ pub async fn find_for_major(required: u32, explicit: Option<&str>) -> Option<Jav
 #[cfg(test)]
 mod tests {
     use super::{install_roots, java_binary, parse_major, pick, runtime_binaries_in, JavaInfo};
+    use crate::files::FileManager;
+    use crate::paths::Paths;
 
     fn java(major: u32) -> JavaInfo {
         JavaInfo {
@@ -230,10 +235,11 @@ mod tests {
         }
         std::fs::create_dir_all(root.join("not-a-jdk/share")).unwrap();
 
-        let found = runtime_binaries_in(&root);
+        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let found = runtime_binaries_in(&files, &root);
         assert_eq!(found.len(), 3, "found: {found:?}");
         assert!(found.iter().all(|p| p.ends_with(java_binary())));
-        assert!(runtime_binaries_in(&root.join("missing")).is_empty());
+        assert!(runtime_binaries_in(&files, &root.join("missing")).is_empty());
         std::fs::remove_dir_all(root).ok();
     }
 

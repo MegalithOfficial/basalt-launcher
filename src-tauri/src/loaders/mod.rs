@@ -180,7 +180,7 @@ async fn run_installer(
     }
 
     let vanilla = install::load_merged_version(state, &instance.version_id).await?;
-    let java = java::find_for_major(vanilla.required_java_major(), None)
+    let java = java::find_for_major(&state.files, vanilla.required_java_major(), None)
         .await
         .ok_or_else(|| Error::other("No Java found to run the loader installer."))?;
 

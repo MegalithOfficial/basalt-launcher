@@ -55,8 +55,8 @@ pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
 
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
-pub async fn list_javas() -> Result<Vec<java::JavaInfo>> {
-    Ok(java::list_all().await)
+pub async fn list_javas(state: State<'_, AppState>) -> Result<Vec<java::JavaInfo>> {
+    Ok(java::list_all(&state.files).await)
 }
 
 #[tauri::command]
@@ -491,7 +491,7 @@ pub async fn get_java_status(
         .java_path
         .clone()
         .or_else(|| state.db.load_settings().ok().and_then(|s| s.java_path));
-    let found = java::find_for_major(required_major, explicit.as_deref()).await;
+    let found = java::find_for_major(&state.files, required_major, explicit.as_deref()).await;
     let ok = found.as_ref().map_or(false, |j| j.major >= required_major);
 
     Ok(JavaStatus {
@@ -1047,7 +1047,7 @@ pub fn clear_log_records(logs: State<LogState>) -> Result<()> {
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn get_log_config(state: State<AppState>) -> Result<LogConfig> {
-    Ok(logging::config(&state.paths))
+    Ok(logging::config(&state.files))
 }
 
 #[tauri::command]
@@ -1057,7 +1057,7 @@ pub fn set_log_level(state: State<AppState>, level: String) -> Result<LogConfig>
     let mut settings = state.db.load_settings()?;
     settings.log_level = logging::normalize_level(&level).to_string();
     state.db.save_settings(&settings)?;
-    Ok(logging::config(&state.paths))
+    Ok(logging::config(&state.files))
 }
 
 #[tauri::command]

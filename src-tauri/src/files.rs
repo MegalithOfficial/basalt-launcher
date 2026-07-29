@@ -175,6 +175,16 @@ impl FileManager {
         path.as_ref().is_file()
     }
 
+    pub fn read_external_dir(&self, path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
+        Ok(std::fs::read_dir(path)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?)
+    }
+
+    pub fn canonicalize_external(&self, path: impl AsRef<Path>) -> Result<PathBuf> {
+        Ok(std::fs::canonicalize(path)?)
+    }
+
     pub fn read_dir(&self, path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
         let path = path.as_ref();
         let entries = self

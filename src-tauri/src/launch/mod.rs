@@ -226,7 +226,7 @@ pub async fn launch_instance(
     let settings = state.db.load_settings()?;
     let explicit = instance.java_path.clone().or(settings.java_path.clone());
     let required = version.required_java_major();
-    let java = java::find_for_major(required, explicit.as_deref())
+    let java = java::find_for_major(&state.files, required, explicit.as_deref())
         .await
         .ok_or_else(|| {
             Error::other(format!(

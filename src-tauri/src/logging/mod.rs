@@ -19,7 +19,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{reload, EnvFilter, Registry};
 
 use crate::error::{Error, Result};
-use crate::paths::Paths;
+use crate::files::FileManager;
 
 const RING_CAPACITY: usize = 5000;
 const LOG_FILE_RETENTION: usize = 7;
@@ -244,18 +244,20 @@ pub fn env_override() -> Option<String> {
     std::env::var(ENV_VAR).ok()
 }
 
-pub fn log_file(paths: &Paths) -> PathBuf {
+pub fn log_file(files: &FileManager) -> PathBuf {
     let stamp = chrono::Utc::now().format("%Y-%m-%d");
-    paths
+    files
+        .paths()
         .logs()
         .join(format!("{FILE_PREFIX}.{stamp}.{FILE_SUFFIX}"))
 }
 
-pub fn config(paths: &Paths) -> LogConfig {
+pub fn config(files: &FileManager) -> LogConfig {
+    let paths = files.paths();
     LogConfig {
         level: current_level(),
         directory: paths.logs().display().to_string(),
-        file: log_file(paths).display().to_string(),
+        file: log_file(files).display().to_string(),
         env_override: env_override(),
         levels: LEVELS.iter().map(|l| l.to_string()).collect(),
     }
@@ -320,9 +322,9 @@ fn spawn_bridge(app: AppHandle, mut rx: tokio::sync::mpsc::UnboundedReceiver<Log
     });
 }
 
-pub fn init(app: &AppHandle, paths: &Paths, level: &str) -> Result<LogState> {
-    let directory = paths.logs();
-    std::fs::create_dir_all(&directory)?;
+pub fn init(app: &AppHandle, files: &FileManager, level: &str) -> Result<LogState> {
+    let directory = files.paths().logs();
+    files.ensure_dir(&directory)?;
 
     let appender = RollingBuilder::new()
         .rotation(Rotation::DAILY)
