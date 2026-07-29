@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Boxes, Check, ChevronDown, X } from "lucide-react";
+import { Boxes, Check, ChevronDown, Compass, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
@@ -9,29 +9,61 @@ import type { Instance } from "../lib/types";
 function InstanceRow({
   instance,
   selected,
+  incompatible,
+  installed,
   onClick,
 }: {
   instance: Instance;
   selected: boolean;
+  incompatible?: boolean;
+  installed?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={installed ? undefined : onClick}
+      disabled={installed}
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-        selected ? "bg-[var(--accent-glow)]" : "hover:bg-surface-2",
+        installed
+          ? "cursor-not-allowed opacity-60"
+          : selected
+            ? "bg-[var(--accent-glow)]"
+            : "hover:bg-surface-2",
       )}
     >
-      <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+      <div
+        className={cn(
+          "grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint",
+          incompatible && "opacity-50",
+        )}
+      >
         <Boxes className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-content">{instance.name}</div>
+        <div
+          className={cn(
+            "truncate text-sm font-medium",
+            incompatible ? "text-content-muted" : "text-content",
+          )}
+        >
+          {instance.name}
+        </div>
         <div className="truncate text-[11px] text-content-faint">
           {instance.version_id} · {loaderLabel(instance)}
         </div>
       </div>
+      {installed ? (
+        <span className="shrink-0 rounded bg-ok/15 px-1.5 py-0.5 text-[10px] font-medium text-ok">
+          Installed
+        </span>
+      ) : (
+        incompatible && (
+          <span className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] font-medium text-warn">
+            Mismatch
+          </span>
+        )
+      )}
       {selected && <Check className="size-4 shrink-0 text-[var(--accent)]" />}
     </button>
   );
@@ -41,49 +73,63 @@ export function InstanceTargetPicker({
   instances,
   selected,
   onSelect,
+  onCancel,
   modalFor,
+  isCompatible,
+  isInstalled,
 }: {
   instances: Instance[];
   selected: Instance | null;
   onSelect: (instance: Instance | null) => void;
+  onCancel?: () => void;
   modalFor?: string | null;
+  isCompatible?: (instance: Instance) => boolean;
+  isInstalled?: (instance: Instance) => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const isModal = modalFor != null;
+  const close = () => (onCancel ? onCancel() : onSelect(null));
+  const ranked = isCompatible
+    ? [...instances].sort(
+        (a, b) => Number(isCompatible(b)) - Number(isCompatible(a)) || a.name.localeCompare(b.name),
+      )
+    : instances;
   if (isModal) {
     return (
-      <Modal open onClose={() => onSelect(null)} nested>
-            <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
-              <div className="min-w-0">
-                <h2 className="font-display text-base font-semibold text-content">
-                  Install to which instance?
-                </h2>
-                <div className="mt-0.5 truncate text-xs text-content-muted">{modalFor}</div>
-              </div>
-              <button
-                onClick={() => onSelect(null)}
-                aria-label="Cancel"
-                className="grid size-7 shrink-0 place-items-center rounded-md text-content-faint transition-colors hover:bg-surface-2 hover:text-content"
-              >
-                <X className="size-4" />
-              </button>
+      <Modal open onClose={close} nested>
+        <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="font-display text-base font-semibold text-content">
+              Install to which instance?
+            </h2>
+            <div className="mt-0.5 truncate text-xs text-content-muted">{modalFor}</div>
+          </div>
+          <button
+            onClick={close}
+            aria-label="Cancel"
+            className="grid size-7 shrink-0 place-items-center rounded-md text-content-faint transition-colors hover:bg-surface-2 hover:text-content"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {ranked.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-content-faint">
+              Create an instance first.
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {instances.length === 0 ? (
-                <div className="px-3 py-8 text-center text-sm text-content-faint">
-                  Create an instance first.
-                </div>
-              ) : (
-                instances.map((instance) => (
-                  <InstanceRow
-                    key={instance.id}
-                    instance={instance}
-                    selected={false}
-                    onClick={() => onSelect(instance)}
-                  />
-                ))
-              )}
-            </div>
+          ) : (
+            ranked.map((instance) => (
+              <InstanceRow
+                key={instance.id}
+                instance={instance}
+                selected={false}
+                incompatible={isCompatible ? !isCompatible(instance) : false}
+                installed={isInstalled?.(instance)}
+                onClick={() => onSelect(instance)}
+              />
+            ))
+          )}
+        </div>
       </Modal>
     );
   }
@@ -99,9 +145,9 @@ export function InstanceTargetPicker({
             : "border-dashed border-border text-content-faint hover:text-content",
         )}
       >
-        <Boxes className="size-3.5" />
+        {selected ? <Boxes className="size-3.5" /> : <Compass className="size-3.5" />}
         <span className="max-w-[14rem] truncate">
-          {selected ? selected.name : "Choose instance"}
+          {selected ? selected.name : "Browsing only"}
         </span>
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
       </button>
@@ -110,6 +156,30 @@ export function InstanceTargetPicker({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-50 mt-1.5 max-h-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1.5 shadow-2xl">
+            <button
+              onClick={() => {
+                onSelect(null);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
+                selected ? "hover:bg-surface-2" : "bg-[var(--accent-glow)]",
+              )}
+            >
+              <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+                <Compass className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-content">Browsing only</div>
+                <div className="truncate text-[11px] text-content-faint">
+                  Pick an instance when you install
+                </div>
+              </div>
+              {!selected && <Check className="size-4 shrink-0 text-[var(--accent)]" />}
+            </button>
+
+            <div className="my-1 h-px bg-border-soft" />
+
             {instances.length === 0 ? (
               <div className="px-3 py-6 text-center text-xs text-content-faint">
                 No instances yet.

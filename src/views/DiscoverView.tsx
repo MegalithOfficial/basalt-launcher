@@ -14,6 +14,7 @@ import {
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import type {
+  Instance,
   ContentKind,
   FilterTaxonomy,
   InstallPlan,
@@ -69,6 +70,7 @@ const PAGE_SIZE = 40;
 interface PendingInstall {
   project: ProjectSummary;
   plan: InstallPlan;
+  into: Instance;
 }
 
 export function DiscoverView() {
@@ -88,7 +90,8 @@ export function DiscoverView() {
   const contentProgress = useInstanceTask(targetId);
   const activeProjects = useActiveProjectIds();
   const activeTasks = useActiveTasksByProject();
-  const sources = useStore((s) => s.contentSources[`${targetId}:${s.discoverKind}`]);
+  const allSources = useStore((s) => s.contentSources);
+  const sources = allSources[`${targetId}:${kind}`];
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
 
@@ -160,8 +163,19 @@ export function DiscoverView() {
   }, [query, sort, filters]);
 
   useEffect(() => {
-    if (target && kind !== "modpacks") void refreshContentSources(target.id, kind);
-  }, [target?.id, kind, refreshContentSources]);
+    if (kind === "modpacks") return;
+    if (target) {
+      void refreshContentSources(target.id, kind);
+      return;
+    }
+    for (const instance of instances) void refreshContentSources(instance.id, kind);
+  }, [target?.id, kind, instances, refreshContentSources]);
+
+  const installedIn = useCallback(
+    (projectId: string) =>
+      instances.filter((instance) => !!allSources[`${instance.id}:${kind}`]?.[projectId]),
+    [instances, allSources, kind],
+  );
 
   const signature = JSON.stringify({ provider, kind, query, sort, filters, offset });
   const firstRun = useRef(true);
@@ -218,7 +232,21 @@ export function DiscoverView() {
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  const beginInstall = async (project: ProjectSummary) => {
+  const isCompatible = useCallback(
+    (instance: Instance, project: ProjectSummary) => {
+      const versionOk =
+        project.game_versions.length === 0 ||
+        project.game_versions.includes(instance.version_id);
+      if (kind !== "mods") return versionOk;
+      if (!instance.loader) return false;
+      const accepted =
+        instance.loader === "quilt" ? ["quilt", "fabric"] : [instance.loader];
+      return versionOk && project.loaders.some((l) => accepted.includes(l));
+    },
+    [kind],
+  );
+
+  const beginInstall = async (project: ProjectSummary, into?: Instance) => {
     if (isPack) {
       setInstallingPack(project.id);
       setError(null);
@@ -246,7 +274,8 @@ export function DiscoverView() {
       return;
     }
 
-    if (!target) {
+    const destination = into ?? target;
+    if (!destination) {
       setNeedsTarget(project);
       return;
     }
@@ -258,19 +287,19 @@ export function DiscoverView() {
       const plan = await api.planContentInstall(
         provider,
         project.id,
-        target.id,
+        destination.id,
         kind,
-        target.version_id,
-        kind === "mods" ? target.loader : null,
+        destination.version_id,
+        kind === "mods" ? destination.loader : null,
       );
       const trivial =
         plan.dependencies.length === 0 &&
         plan.skipped.length === 0 &&
         plan.conflicts.length === 0;
       if (trivial) {
-        await runInstall(project, true);
+        await runInstall(project, true, destination);
       } else {
-        setPending({ project, plan });
+        setPending({ project, plan, into: destination });
       }
     } catch (e) {
       setError(String(e));
@@ -279,24 +308,29 @@ export function DiscoverView() {
     }
   };
 
-  const runInstall = async (project: ProjectSummary, withDependencies: boolean) => {
-    if (!target) return;
+  const runInstall = async (
+    project: ProjectSummary,
+    withDependencies: boolean,
+    into?: Instance,
+  ) => {
+    const destination = into ?? target;
+    if (!destination) return;
     setError(null);
     try {
       const files = await installContent({
         provider,
         projectId: project.id,
-        instanceId: target.id,
+        instanceId: destination.id,
         kind,
-        gameVersion: target.version_id,
-        loader: kind === "mods" ? target.loader : null,
+        gameVersion: destination.version_id,
+        loader: kind === "mods" ? destination.loader : null,
         withDependencies,
       });
       setPending(null);
       setNotice(
         files.length > 1
-          ? `Installed ${project.title} and ${files.length - 1} more into ${target.name}`
-          : `Installed ${project.title} into ${target.name}`,
+          ? `Installed ${project.title} and ${files.length - 1} more into ${destination.name}`
+          : `Installed ${project.title} into ${destination.name}`,
       );
     } catch (e) {
       setPending(null);
@@ -473,6 +507,7 @@ export function DiscoverView() {
                     (i) => i.pack_project_id === project.id,
                   );
                   const installedFile = sources?.[project.id]?.file_name;
+                  const alsoIn = target ? [] : installedIn(project.id);
                   const busy =
                     planning === project.id ||
                     installingPack === project.id ||
@@ -496,7 +531,9 @@ export function DiscoverView() {
                           : undefined
                         : installedFile
                           ? `Installed · ${installedFile}`
-                          : undefined,
+                          : alsoIn.length > 0
+                            ? `Installed in ${alsoIn.map((i) => i.name).join(", ")}`
+                            : undefined,
                     onOpen: () => openProject(provider, project.id, kind),
                     action: done ? (
                       <button
@@ -570,8 +607,8 @@ export function DiscoverView() {
         plan={pending?.plan ?? null}
         busy={!!pending && activeProjects.has(pending.project.id)}
         progress={contentProgress ?? null}
-        onConfirm={() => pending && runInstall(pending.project, true)}
-        onSkipDependencies={() => pending && runInstall(pending.project, false)}
+        onConfirm={() => pending && runInstall(pending.project, true, pending.into)}
+        onSkipDependencies={() => pending && runInstall(pending.project, false, pending.into)}
         onCancel={() => setPending(null)}
       />
 
@@ -580,13 +617,15 @@ export function DiscoverView() {
           instances={instances}
           selected={null}
           modalFor={needsTarget.title}
+          isCompatible={(instance) => isCompatible(instance, needsTarget)}
+          isInstalled={(instance) =>
+            !!allSources[`${instance.id}:${kind}`]?.[needsTarget.id]
+          }
+          onCancel={() => setNeedsTarget(null)}
           onSelect={(instance) => {
             const project = needsTarget;
             setNeedsTarget(null);
-            if (instance) {
-              setTarget(instance.id);
-              setTimeout(() => void beginInstall(project), 0);
-            }
+            if (instance) void beginInstall(project, instance);
           }}
         />
       )}
