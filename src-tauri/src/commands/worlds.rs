@@ -95,3 +95,49 @@ pub async fn import_worlds(
     task.finish(&result);
     result
 }
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn delete_instance_world(
+    state: State<'_, AppState>,
+    instance_id: String,
+    folder_name: String,
+) -> Result<()> {
+    find_instance(&state, &instance_id)?;
+
+    let running = state.running.lock().unwrap().values().any(|handle| {
+        handle.instance_id == instance_id && handle.status.lock().unwrap().state == "running"
+    });
+    if running {
+        return Err(Error::other("Stop this instance before deleting a world."));
+    }
+
+    if folder_name.trim().is_empty()
+        || folder_name.contains('/')
+        || folder_name.contains('\\')
+        || folder_name.contains("..")
+    {
+        return Err(Error::other(format!("not a world folder: {folder_name}")));
+    }
+
+    let saves = state
+        .files
+        .paths()
+        .instance_saves_dir_checked(&instance_id)
+        .ok_or_else(|| Error::other("invalid instance id"))?;
+    let dir = saves.join(&folder_name);
+    if dir.parent() != Some(saves.as_path()) {
+        return Err(Error::other(format!("not a world folder: {folder_name}")));
+    }
+
+    let files = state.files.clone();
+    let removed = tokio::task::spawn_blocking(move || files.remove_managed_dir_all_if_exists(&dir))
+        .await
+        .map_err(|error| Error::other(format!("world delete task failed: {error}")))??;
+
+    if !removed {
+        return Err(Error::NotFound(format!("world {folder_name}")));
+    }
+    tracing::info!(world = %folder_name, "world deleted");
+    Ok(())
+}

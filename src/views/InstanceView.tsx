@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowUpCircle,
   FileBox,
+  HardDriveUpload,
   Loader2,
   Package,
   Pencil,
@@ -98,6 +99,9 @@ export function InstanceView() {
   const activeProjects = useActiveProjectIds();
 
   const [tab, setTab] = useState<InstanceTab>("mods");
+  const [worldImport, setWorldImport] = useState(false);
+  const [worldRefresh, setWorldRefresh] = useState(0);
+  const [worldsLoading, setWorldsLoading] = useState(false);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -171,7 +175,7 @@ export function InstanceView() {
     ? TABS
     : TABS.filter((t) => t.kind === "resourcepacks");
   const contentTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
-  const allTabs = [WORLDS_TAB, ...contentTabs];
+  const allTabs = [...contentTabs, WORLDS_TAB];
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
   const tabUpdates =
     tab === "worlds" ? NO_UPDATES : updates.filter((u) => u.kind === tab);
@@ -365,45 +369,65 @@ export function InstanceView() {
             );
           })}
         </div>
-        {tab !== "worlds" && (
-          <div className="mb-2 flex items-center gap-2">
-            {tabUpdates.length > 0 && (
-              <button
-                onClick={updateAll}
-                disabled={updatingAll}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60"
-              >
-                {updatingAll ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <ArrowUpCircle className="size-3.5" />
-                )}
-                Update all ({tabUpdates.length})
-              </button>
-            )}
-            <button
-              onClick={checkUpdates}
-              disabled={checkingUpdates}
-              title="Check for updates"
-              aria-label="Check for updates"
-              className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-60"
-            >
-              <RefreshCw className={cn("size-3.5", checkingUpdates && "animate-spin")} />
-            </button>
-            <button
-              onClick={addContent}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
-            >
+        <div className="mb-2 flex items-center gap-2">
+          {tab !== "worlds" && (
+            <>
+              {tabUpdates.length > 0 && (
+                <button
+                  onClick={updateAll}
+                  disabled={updatingAll}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60"
+                >
+                  {updatingAll ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <ArrowUpCircle className="size-3.5" />
+                  )}
+                  Update all ({tabUpdates.length})
+                </button>
+              )}
+            </>
+          )}
+          <button
+            onClick={() =>
+              tab === "worlds" ? setWorldRefresh((v) => v + 1) : void checkUpdates()
+            }
+            disabled={tab === "worlds" ? worldsLoading : checkingUpdates}
+            title={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
+            aria-label={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
+            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-60"
+          >
+            <RefreshCw
+              className={cn(
+                "size-3.5",
+                (tab === "worlds" ? worldsLoading : checkingUpdates) && "animate-spin",
+              )}
+            />
+          </button>
+          <button
+            onClick={() => (tab === "worlds" ? setWorldImport(true) : void addContent())}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+          >
+            {tab === "worlds" ? (
+              <HardDriveUpload className="size-3.5" />
+            ) : (
               <Plus className="size-3.5" />
-              Add content
-            </button>
-          </div>
-        )}
+            )}
+            {tab === "worlds" ? "Import world" : "Add content"}
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "worlds" ? (
-          <WorldsPanel instance={instance} running={gameRunning} />
+          <WorldsPanel
+            instance={instance}
+            running={gameRunning}
+            importOpen={worldImport}
+            onImportOpenChange={setWorldImport}
+            refreshToken={worldRefresh}
+            onLoadingChange={setWorldsLoading}
+          />
         ) : (
           <div className="px-6 py-5">
           {items.length > 0 && (

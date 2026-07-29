@@ -78,6 +78,8 @@ export const api = {
     call<WorldSummary[]>("list_instance_worlds", { instanceId }),
   inspectWorldSource: (sourcePath: string) =>
     call<WorldImportInspection>("inspect_world_source", { sourcePath }),
+  deleteInstanceWorld: (instanceId: string, folderName: string) =>
+    call<void>("delete_instance_world", { instanceId, folderName }),
   importWorlds: (
     instanceId: string,
     sourcePath: string,

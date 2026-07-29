@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Archive,
   Check,
@@ -7,9 +8,9 @@ import {
   Globe2,
   HardDriveUpload,
   Loader2,
-  RefreshCw,
   Search,
   ShieldAlert,
+  Trash2,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -369,21 +370,177 @@ function ImportDialog({
   );
 }
 
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium capitalize text-content-muted">
+      {children}
+    </span>
+  );
+}
+
+function WorldCard({
+  world,
+  running,
+  onOpenFolder,
+  onDelete,
+}: {
+  world: WorldSummary;
+  running: boolean;
+  onOpenFolder: () => void;
+  onDelete: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const chips = [
+    world.game_mode || null,
+    difficultyLabel(world.difficulty),
+    versionLabel(world.version_name, world.data_version),
+  ].filter(Boolean) as string[];
+
+  return (
+    <div
+      className={cn(
+        "group relative flex min-w-0 gap-3.5 overflow-hidden rounded-2xl border bg-surface-2/60 p-3.5 transition-colors",
+        world.status === "damaged"
+          ? "border-danger/25"
+          : "border-border-soft hover:border-border",
+      )}
+    >
+      {world.icon_data_url ? (
+        <img
+          src={world.icon_data_url}
+          alt=""
+          className="size-16 shrink-0 rounded-xl bg-surface-3 object-cover [image-rendering:pixelated]"
+          draggable={false}
+        />
+      ) : (
+        <div className="grid size-16 shrink-0 place-items-center rounded-xl bg-surface-3 text-content-faint">
+          <Globe2 className="size-6" />
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-semibold text-content">{world.name}</span>
+          {world.hardcore && (
+            <span className="shrink-0 rounded-md bg-danger/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-danger">
+              Hardcore
+            </span>
+          )}
+          <StatusBadge status={world.status} />
+        </div>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          {chips.map((chip) => (
+            <Chip key={chip}>{chip}</Chip>
+          ))}
+        </div>
+
+        <div className="truncate text-[11px] text-content-faint">
+          {world.error ? (
+            <span className="text-danger">{world.error}</span>
+          ) : (
+            <>
+              {world.last_played_ms != null
+                ? `Played ${relativeTime(Math.floor(world.last_played_ms / 1000))}`
+                : "Never played"}
+              {" · "}
+              <span className="font-mono">{world.folder_name}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <button
+          onClick={onOpenFolder}
+          title="Open the world folder"
+          aria-label="Open the world folder"
+          className="grid size-8 place-items-center rounded-lg bg-surface-3/90 text-content-faint backdrop-blur transition-colors hover:bg-surface-3 hover:text-content"
+        >
+          <FolderOpen className="size-3.5" />
+        </button>
+        <button
+          onClick={() => setConfirming(true)}
+          disabled={running}
+          title={running ? "Stop the game before deleting a world" : "Delete this world"}
+          aria-label="Delete this world"
+          className={cn(
+            "grid size-8 place-items-center rounded-lg bg-surface-3/90 backdrop-blur transition-colors",
+            running
+              ? "cursor-not-allowed text-content-faint/40"
+              : "text-content-faint hover:bg-danger hover:text-white",
+          )}
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+
+      {confirming && (
+        <div className="absolute inset-0 z-10 flex items-center gap-3 rounded-2xl border border-danger/40 bg-base/95 px-3.5 backdrop-blur">
+          <TriangleAlert className="size-4 shrink-0 text-danger" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-semibold text-content">
+              Delete {world.name}?
+            </div>
+            <div className="text-[11px] text-content-faint">
+              The save folder is removed from disk. This cannot be undone.
+            </div>
+          </div>
+          <button
+            onClick={() => setConfirming(false)}
+            disabled={busy}
+            className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-content-muted transition-colors hover:text-content disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onDelete();
+              } finally {
+                setBusy(false);
+                setConfirming(false);
+              }
+            }}
+            disabled={busy}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/15 px-2.5 py-1.5 text-xs font-semibold text-danger transition-colors hover:bg-danger/25 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorldsPanel({
   instance,
   running,
+  importOpen,
+  onImportOpenChange,
+  refreshToken,
+  onLoadingChange,
 }: {
   instance: Instance;
   running: boolean;
+  importOpen: boolean;
+  onImportOpenChange: (open: boolean) => void;
+  refreshToken: number;
+  onLoadingChange: (loading: boolean) => void;
 }) {
   const [worlds, setWorlds] = useState<WorldSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    onLoadingChange(true);
     setError(null);
     try {
       setWorlds(await api.listInstanceWorlds(instance.id));
@@ -392,12 +549,25 @@ export function WorldsPanel({
       setError(String(cause));
     } finally {
       setLoading(false);
+      onLoadingChange(false);
     }
-  }, [instance.id]);
+  }, [instance.id, onLoadingChange]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, refreshToken]);
+
+  useEffect(() => () => onLoadingChange(false), [onLoadingChange]);
+
+  const remove = async (world: WorldSummary) => {
+    setError(null);
+    try {
+      await api.deleteInstanceWorld(instance.id, world.folder_name);
+      await refresh();
+    } catch (cause) {
+      setError(String(cause));
+    }
+  };
 
   const shownWorlds = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -431,22 +601,6 @@ export function WorldsPanel({
                 : `${shownWorlds.length} of ${worlds.length}`}
             </span>
           )}
-          <button
-            onClick={() => void refresh()}
-            disabled={loading}
-            title="Refresh worlds"
-            aria-label="Refresh worlds"
-            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-60"
-          >
-            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-          </button>
-          <button
-            onClick={() => setImportOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
-          >
-            <HardDriveUpload className="size-3.5" />
-            Import
-          </button>
         </div>
       </div>
 
@@ -471,7 +625,7 @@ export function WorldsPanel({
             extracted save or a ZIP backup.
           </p>
           <button
-            onClick={() => setImportOpen(true)}
+            onClick={() => onImportOpenChange(true)}
             className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
           >
             <HardDriveUpload className="size-3.5" />
@@ -483,57 +637,17 @@ export function WorldsPanel({
           Nothing matches “{filter}”.
         </div>
       ) : (
-        <div className="grid gap-2 lg:grid-cols-2">
+        <div className="grid gap-3 lg:grid-cols-2">
           {shownWorlds.map((world) => (
-            <div
+            <WorldCard
               key={world.folder_name}
-              className={cn(
-                "flex min-w-0 items-center gap-3 rounded-xl border bg-surface-2/70 px-3.5 py-3",
-                world.status === "damaged"
-                  ? "border-danger/25"
-                  : "border-border-soft",
-              )}
-            >
-              {world.icon_data_url ? (
-                <img
-                  src={world.icon_data_url}
-                  alt=""
-                  className="size-11 shrink-0 rounded-lg bg-surface-3 object-cover [image-rendering:pixelated]"
-                  draggable={false}
-                />
-              ) : (
-                <div className="grid size-11 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
-                  <Globe2 className="size-5" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-content">
-                    {world.name}
-                  </span>
-                  {world.hardcore && (
-                    <span className="shrink-0 rounded-md bg-danger/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-danger">
-                      Hardcore
-                    </span>
-                  )}
-                  <StatusBadge status={world.status} />
-                </div>
-                <div className="mt-0.5 truncate text-[11px] text-content-faint">
-                  {world.folder_name} ·{" "}
-                  {versionLabel(world.version_name, world.data_version)}
-                  {world.game_mode && ` · ${world.game_mode}`}
-                  {difficultyLabel(world.difficulty) &&
-                    ` · ${difficultyLabel(world.difficulty)}`}
-                </div>
-                <div className="mt-1 text-[10px] text-content-faint">
-                  {world.error
-                    ? world.error
-                    : world.last_played_ms != null
-                      ? `Played ${relativeTime(Math.floor(world.last_played_ms / 1000))}`
-                      : "Never played"}
-                </div>
-              </div>
-            </div>
+              world={world}
+              running={running}
+              onOpenFolder={() =>
+                void openPath(`${instance.dir}/saves/${world.folder_name}`)
+              }
+              onDelete={() => remove(world)}
+            />
           ))}
         </div>
       )}
@@ -542,7 +656,7 @@ export function WorldsPanel({
         <ImportDialog
           instance={instance}
           running={running}
-          onClose={() => setImportOpen(false)}
+          onClose={() => onImportOpenChange(false)}
           onImported={refresh}
         />
       )}
