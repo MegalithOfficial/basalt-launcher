@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { EditInstanceModal } from "../components/EditInstanceModal";
+import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
 import { cn } from "../lib/cn";
@@ -52,6 +53,51 @@ const SCHEMATIC_MOD_MARKERS = ["litematica", "worldedit", "schematica", "axiom",
 const NO_UPDATES: ContentUpdate[] = [];
 const EMPTY_ITEMS: ContentItem[] = [];
 const ALL_KINDS = ["mods", "resourcepacks", "shaderpacks", "schematics"];
+
+type ContentView = "all" | "enabled" | "disabled" | "updates" | "unlinked";
+type ContentSort = "name" | "recent" | "size" | "updates" | "disabled";
+
+const VIEWS: Array<{ id: ContentView; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "enabled", label: "Enabled" },
+  { id: "disabled", label: "Disabled" },
+  { id: "updates", label: "Updates" },
+  { id: "unlinked", label: "Unlinked" },
+];
+
+const SORT_LABELS: Record<ContentSort, string> = {
+  name: "Name",
+  recent: "Recently added",
+  size: "Largest",
+  updates: "Updates first",
+  disabled: "Disabled first",
+};
+
+function displayName(item: ContentItem) {
+  return (item.source?.title ?? item.file_name).toLowerCase();
+}
+
+function byName(a: ContentItem, b: ContentItem) {
+  return displayName(a).localeCompare(displayName(b));
+}
+
+function sortItems(items: ContentItem[], sort: ContentSort) {
+  const list = [...items];
+  switch (sort) {
+    case "recent":
+      return list.sort(
+        (a, b) => (b.source?.installed_at ?? 0) - (a.source?.installed_at ?? 0) || byName(a, b),
+      );
+    case "size":
+      return list.sort((a, b) => b.size - a.size || byName(a, b));
+    case "updates":
+      return list.sort((a, b) => Number(!!b.update) - Number(!!a.update) || byName(a, b));
+    case "disabled":
+      return list.sort((a, b) => Number(a.enabled) - Number(b.enabled) || byName(a, b));
+    default:
+      return list.sort(byName);
+  }
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -110,6 +156,10 @@ export function InstanceView() {
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [hasSchematicMod, setHasSchematicMod] = useState(false);
   const [filter, setFilter] = useState("");
+  const [listView, setListView] = useState<ContentView>("all");
+  const [sort, setSort] = useState<ContentSort>(
+    () => (localStorage.getItem("content-sort") as ContentSort) ?? "name",
+  );
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -220,14 +270,31 @@ export function InstanceView() {
   const items = itemsByTab[tab] ?? EMPTY_ITEMS;
   const loading = loadingTab !== null && itemsByTab[tab] === undefined;
   const query = filter.trim().toLowerCase();
-  const shownItems = query
+  const matching = query
     ? items.filter(
         (i) =>
           i.file_name.toLowerCase().includes(query) ||
           (i.source?.title ?? "").toLowerCase().includes(query),
       )
     : items;
+  const shownItems = sortItems(
+    matching.filter((i) => {
+      if (listView === "enabled") return i.enabled;
+      if (listView === "disabled") return !i.enabled;
+      if (listView === "updates") return !!i.update;
+      if (listView === "unlinked") return !i.source;
+      return true;
+    }),
+    sort,
+  );
   const enabledCount = items.filter((i) => i.enabled).length;
+  const viewCounts: Record<ContentView, number> = {
+    all: items.length,
+    enabled: enabledCount,
+    disabled: items.length - enabledCount,
+    updates: items.filter((i) => !!i.update).length,
+    unlinked: items.filter((i) => !i.source).length,
+  };
 
   const addContent = async () => {
     if (tab === "worlds") return;
@@ -471,8 +538,8 @@ export function InstanceView() {
         ) : (
           <div className="px-6 py-5">
           {items.length > 0 && (
-          <div className="mb-4 flex items-center gap-3">
-            <div className="relative w-full max-w-sm">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="relative w-full max-w-xs">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-content-faint" />
               <input
                 value={filter}
@@ -481,6 +548,59 @@ export function InstanceView() {
                 className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]"
               />
             </div>
+
+            <div
+              role="group"
+              aria-label="Show"
+              className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border-soft bg-surface-2/60 p-0.5"
+            >
+              {VIEWS.map((option) => {
+                const count = viewCounts[option.id];
+                if (option.id !== "all" && count === 0) return null;
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => setListView(option.id)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                      listView === option.id
+                        ? "bg-surface-3 text-content"
+                        : "text-content-faint hover:text-content-muted",
+                    )}
+                  >
+                    {option.label}
+                    {option.id !== "all" && (
+                      <span
+                        className={cn(
+                          "tabular-nums text-[10px]",
+                          option.id === "updates" ? "text-warn" : "text-content-faint",
+                        )}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="w-44 shrink-0">
+              <Select
+                compact
+                label="Sort"
+                value={SORT_LABELS[sort]}
+                options={Object.values(SORT_LABELS)}
+                onChange={(label) => {
+                  const next =
+                    (Object.keys(SORT_LABELS) as ContentSort[]).find(
+                      (key) => SORT_LABELS[key] === label,
+                    ) ?? "name";
+                  setSort(next);
+                  localStorage.setItem("content-sort", next);
+                }}
+              />
+            </div>
+
             <span className="ml-auto shrink-0 text-xs tabular-nums text-content-faint">
               {shownItems.length === items.length
                 ? `${items.length} ${items.length === 1 ? "file" : "files"}`
@@ -516,7 +636,9 @@ export function InstanceView() {
           </div>
         ) : shownItems.length === 0 ? (
           <div className="py-16 text-center text-sm text-content-faint">
-            Nothing matches “{filter}”.
+            {query
+              ? `Nothing matches “${filter}”.`
+              : `No ${listView === "unlinked" ? "unlinked" : listView} ${tabMeta.label.toLowerCase()}.`}
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
