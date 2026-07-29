@@ -34,7 +34,7 @@ pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<Ver
     }
     tracing::debug!("version json not cached, fetching from mojang");
 
-    let manifest = manifest::fetch(&state.network, &state.paths).await?;
+    let manifest = manifest::fetch(&state.network, &state.files).await?;
     let entry = manifest
         .versions
         .iter()

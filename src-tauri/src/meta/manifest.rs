@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::files::FileManager;
 use crate::network::NetworkManager;
-use crate::paths::Paths;
 
 const MANIFEST_URL: &str =
     "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json";
@@ -31,18 +31,18 @@ pub struct VersionManifest {
     pub versions: Vec<VersionEntry>,
 }
 
-pub async fn fetch(client: &NetworkManager, paths: &Paths) -> Result<VersionManifest> {
-    let cache = paths.manifest_cache();
+pub async fn fetch(client: &NetworkManager, files: &FileManager) -> Result<VersionManifest> {
+    let cache = files.paths().manifest_cache();
     let bytes = match client.send(client.get(MANIFEST_URL)).await {
         Ok(resp) => {
             let resp = resp.error_for_status()?;
             let bytes = resp.bytes().await?;
-            let _ = tokio::fs::write(&cache, &bytes).await;
+            let _ = files.write_atomic_async(&cache, &bytes).await;
             bytes.to_vec()
         }
         Err(e) => {
             tracing::warn!(error = %e, cache = %cache.display(), "manifest fetch failed, using cache");
-            tokio::fs::read(&cache).await?
+            files.read_async(&cache).await?
         }
     };
     Ok(serde_json::from_slice(&bytes)?)

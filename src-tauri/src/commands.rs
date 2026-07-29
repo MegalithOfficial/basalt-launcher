@@ -187,7 +187,7 @@ pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) ->
     if !state.paths.remove_instance_dir(&instance_id) {
         return Err(Error::other("refusing to delete an instance with an invalid id"));
     }
-    media::clear_custom_banner(&state.paths, &instance_id).await;
+    media::clear_custom_banner(&state.files, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     state.db.delete_instance_content_files(&instance_id)?;
     tracing::info!("instance deleted");
@@ -204,7 +204,7 @@ pub async fn get_instance_media(
         return Ok(cached.clone());
     }
 
-    let result = match media::custom_banner(&state.paths, &instance_id).await {
+    let result = match media::custom_banner(&state.files, &instance_id).await {
         Some(banner) => Some(banner),
         None => {
             let instance = find_instance(&state, &instance_id)?;
@@ -213,13 +213,13 @@ pub async fn get_instance_media(
                 match cached {
                     Some(notes) => notes,
                     None => {
-                        let notes = media::fetch_notes(&state.network, &state.paths).await?;
+                        let notes = media::fetch_notes(&state.network, &state.files).await?;
                         *state.patch_notes.lock().unwrap() = Some(notes.clone());
                         notes
                     }
                 }
             };
-            media::media_for(&state.network, &state.paths, &notes, &instance.version_id).await
+            media::media_for(&state.network, &state.files, &notes, &instance.version_id).await
         }
     };
 
@@ -239,7 +239,7 @@ pub async fn set_instance_banner(
     source_path: String,
 ) -> Result<VersionMedia> {
     find_instance(&state, &instance_id)?;
-    let media = media::set_custom_banner(&state.paths, &instance_id, &source_path).await?;
+    let media = media::set_custom_banner(&state.files, &instance_id, &source_path).await?;
     state
         .media_cache
         .lock()
@@ -254,7 +254,7 @@ pub async fn clear_instance_banner(
     state: State<'_, AppState>,
     instance_id: String,
 ) -> Result<()> {
-    media::clear_custom_banner(&state.paths, &instance_id).await;
+    media::clear_custom_banner(&state.files, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     Ok(())
 }
@@ -266,12 +266,12 @@ pub async fn set_instance_logo(
     source_path: String,
 ) -> Result<String> {
     find_instance(&state, &instance_id)?;
-    media::set_instance_logo(&state.paths, &instance_id, &source_path).await
+    media::set_instance_logo(&state.files, &instance_id, &source_path).await
 }
 
 #[tauri::command]
 pub async fn clear_instance_logo(state: State<'_, AppState>, instance_id: String) -> Result<()> {
-    media::clear_instance_logo(&state.paths, &instance_id).await;
+    media::clear_instance_logo(&state.files, &instance_id).await;
     Ok(())
 }
 
@@ -297,7 +297,7 @@ pub async fn backfill_pack_logos(state: State<'_, AppState>) -> Result<Vec<Insta
             .and_then(|mut list| list.pop())
             .and_then(|summary| summary.icon_url);
         if let Some(icon) = icon {
-            media::fetch_instance_logo(&state.network, &state.paths, &instance.id, &icon).await;
+            media::fetch_instance_logo(&state.network, &state.files, &instance.id, &icon).await;
         }
     }
 
@@ -408,7 +408,7 @@ pub async fn list_versions(
     state: State<'_, AppState>,
     include_snapshots: bool,
 ) -> Result<Vec<VersionEntry>> {
-    let manifest = manifest::fetch(&state.network, &state.paths).await?;
+    let manifest = manifest::fetch(&state.network, &state.files).await?;
     let versions = manifest
         .versions
         .into_iter()

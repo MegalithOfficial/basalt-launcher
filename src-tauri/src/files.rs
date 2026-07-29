@@ -91,11 +91,65 @@ impl FileManager {
         source: impl AsRef<Path>,
         destination: impl AsRef<Path>,
     ) -> Result<u64> {
+        let bytes = tokio::fs::read(source).await?;
+        let size = bytes.len() as u64;
+        self.write_atomic_async(destination, bytes).await?;
+        Ok(size)
+    }
+
+    pub fn exists(&self, path: impl AsRef<Path>) -> Result<bool> {
+        Ok(self.managed(path.as_ref())?.exists())
+    }
+
+    pub fn is_file(&self, path: impl AsRef<Path>) -> Result<bool> {
+        Ok(self.managed(path.as_ref())?.is_file())
+    }
+
+    pub fn read_dir(&self, path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
+        let entries = std::fs::read_dir(self.managed(path.as_ref())?)?
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .collect();
+        Ok(entries)
+    }
+
+    pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {
+        let source = self.managed(source.as_ref())?;
         let destination = self.managed(destination.as_ref())?;
         if let Some(parent) = destination.parent() {
-            tokio::fs::create_dir_all(parent).await?;
+            std::fs::create_dir_all(parent)?;
         }
-        Ok(tokio::fs::copy(source, destination).await?)
+        std::fs::rename(source, destination)?;
+        Ok(())
+    }
+
+    pub fn remove_dir_all_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
+        let path = self.managed(path.as_ref())?;
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn temporary_for(&self, path: impl AsRef<Path>) -> Result<PathBuf> {
+        Ok(temporary_path(self.managed(path.as_ref())?))
+    }
+
+    pub async fn commit_temporary(
+        &self,
+        temporary: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<()> {
+        let temporary = self.managed(temporary.as_ref())?;
+        let destination = self.managed(destination.as_ref())?;
+        if let Err(error) = tokio::fs::rename(temporary, destination).await {
+            if error.kind() != std::io::ErrorKind::AlreadyExists {
+                return Err(error.into());
+            }
+            tokio::fs::remove_file(destination).await?;
+            tokio::fs::rename(temporary, destination).await?;
+        }
+        Ok(())
     }
 
     pub fn remove_file_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {

@@ -451,7 +451,7 @@ async fn install_pack_body(
     {
         crate::meta::media::fetch_instance_logo(
             &state.network,
-            &state.paths,
+            &state.files,
             &instance.id,
             &icon_url,
         )

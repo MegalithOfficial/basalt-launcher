@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::files::FileManager;
 use crate::network::NetworkManager;
 use crate::paths::Paths;
 
@@ -36,16 +37,16 @@ pub struct VersionMedia {
 
 const BANNER_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "gif"];
 
-pub async fn fetch_notes(client: &NetworkManager, paths: &Paths) -> Result<PatchNotes> {
-    let cache = paths.root.join("patch_notes.json");
+pub async fn fetch_notes(client: &NetworkManager, files: &FileManager) -> Result<PatchNotes> {
+    let cache = files.paths().root.join("patch_notes.json");
     let bytes = match client.send(client.get(PATCH_NOTES_URL)).await {
         Ok(resp) => {
             let resp = resp.error_for_status()?;
             let bytes = resp.bytes().await?;
-            let _ = tokio::fs::write(&cache, &bytes).await;
+            let _ = files.write_atomic_async(&cache, &bytes).await;
             bytes.to_vec()
         }
-        Err(_) => tokio::fs::read(&cache).await?,
+        Err(_) => files.read_async(&cache).await?,
     };
     Ok(serde_json::from_slice(&bytes)?)
 }
@@ -104,20 +105,20 @@ fn accent_from_pixels(img: &image::RgbImage) -> Option<String> {
 
 async fn accent_for(
     client: &NetworkManager,
-    paths: &Paths,
+    files: &FileManager,
     version_id: &str,
     image_url: &str,
 ) -> Option<String> {
-    let media_dir = paths.root.join("media");
+    let media_dir = files.paths().root.join("media");
     let img_path = media_dir.join(format!("{version_id}.jpg"));
     let accent_path = media_dir.join(format!("{version_id}.accent"));
 
-    if let Ok(cached) = tokio::fs::read_to_string(&accent_path).await {
+    if let Ok(cached) = files.read_string_async(&accent_path).await {
         let cached = cached.trim().to_string();
         return if cached.is_empty() { None } else { Some(cached) };
     }
 
-    let bytes = match tokio::fs::read(&img_path).await {
+    let bytes = match files.read_async(&img_path).await {
         Ok(bytes) => bytes,
         Err(_) => {
             let resp = client
@@ -127,14 +128,15 @@ async fn accent_for(
                 .error_for_status()
                 .ok()?;
             let bytes = resp.bytes().await.ok()?.to_vec();
-            let _ = tokio::fs::create_dir_all(&media_dir).await;
-            let _ = tokio::fs::write(&img_path, &bytes).await;
+            let _ = files.write_atomic_async(&img_path, &bytes).await;
             bytes
         }
     };
 
     let accent = compute_accent(bytes).await;
-    let _ = tokio::fs::write(&accent_path, accent.clone().unwrap_or_default()).await;
+    let _ = files
+        .write_atomic_async(&accent_path, accent.clone().unwrap_or_default())
+        .await;
     accent
 }
 
@@ -161,7 +163,8 @@ fn banner_accent_path(paths: &Paths, instance_id: &str) -> std::path::PathBuf {
     paths.root.join("media").join(format!("instance-{instance_id}.accent"))
 }
 
-pub async fn custom_banner(paths: &Paths, instance_id: &str) -> Option<VersionMedia> {
+pub async fn custom_banner(files: &FileManager, instance_id: &str) -> Option<VersionMedia> {
+    let paths = files.paths();
     let img_path = {
         let mut found = None;
         for candidate in banner_paths(paths, instance_id) {
@@ -174,15 +177,17 @@ pub async fn custom_banner(paths: &Paths, instance_id: &str) -> Option<VersionMe
     };
 
     let accent_path = banner_accent_path(paths, instance_id);
-    let accent = match tokio::fs::read_to_string(&accent_path).await {
+    let accent = match files.read_string_async(&accent_path).await {
         Ok(cached) => {
             let cached = cached.trim().to_string();
             if cached.is_empty() { None } else { Some(cached) }
         }
         Err(_) => {
-            let bytes = tokio::fs::read(&img_path).await.ok()?;
+            let bytes = files.read_async(&img_path).await.ok()?;
             let accent = compute_accent(bytes).await;
-            let _ = tokio::fs::write(&accent_path, accent.clone().unwrap_or_default()).await;
+            let _ = files
+                .write_atomic_async(&accent_path, accent.clone().unwrap_or_default())
+                .await;
             accent
         }
     };
@@ -196,7 +201,7 @@ pub async fn custom_banner(paths: &Paths, instance_id: &str) -> Option<VersionMe
 }
 
 pub async fn set_custom_banner(
-    paths: &Paths,
+    files: &FileManager,
     instance_id: &str,
     source: &str,
 ) -> crate::error::Result<VersionMedia> {
@@ -214,20 +219,21 @@ pub async fn set_custom_banner(
         )));
     }
 
-    clear_custom_banner(paths, instance_id).await;
+    clear_custom_banner(files, instance_id).await;
 
+    let paths = files.paths();
     let media_dir = paths.root.join("media");
-    tokio::fs::create_dir_all(&media_dir).await?;
     let dest = media_dir.join(format!("instance-{instance_id}.{ext}"));
-    tokio::fs::copy(source_path, &dest).await?;
+    files.copy_external_into(source_path, &dest).await?;
 
-    let bytes = tokio::fs::read(&dest).await?;
+    let bytes = files.read_async(&dest).await?;
     let accent = compute_accent(bytes).await;
-    let _ = tokio::fs::write(
-        banner_accent_path(paths, instance_id),
-        accent.clone().unwrap_or_default(),
-    )
-    .await;
+    let _ = files
+        .write_atomic_async(
+            banner_accent_path(paths, instance_id),
+            accent.clone().unwrap_or_default(),
+        )
+        .await;
 
     Ok(VersionMedia {
         image_url: dest.display().to_string(),
@@ -237,11 +243,14 @@ pub async fn set_custom_banner(
     })
 }
 
-pub async fn clear_custom_banner(paths: &Paths, instance_id: &str) {
+pub async fn clear_custom_banner(files: &FileManager, instance_id: &str) {
+    let paths = files.paths();
     for path in banner_paths(paths, instance_id) {
-        let _ = tokio::fs::remove_file(path).await;
+        let _ = files.remove_file_if_exists_async(path).await;
     }
-    let _ = tokio::fs::remove_file(banner_accent_path(paths, instance_id)).await;
+    let _ = files
+        .remove_file_if_exists_async(banner_accent_path(paths, instance_id))
+        .await;
 }
 
 fn logo_paths(paths: &Paths, instance_id: &str) -> Vec<std::path::PathBuf> {
@@ -259,28 +268,29 @@ pub fn instance_logo(paths: &Paths, instance_id: &str) -> Option<String> {
         .map(|path| path.display().to_string())
 }
 
-pub async fn clear_instance_logo(paths: &Paths, instance_id: &str) {
+pub async fn clear_instance_logo(files: &FileManager, instance_id: &str) {
+    let paths = files.paths();
     for path in logo_paths(paths, instance_id) {
-        let _ = tokio::fs::remove_file(path).await;
+        let _ = files.remove_file_if_exists_async(path).await;
     }
 }
 
 async fn write_logo(
-    paths: &Paths,
+    files: &FileManager,
     instance_id: &str,
     ext: &str,
     bytes: &[u8],
 ) -> crate::error::Result<String> {
-    clear_instance_logo(paths, instance_id).await;
+    clear_instance_logo(files, instance_id).await;
+    let paths = files.paths();
     let media_dir = paths.root.join("media");
-    tokio::fs::create_dir_all(&media_dir).await?;
     let dest = media_dir.join(format!("logo-{instance_id}.{ext}"));
-    tokio::fs::write(&dest, bytes).await?;
+    files.write_atomic_async(&dest, bytes).await?;
     Ok(dest.display().to_string())
 }
 
 pub async fn set_instance_logo(
-    paths: &Paths,
+    files: &FileManager,
     instance_id: &str,
     source: &str,
 ) -> crate::error::Result<String> {
@@ -299,12 +309,12 @@ pub async fn set_instance_logo(
     }
 
     let bytes = tokio::fs::read(source_path).await?;
-    write_logo(paths, instance_id, &ext, &bytes).await
+    write_logo(files, instance_id, &ext, &bytes).await
 }
 
 pub async fn fetch_instance_logo(
     http: &NetworkManager,
-    paths: &Paths,
+    files: &FileManager,
     instance_id: &str,
     url: &str,
 ) -> Option<String> {
@@ -322,19 +332,19 @@ pub async fn fetch_instance_logo(
         .error_for_status()
         .ok()?;
     let bytes = response.bytes().await.ok()?;
-    write_logo(paths, instance_id, &ext, &bytes).await.ok()
+    write_logo(files, instance_id, &ext, &bytes).await.ok()
 }
 
 pub async fn media_for(
     client: &NetworkManager,
-    paths: &Paths,
+    files: &FileManager,
     notes: &PatchNotes,
     version_id: &str,
 ) -> Option<VersionMedia> {
     let entry = notes.entries.iter().find(|e| e.version == version_id)?;
     let image = entry.image.as_ref()?;
     let image_url = format!("{CONTENT_BASE}{}", image.url);
-    let accent = accent_for(client, paths, version_id, &image_url).await;
+    let accent = accent_for(client, files, version_id, &image_url).await;
     Some(VersionMedia {
         image_url,
         short_text: entry.short_text.clone(),
