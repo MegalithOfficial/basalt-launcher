@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
-import { notifySummary, notifyTaskFinished } from "./lib/notify";
+import { notifyInstalled, notifySummary, notifyTaskFinished } from "./lib/notify";
 
 import { api } from "./lib/api";
 import { isInstanceInstalled } from "./lib/loader";
@@ -13,6 +13,7 @@ import type {
   PendingOperation,
   Task,
   Instance,
+  InstalledItem,
   LauncherSettings,
   LogConfig,
   LogLevel,
@@ -172,7 +173,7 @@ interface AppStore {
     loader: string | null;
     versionId?: string | null;
     withDependencies?: boolean;
-  }) => Promise<string[]>;
+  }) => Promise<InstalledItem[]>;
   refreshUpdates: (instanceId: string, force?: boolean) => Promise<void>;
   clearFinishedTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
@@ -189,6 +190,7 @@ interface AppStore {
 let listenersBound = false;
 let initializing = false;
 let batching = false;
+let installsInFlight = 0;
 let unlisteners: Array<() => void> = [];
 
 export const useStore = create<AppStore>((set) => ({
@@ -296,18 +298,28 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   installContent: async (params) => {
-    const files = await api.installContent(
-      params.provider,
-      params.projectId,
-      params.instanceId,
-      params.kind,
-      params.gameVersion,
-      params.loader,
-      params.versionId ?? null,
-      params.withDependencies ?? true,
-    );
+    installsInFlight += 1;
+    let items: InstalledItem[];
+    try {
+      items = await api.installContent(
+        params.provider,
+        params.projectId,
+        params.instanceId,
+        params.kind,
+        params.gameVersion,
+        params.loader,
+        params.versionId ?? null,
+        params.withDependencies ?? true,
+      );
+    } finally {
+      installsInFlight -= 1;
+    }
+    const into =
+      useStore.getState().instances.find((i) => i.id === params.instanceId)?.name ??
+      "this instance";
+    notifyInstalled(items, into);
     await useStore.getState().refreshContentSources(params.instanceId, params.kind);
-    return files;
+    return items;
   },
 
   cancelTask: async (taskId) => {
@@ -393,7 +405,8 @@ export const useStore = create<AppStore>((set) => ({
           previous &&
           previous.state === "running" && task.state !== "running";
 
-        if (justFinished && !batching && task.state === "succeeded") {
+        const quiet = batching || (installsInFlight > 0 && task.kind === "content_install");
+        if (justFinished && !quiet && task.state === "succeeded") {
           notifyTaskFinished(task);
         }
         if (justFinished && task.state === "failed") {

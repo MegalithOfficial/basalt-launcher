@@ -255,6 +255,13 @@ export interface ContentProgress {
   current: string;
 }
 
+export interface InstalledItem {
+  file_name: string;
+  title: string;
+  icon_url: string | null;
+  is_dependency: boolean;
+}
+
 export interface InstalledFile {
   version_id: string | null;
   file_name: string;

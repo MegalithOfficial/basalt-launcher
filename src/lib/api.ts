@@ -13,6 +13,7 @@ import type {
   FilterTaxonomy,
   InstallPlan,
   InstalledFile,
+  InstalledItem,
   Instance,
   JavaInfo,
   JavaStatus,
@@ -135,7 +136,7 @@ export const api = {
     versionId: string | null = null,
     withDependencies = true,
   ) =>
-    call<string[]>("install_content", {
+    call<InstalledItem[]>("install_content", {
       provider,
       projectId,
       instanceId,

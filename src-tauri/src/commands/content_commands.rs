@@ -256,7 +256,7 @@ pub async fn install_content(
     loader: Option<String>,
     version_id: Option<String>,
     with_dependencies: Option<bool>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<search::resolve::InstalledItem>> {
     find_instance(&state, &instance_id)?;
     let provider = search::Provider::parse(&provider)?;
     let kind = search::ContentKind::parse(&kind)?;
@@ -365,7 +365,11 @@ pub async fn apply_content_update(
         .db
         .delete_content_file(&instance_id, &kind, &file_name)
         .ok();
-    Ok(written.into_iter().next().unwrap_or(file_name))
+    Ok(written
+        .into_iter()
+        .next()
+        .map(|item| item.file_name)
+        .unwrap_or(file_name))
 }
 
 #[tauri::command]

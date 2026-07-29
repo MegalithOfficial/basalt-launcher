@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { Check, Package, TriangleAlert } from "lucide-react";
 
 import { cn } from "./cn";
-import type { Task } from "./types";
+import type { InstalledItem, Task } from "./types";
 
 function Thumb({ task, tone }: { task: Task; tone: "success" | "error" }) {
   const success = tone === "success";
@@ -73,8 +73,47 @@ export function notifyTaskFinished(task: Task) {
         />
       </div>
     ),
-    { duration: success ? 4500 : 11000 },
+    { id: `task:${task.id}`, duration: success ? 4500 : 11000 },
   );
+}
+
+export function notifyInstalled(items: InstalledItem[], into: string) {
+  for (const item of items) {
+    toast.custom(
+      (id) => (
+        <div
+          onClick={() => toast.dismiss(id)}
+          className="flex w-[22rem] cursor-pointer items-center gap-3 rounded-xl border border-ok/30 bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
+        >
+          <span className="relative shrink-0">
+            {item.icon_url ? (
+              <img
+                src={item.icon_url}
+                alt=""
+                className="size-9 rounded-lg bg-surface-3 object-cover"
+                draggable={false}
+              />
+            ) : (
+              <span className="grid size-9 place-items-center rounded-lg bg-surface-3 text-content-faint">
+                <Package className="size-4" />
+              </span>
+            )}
+            <span className="absolute -bottom-1 -right-1 grid size-4 place-items-center rounded-full bg-ok text-black ring-2 ring-surface">
+              <Check className="size-2.5" strokeWidth={3} />
+            </span>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-semibold text-content">{item.title}</div>
+            <div className="mt-0.5 truncate text-[11px] text-content-muted">
+              {item.is_dependency ? `Dependency · into ${into}` : `into ${into}`}
+            </div>
+          </div>
+          <span className="h-9 w-1 shrink-0 rounded-full bg-ok/60" />
+        </div>
+      ),
+      { id: `installed:${into}:${item.file_name}`, duration: 4500 },
+    );
+  }
 }
 
 export function notifySummary(message: string) {

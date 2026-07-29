@@ -16,6 +16,14 @@ use crate::{
 const MAX_DEPTH: u8 = 5;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct InstalledItem {
+    pub file_name: String,
+    pub title: String,
+    pub icon_url: Option<String>,
+    pub is_dependency: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct PlannedFile {
     pub project_id: String,
     pub version_id: String,
@@ -355,7 +363,7 @@ pub async fn apply(
     instance_id: &str,
     kind: ContentKind,
     pack_version_id: Option<&str>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<InstalledItem>> {
     if plan.is_empty() {
         return Ok(Vec::new());
     }
@@ -491,7 +499,12 @@ pub async fn apply(
         let _ = state
             .db
             .record_content_file(instance_id, kind.as_str(), &record);
-        written.push(file.file_name.clone());
+        written.push(InstalledItem {
+            file_name: file.file_name.clone(),
+            title: file.title.clone(),
+            icon_url: file.icon_url.clone(),
+            is_dependency: file.is_dependency,
+        });
     }
 
     if let Some(task) = &task {

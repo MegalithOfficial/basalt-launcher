@@ -194,8 +194,8 @@ export function ProjectView() {
       setInstalled((prev) => new Set(prev).add(target.key));
       setNotice(
         files.length > 1
-          ? `Installed ${files[0]} and ${files.length - 1} more into ${instance.name}`
-          : `Installed ${files[0]} into ${instance.name}`,
+          ? `Installed ${files[0]?.title ?? "the file"} and ${files.length - 1} more into ${instance.name}`
+          : `Installed ${files[0]?.title ?? "the file"} into ${instance.name}`,
       );
     } catch (e) {
       setPending(null);
