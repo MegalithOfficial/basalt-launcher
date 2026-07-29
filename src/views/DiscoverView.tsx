@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   ChevronRight,
   Download,
   Loader2,
@@ -489,15 +491,67 @@ export function DiscoverView() {
             <>
               <div
                 className={cn(
-                  "flex items-center justify-between px-2 py-2 text-[11px] text-content-faint",
+                  "flex items-center justify-between px-2 py-2 text-xs text-content-muted",
                   searching && "opacity-60",
                 )}
               >
-                <span>
-                  {total.toLocaleString()} {total === 1 ? "result" : "results"}
-                  {total > PAGE_SIZE && ` · page ${pageIndex + 1} of ${lastPage + 1}`}
+                <span className="flex items-center gap-2">
+                  <span>
+                    <span className="font-medium text-content">{total.toLocaleString()}</span>{" "}
+                    {total === 1 ? "result" : "results"}
+                  </span>
+                  {total > PAGE_SIZE && (
+                    <span>
+                      · page{" "}
+                      <span className="font-medium tabular-nums text-content">
+                        {pageIndex + 1}
+                      </span>{" "}
+                      of <span className="tabular-nums">{lastPage + 1}</span>
+                    </span>
+                  )}
+                  {searching && <Loader2 className="size-3 animate-spin" />}
                 </span>
-                {searching && <Loader2 className="size-3 animate-spin" />}
+
+                {total > PAGE_SIZE && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => goToOffset(0)}
+                      disabled={pageIndex === 0}
+                      title="First page"
+                      aria-label="First page"
+                      className="grid size-7 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                      <ChevronsLeft className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => goToOffset(Math.max(0, offset - PAGE_SIZE))}
+                      disabled={pageIndex === 0}
+                      title="Previous page"
+                      aria-label="Previous page"
+                      className="grid size-7 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => goToOffset(offset + PAGE_SIZE)}
+                      disabled={pageIndex >= lastPage}
+                      title="Next page"
+                      aria-label="Next page"
+                      className="grid size-7 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                      <ChevronRight className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => goToOffset(lastPage * PAGE_SIZE)}
+                      disabled={pageIndex >= lastPage}
+                      title="Last page"
+                      aria-label="Last page"
+                      className="grid size-7 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                      <ChevronsRight className="size-4" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <ContentResults
