@@ -57,18 +57,22 @@ src/
 
 src-tauri/src/
 ├── auth/              Microsoft and Minecraft authentication
+├── commands/          Tauri IPC handlers grouped by feature
+├── content/           Installed content file operations
+├── db/                SQLite records, migrations, and domain operations
 ├── download/          Download retries, verification, and cancellation
+├── files/             Capability-safe filesystem access and atomic writes
 ├── install/           Minecraft installation
 ├── launch/            Launch arguments and process supervision
 ├── loaders/           Fabric, Quilt, NeoForge, and Forge support
 ├── logging/           Structured logs and the in-app log buffer
 ├── meta/              Minecraft version manifests and metadata
 ├── modpack/           Modpack installation
+├── network/           Shared HTTP client, throttling, and retries
+├── paths/             Application and instance path construction
 ├── search/            Modrinth and CurseForge integrations
 ├── skin/              Skin and cape management
-├── commands.rs        Tauri command boundary
-├── db.rs              SQLite schema and persistence
-├── tasks.rs           Long-running task state and progress
+├── tasks/             Long-running task state and progress
 └── lib.rs             Application setup and command registration
 ```
 
