@@ -69,7 +69,7 @@ function StateIcon({ task }: { task: Task }) {
 
 function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void }) {
   const fraction = taskFraction(task);
-  const active = task.state === "running" || task.state === "queued";
+  const active = task.state === "running";
 
   return (
     <div className="flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-surface-2">

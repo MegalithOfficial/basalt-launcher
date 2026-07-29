@@ -29,7 +29,6 @@ pub struct DeviceCode {
 pub struct MsToken {
     pub access_token: String,
     pub refresh_token: String,
-    pub expires_in: i64,
 }
 
 pub enum PollOutcome {
@@ -85,7 +84,6 @@ pub async fn request_device_code(client: &NetworkManager) -> Result<DeviceCode> 
 struct MsTokenResp {
     access_token: String,
     refresh_token: String,
-    expires_in: i64,
 }
 
 #[derive(Deserialize)]
@@ -108,7 +106,6 @@ pub async fn poll_token(client: &NetworkManager, device_code: &str) -> Result<Po
         return Ok(PollOutcome::Token(MsToken {
             access_token: token.access_token,
             refresh_token: token.refresh_token,
-            expires_in: token.expires_in,
         }));
     }
 
@@ -139,7 +136,6 @@ pub async fn refresh(client: &NetworkManager, refresh_token: &str) -> Result<MsT
     Ok(MsToken {
         access_token: token.access_token,
         refresh_token: token.refresh_token,
-        expires_in: token.expires_in,
     })
 }
 

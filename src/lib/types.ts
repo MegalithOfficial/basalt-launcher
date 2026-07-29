@@ -217,7 +217,7 @@ export type TaskKind =
   | "content_install"
   | "content_update";
 
-export type TaskState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type TaskState = "running" | "succeeded" | "failed" | "cancelled";
 
 export interface Task {
   id: string;

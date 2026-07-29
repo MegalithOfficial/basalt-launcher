@@ -6,7 +6,7 @@ import { useStore } from "../store";
 const NO_TASKS: Task[] = [];
 
 export function isActive(task: Task): boolean {
-  return task.state === "running" || task.state === "queued";
+  return task.state === "running";
 }
 
 function ordered(tasks: Record<string, Task>, order: string[]): Task[] {

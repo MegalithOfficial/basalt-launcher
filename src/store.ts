@@ -347,9 +347,7 @@ export const useStore = create<AppStore>((set) => ({
         const previous = useStore.getState().tasks[task.id];
         const justFinished =
           previous &&
-          (previous.state === "running" || previous.state === "queued") &&
-          task.state !== "running" &&
-          task.state !== "queued";
+          previous.state === "running" && task.state !== "running";
 
         if (justFinished && !batching && task.state === "succeeded") {
           notifyTaskFinished(task);

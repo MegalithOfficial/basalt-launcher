@@ -129,8 +129,6 @@ pub struct OsRule {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct JavaVersion {
-    #[serde(default)]
-    pub component: String,
     #[serde(rename = "majorVersion")]
     pub major_version: u32,
 }

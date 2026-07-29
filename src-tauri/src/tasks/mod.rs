@@ -48,7 +48,6 @@ impl TaskKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskState {
-    Queued,
     Running,
     Succeeded,
     Failed,
@@ -132,15 +131,6 @@ impl Tasks {
 
     pub fn list(&self) -> Vec<Task> {
         self.inner.lock().unwrap().clone()
-    }
-
-    pub fn get(&self, id: &str) -> Option<Task> {
-        self.inner
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|t| t.id == id)
-            .cloned()
     }
 
     pub fn clear_finished(&self) {
@@ -251,16 +241,8 @@ pub struct TaskHandle {
 }
 
 impl TaskHandle {
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
     pub fn token(&self) -> CancellationToken {
         self.token.clone()
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.token.is_cancelled()
     }
 
     pub fn written(&self) -> &Mutex<Vec<PathBuf>> {
@@ -424,7 +406,6 @@ mod tests {
         assert!(TaskState::Failed.is_finished());
         assert!(TaskState::Cancelled.is_finished());
         assert!(!TaskState::Running.is_finished());
-        assert!(!TaskState::Queued.is_finished());
     }
 
     #[test]
@@ -476,6 +457,6 @@ mod tests {
         }
         let result = tasks.mutate("done", |t| t.stage = "changed".into());
         assert!(result.is_none());
-        assert_eq!(tasks.get("done").unwrap().stage, "x");
+        assert_eq!(tasks.list()[0].stage, "x");
     }
 }

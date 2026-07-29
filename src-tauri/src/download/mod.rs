@@ -206,29 +206,6 @@ async fn download_once(
     Ok(true)
 }
 
-pub async fn download_many<F>(
-    client: &NetworkManager,
-    files: &FileManager,
-    specs: Vec<DownloadSpec>,
-    concurrency: usize,
-    on_progress: F,
-) -> Result<()>
-where
-    F: Fn(DownloadProgress) + Send + Sync,
-{
-    download_many_cancellable(
-        client,
-        files,
-        specs,
-        concurrency,
-        on_progress,
-        None,
-        None,
-        None,
-    )
-    .await
-}
-
 pub async fn download_many_cancellable<F>(
     client: &NetworkManager,
     files: &FileManager,

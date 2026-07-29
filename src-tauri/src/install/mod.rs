@@ -1,10 +1,9 @@
 use std::{io::Read, path::Path};
 
-use serde::Serialize;
 use tauri::AppHandle;
 
 use crate::{
-    download::{self, DownloadProgress, DownloadSpec},
+    download::{self, DownloadSpec},
     error::{Error, Result},
     meta::{
         manifest,
@@ -12,19 +11,6 @@ use crate::{
     },
     state::AppState,
 };
-
-#[derive(Clone, Serialize)]
-struct StagePayload {
-    instance_id: String,
-    stage: String,
-}
-
-#[derive(Clone, Serialize)]
-struct ProgressPayload {
-    instance_id: String,
-    #[serde(flatten)]
-    progress: DownloadProgress,
-}
 
 #[tracing::instrument(skip(state), err)]
 pub async fn load_version_json(state: &AppState, version_id: &str) -> Result<VersionJson> {
@@ -85,20 +71,18 @@ async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<Ass
         .paths
         .assets_indexes()
         .join(format!("{}.json", asset_index.id));
-    if let Ok(bytes) = state.files.read_async(&path).await {
-        if let Ok(parsed) = serde_json::from_slice(&bytes) {
-            return Ok(parsed);
-        }
-    }
-
-    let bytes = state
-        .network
-        .send(state.network.get(&asset_index.url))
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
-    state.files.write_atomic_async(&path, &bytes).await?;
+    download::download_one(
+        &state.network,
+        &state.files,
+        &DownloadSpec {
+            url: asset_index.url.clone(),
+            dest: path.clone(),
+            sha1: Some(asset_index.sha1.clone()),
+            size: Some(asset_index.size),
+        },
+    )
+    .await?;
+    let bytes = state.files.read_async(&path).await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
