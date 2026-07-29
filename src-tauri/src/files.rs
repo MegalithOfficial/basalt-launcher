@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
+use tokio::io::AsyncWriteExt;
+
 use crate::error::{Error, Result};
 use crate::paths::Paths;
 
@@ -195,18 +197,26 @@ impl FileManager {
         self.remove_dir_all_if_exists(path)
     }
 
-    pub fn temporary_for(&self, path: impl AsRef<Path>) -> Result<PathBuf> {
-        Ok(temporary_path(self.managed(path.as_ref())?))
+    pub async fn begin_staged_write(
+        &self,
+        destination: impl AsRef<Path>,
+    ) -> Result<StagedFile> {
+        let destination = self.managed(destination.as_ref())?.to_path_buf();
+        if let Some(parent) = destination.parent() {
+            self.ensure_dir_async(parent).await?;
+        }
+        let temporary = temporary_path(&destination);
+        let file = tokio::fs::File::create(&temporary).await?;
+        Ok(StagedFile {
+            files: self.clone(),
+            destination,
+            temporary: Some(temporary),
+            file: Some(file),
+        })
     }
 
-    pub async fn commit_temporary(
-        &self,
-        temporary: impl AsRef<Path>,
-        destination: impl AsRef<Path>,
-    ) -> Result<()> {
+    async fn commit_staged(&self, temporary: PathBuf, destination: PathBuf) -> Result<()> {
         let files = self.clone();
-        let temporary = self.managed(temporary.as_ref())?.to_path_buf();
-        let destination = self.managed(destination.as_ref())?.to_path_buf();
         tokio::task::spawn_blocking(move || {
             files.copy_external_into_sync(&temporary, destination)?;
             files.remove_file_if_exists(temporary)?;
@@ -231,6 +241,51 @@ impl FileManager {
             Ok(()) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
+        }
+    }
+}
+
+pub struct StagedFile {
+    files: FileManager,
+    destination: PathBuf,
+    temporary: Option<PathBuf>,
+    file: Option<tokio::fs::File>,
+}
+
+impl StagedFile {
+    pub fn writer(&mut self) -> &mut tokio::fs::File {
+        self.file
+            .as_mut()
+            .expect("staged file writer is unavailable after commit")
+    }
+
+    pub async fn commit(mut self) -> Result<()> {
+        let mut file = self
+            .file
+            .take()
+            .expect("staged file writer is unavailable after commit");
+        file.flush().await?;
+        file.sync_all().await?;
+        drop(file);
+
+        let temporary = self
+            .temporary
+            .as_ref()
+            .expect("staged file path is unavailable after commit")
+            .clone();
+        self.files
+            .commit_staged(temporary, self.destination.clone())
+            .await?;
+        self.temporary = None;
+        Ok(())
+    }
+}
+
+impl Drop for StagedFile {
+    fn drop(&mut self) {
+        drop(self.file.take());
+        if let Some(path) = self.temporary.take() {
+            let _ = self.files.remove_file_if_exists(path);
         }
     }
 }
@@ -263,6 +318,7 @@ fn nearest_existing(path: &Path) -> Result<&Path> {
 mod tests {
     use super::FileManager;
     use crate::paths::Paths;
+    use tokio::io::AsyncWriteExt;
 
     #[test]
     fn rejects_paths_outside_the_managed_root() {
@@ -284,6 +340,24 @@ mod tests {
         files.write_atomic(&path, b"first").unwrap();
         files.write_atomic(&path, b"second").unwrap();
         assert_eq!(files.read(&path).unwrap(), b"second");
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[tokio::test]
+    async fn abandoned_staged_write_preserves_destination_and_removes_partial() {
+        let root =
+            std::env::temp_dir().join(format!("basalt-staged-test-{}", uuid::Uuid::new_v4()));
+        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let path = root.join("value");
+        files.write_atomic(&path, b"original").unwrap();
+
+        let mut staged = files.begin_staged_write(&path).await.unwrap();
+        let temporary = staged.temporary.as_ref().unwrap().clone();
+        staged.writer().write_all(b"replacement").await.unwrap();
+        drop(staged);
+
+        assert_eq!(files.read(&path).unwrap(), b"original");
+        assert!(!temporary.exists());
         std::fs::remove_dir_all(root).ok();
     }
 

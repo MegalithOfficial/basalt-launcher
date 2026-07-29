@@ -41,11 +41,11 @@ async fn already_valid(files: &FileManager, spec: &DownloadSpec) -> bool {
         Ok(bytes) => bytes,
         Err(_) => return false,
     };
+    if spec.size.is_some_and(|size| bytes.len() as u64 != size) {
+        return false;
+    }
     if let Some(expected) = &spec.sha1 {
         return &sha1_hex(&bytes) == expected;
-    }
-    if let Some(size) = spec.size {
-        return bytes.len() as u64 == size;
     }
     true
 }
@@ -57,7 +57,7 @@ const RETRY_CEILING: Duration = Duration::from_secs(8);
 pub fn is_retryable(error: &Error) -> bool {
     match error {
         Error::Cancelled => false,
-        Error::Checksum { .. } => true,
+        Error::Checksum { .. } | Error::SizeMismatch { .. } => true,
         Error::Http(e) => {
             if let Some(status) = e.status() {
                 return status.is_server_error()
@@ -114,6 +114,7 @@ pub async fn download_one_reporting(
 fn short_reason(error: &Error) -> String {
     match error {
         Error::Checksum { .. } => "corrupt download".to_string(),
+        Error::SizeMismatch { .. } => "incomplete download".to_string(),
         Error::Http(e) if e.is_timeout() => "timed out".to_string(),
         Error::Http(e) if e.is_connect() => "connection failed".to_string(),
         Error::Http(e) if e.is_body() || e.is_decode() => "interrupted transfer".to_string(),
@@ -134,26 +135,50 @@ async fn download_once(
         tracing::trace!(dest = %spec.dest.display(), "already on disk, skipped");
         return Ok(false);
     }
-    if let Some(parent) = spec.dest.parent() {
-        files.ensure_dir_async(parent).await?;
-    }
-
     let resp = client
         .send_once(client.get(&spec.url))
         .await?
         .error_for_status()?;
+    if let (Some(expected), Some(actual)) = (spec.size, resp.content_length()) {
+        if actual != expected {
+            return Err(Error::SizeMismatch {
+                path: spec.dest.display().to_string(),
+                expected,
+                actual,
+            });
+        }
+    }
     let mut stream = resp.bytes_stream();
 
-    let tmp = files.temporary_for(&spec.dest)?;
-    let mut file = tokio::fs::File::create(&tmp).await?;
+    let mut staged = files.begin_staged_write(&spec.dest).await?;
     let mut hasher = Sha1::new();
+    let mut downloaded = 0_u64;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
+        downloaded += chunk.len() as u64;
+        if let Some(expected) = spec.size {
+            if downloaded > expected {
+                return Err(Error::SizeMismatch {
+                    path: spec.dest.display().to_string(),
+                    expected,
+                    actual: downloaded,
+                });
+            }
+        }
         hasher.update(&chunk);
-        file.write_all(&chunk).await?;
+        staged.writer().write_all(&chunk).await?;
     }
-    file.flush().await?;
+
+    if let Some(expected) = spec.size {
+        if downloaded != expected {
+            return Err(Error::SizeMismatch {
+                path: spec.dest.display().to_string(),
+                expected,
+                actual: downloaded,
+            });
+        }
+    }
 
     if let Some(expected) = &spec.sha1 {
         let actual = hasher.digest().to_string();
@@ -164,7 +189,6 @@ async fn download_once(
                 actual = %actual,
                 "checksum mismatch, discarding download"
             );
-            let _ = files.remove_file_if_exists_async(&tmp).await;
             return Err(Error::Checksum {
                 path: spec.dest.display().to_string(),
                 expected: expected.clone(),
@@ -173,7 +197,7 @@ async fn download_once(
         }
     }
 
-    files.commit_temporary(&tmp, &spec.dest).await?;
+    staged.commit().await?;
     tracing::trace!(url = %spec.url, dest = %spec.dest.display(), "downloaded");
     Ok(true)
 }
@@ -338,6 +362,15 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_bodies_are_retried() {
+        assert!(is_retryable(&Error::SizeMismatch {
+            path: "a.jar".into(),
+            expected: 10,
+            actual: 5,
+        }));
+    }
+
+    #[test]
     fn retry_delay_grows_then_settles() {
         assert!(retry_delay(1) < retry_delay(2));
         assert!(retry_delay(2) < retry_delay(3));
@@ -410,6 +443,56 @@ mod tests {
             "cancel should abort in flight requests, took {:?}",
             started.elapsed()
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cancelling_an_active_download_removes_its_partial_file() {
+        use std::io::Write;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\npartial",
+                )
+                .unwrap();
+            socket.flush().unwrap();
+            std::thread::sleep(Duration::from_secs(2));
+        });
+
+        let dir =
+            std::env::temp_dir().join(format!("basalt-active-cancel-{}", uuid::Uuid::new_v4()));
+        let token = CancellationToken::new();
+        let cancel = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            cancel.cancel();
+        });
+
+        let result = download_many_cancellable(
+            &network(),
+            &files(&dir),
+            vec![DownloadSpec {
+                url: format!("http://{address}/file"),
+                dest: dir.join("file.jar"),
+                sha1: None,
+                size: None,
+            }],
+            1,
+            |_| {},
+            Some(token),
+            None,
+            None,
+        )
+        .await;
+
+        assert!(matches!(result, Err(Error::Cancelled)));
+        assert!(std::fs::read_dir(&dir)
+            .unwrap()
+            .all(|entry| !entry.unwrap().file_name().to_string_lossy().contains(".part")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

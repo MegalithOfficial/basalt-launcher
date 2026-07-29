@@ -29,6 +29,13 @@ pub enum Error {
         actual: String,
     },
 
+    #[error("size mismatch for {path}: expected {expected} bytes, got {actual}")]
+    SizeMismatch {
+        path: String,
+        expected: u64,
+        actual: u64,
+    },
+
     #[error("not found: {0}")]
     NotFound(String),
 

@@ -337,6 +337,10 @@ fn sweep_partials(files: &crate::files::FileManager, dir: &std::path::Path) -> u
 #[tauri::command]
 pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::PendingOperation>> {
     let pending = state.db.pending_operations()?;
+    let removed_partials = sweep_partials(&state.files, &state.paths.root);
+    if removed_partials > 0 {
+        tracing::info!(removed_partials, "removed interrupted download files");
+    }
     if pending.is_empty() {
         return Ok(Vec::new());
     }
@@ -349,8 +353,6 @@ pub fn recover_interrupted(state: State<AppState>) -> Result<Vec<crate::db::Pend
             let _ = state.db.delete_instance_content_files(instance_id);
             let _ = state.db.delete_instance(instance_id);
             let _ = state.files.remove_instance_dir(instance_id);
-        } else {
-            sweep_partials(&state.files, &state.paths.instance_dir(instance_id));
         }
     }
 
