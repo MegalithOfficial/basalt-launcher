@@ -7,7 +7,7 @@ import {
   Pencil,
   Play,
   Plus,
-  Terminal,
+  Square,
   TriangleAlert,
 } from "lucide-react";
 
@@ -15,6 +15,7 @@ import { api } from "../lib/api";
 import { mediaSrc } from "../lib/media";
 import { loaderLabel } from "../lib/loader";
 import { formatPlaytime, relativeTime } from "../lib/time";
+import { useUptime } from "../lib/useUptime";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { InstanceSheet } from "../components/InstanceSheet";
@@ -82,6 +83,8 @@ export function HomeView() {
   const installedIds = useStore((s) => s.installedIds);
   const installInstance = useStore((s) => s.installInstance);
   const launchInstance = useStore((s) => s.launchInstance);
+  const launching = useStore((s) => s.launching);
+  const killInstance = useStore((s) => s.killInstance);
   const openConsole = useStore((s) => s.openConsole);
   const openInstance = useStore((s) => s.openInstance);
   const running = useStore((s) => s.running);
@@ -132,10 +135,13 @@ export function HomeView() {
       )
     : undefined;
 
+  const starting = selected ? launching.includes(selected.id) : false;
+  const uptime = useUptime(activeRun?.started_at ?? 0, !!activeRun);
+
   const onAction = async () => {
     setLaunchError(null);
     if (!hasInstance) return setModalOpen(true);
-    if (installing) return;
+    if (installing || starting) return;
     if (activeRun) return openConsole(activeRun.running_id);
     if (!installed) return installInstance(selected.id);
     if (!account) return setView("accounts");
@@ -156,9 +162,17 @@ export function HomeView() {
       install.stage === "downloading" ? ` ${percent}%` : ""
     }`;
     actionIcon = <Loader2 className="size-4 animate-spin" />;
+  } else if (starting) {
+    actionLabel = "STARTING";
+    actionIcon = <Loader2 className="size-4 animate-spin" />;
   } else if (activeRun) {
-    actionLabel = "CONSOLE";
-    actionIcon = <Terminal className="size-4" />;
+    actionLabel = `RUNNING ${uptime.toUpperCase()}`;
+    actionIcon = (
+      <span className="relative flex size-2">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-black/60" />
+        <span className="relative inline-flex size-2 rounded-full bg-black/80" />
+      </span>
+    );
   } else if (installed && !account) {
     actionLabel = "SIGN IN";
     actionIcon = <Play className="size-4 fill-black" />;
@@ -252,22 +266,34 @@ export function HomeView() {
             )}
           </div>
 
-          <button
-            onClick={onAction}
-            disabled={installing}
-            className="relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 font-pixel text-sm tracking-wider text-black shadow-xl shadow-[var(--accent-glow)] transition-all duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] active:scale-[0.98] disabled:active:scale-100"
-          >
-            {installing && install.stage === "downloading" && (
-              <span
-                className="absolute inset-y-0 left-0 bg-black/20 transition-all"
-                style={{ width: `${percent}%` }}
-              />
+          <div className="flex shrink-0 items-center gap-2">
+            {activeRun && (
+              <button
+                onClick={() => killInstance(activeRun.running_id)}
+                title="Stop the game"
+                className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/15 bg-black/50 text-white/80 backdrop-blur transition-colors hover:border-danger/50 hover:bg-danger/20 hover:text-danger"
+              >
+                <Square className="size-4 fill-current" />
+              </button>
             )}
-            <span className="relative flex items-center gap-2.5">
-              {actionIcon}
-              {actionLabel}
-            </span>
-          </button>
+            <button
+              onClick={onAction}
+              disabled={installing || starting}
+              className="relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 font-pixel text-sm tracking-wider text-black shadow-xl shadow-[var(--accent-glow)] transition-all duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] active:scale-[0.98] disabled:active:scale-100"
+            >
+              {installing && install.stage === "downloading" && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-black/20 transition-all"
+                  style={{ width: `${percent}%` }}
+                />
+              )}
+              <span className="relative flex items-center gap-2.5">
+                {actionIcon}
+                {actionLabel}
+              </span>
+            </button>
+
+          </div>
         </div>
       </div>
 

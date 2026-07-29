@@ -1,7 +1,8 @@
-import { Download, Loader2, Play, Terminal } from "lucide-react";
+import { Download, Loader2, Play } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import type { Instance } from "../lib/types";
+import { useUptime } from "../lib/useUptime";
 import { taskFraction, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
@@ -19,6 +20,7 @@ export function PlayButton({
   const installInstance = useStore((s) => s.installInstance);
   const launchInstance = useStore((s) => s.launchInstance);
   const openConsole = useStore((s) => s.openConsole);
+  const launching = useStore((s) => s.launching);
 
   const install = useInstanceTask(instance.id);
   const installed = installedIds.includes(instance.id);
@@ -27,6 +29,8 @@ export function PlayButton({
   );
   const fraction = install ? taskFraction(install) : null;
   const percent = fraction == null ? 0 : Math.round(fraction * 100);
+  const starting = launching.includes(instance.id);
+  const uptime = useUptime(run?.started_at ?? 0, !!run);
 
   const base = cn(
     "inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-all",
@@ -41,14 +45,26 @@ export function PlayButton({
       </span>
     );
   }
+  if (starting) {
+    return (
+      <span className={cn(base, "cursor-default bg-surface-3 text-content-muted")}>
+        <Loader2 className="size-3.5 animate-spin" />
+        Starting
+      </span>
+    );
+  }
   if (run) {
     return (
       <button
         onClick={() => openConsole(run.running_id)}
+        title="Running. Open its logs."
         className={cn(base, "border border-ok/40 bg-ok/10 text-ok hover:bg-ok/20")}
       >
-        <Terminal className="size-3.5" />
-        Console
+        <span className="relative flex size-1.5 shrink-0">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-ok opacity-75" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-ok" />
+        </span>
+        {compact ? uptime : `Running ${uptime}`}
       </button>
     );
   }

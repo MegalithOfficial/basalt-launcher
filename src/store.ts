@@ -95,6 +95,7 @@ interface AppStore {
   skinRevision: number;
   skinHeads: Record<string, string>;
   activeRunningId: string | null;
+  launching: string[];
   logsTab: LogsTab;
   media: Record<string, VersionMedia | null>;
   detailInstanceId: string | null;
@@ -206,6 +207,7 @@ export const useStore = create<AppStore>((set) => ({
   skinRevision: 0,
   skinHeads: {},
   activeRunningId: null,
+  launching: [],
   logsTab: "launcher",
   media: {},
   selectedInstanceId: null,
@@ -643,7 +645,14 @@ export const useStore = create<AppStore>((set) => ({
   resetAuth: () => set({ auth: { status: "idle" } }),
 
   launchInstance: async (id) => {
-    const runningId = await api.launchInstance(id);
+    if (useStore.getState().launching.includes(id)) return;
+    set((s) => ({ launching: [...s.launching, id] }));
+    let runningId: string;
+    try {
+      runningId = await api.launchInstance(id);
+    } finally {
+      set((s) => ({ launching: s.launching.filter((v) => v !== id) }));
+    }
     set((s) => ({
       activeRunningId: runningId,
       logsTab: "game",

@@ -3,6 +3,7 @@ import { Minus, Square, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { ActivityCenter } from "./ActivityCenter";
+import { RunningPill } from "./RunningPill";
 
 const win = getCurrentWindow();
 
@@ -73,6 +74,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
       </div>
 
       <div className="relative flex items-center">
+        <RunningPill immersive={immersive} />
         <ActivityCenter immersive={immersive} />
         <Control label="Minimize" immersive={immersive} onClick={() => win.minimize()}>
           <Minus className="size-3.5" />
