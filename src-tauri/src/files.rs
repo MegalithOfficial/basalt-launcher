@@ -357,19 +357,23 @@ impl Drop for StagedFile {
     fn drop(&mut self) {
         drop(self.file.take());
         if let Some(path) = self.temporary.take() {
-            if self.files.remove_file_if_exists(&path).is_err() {
-                let files = self.files.clone();
-                if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-                    runtime.spawn(async move {
-                        for _ in 0..5 {
-                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                            if files.remove_file_if_exists_async(&path).await.is_ok() {
-                                break;
-                            }
-                        }
-                    });
-                }
+            let files = self.files.clone();
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                runtime.spawn_blocking(move || cleanup_staged_file(&files, &path));
+            } else {
+                cleanup_staged_file(&files, &path);
             }
+        }
+    }
+}
+
+fn cleanup_staged_file(files: &FileManager, path: &Path) {
+    for attempt in 0..5 {
+        if files.remove_file_if_exists(path).is_ok() {
+            return;
+        }
+        if attempt < 4 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     }
 }
@@ -426,7 +430,13 @@ mod tests {
         drop(staged);
 
         assert_eq!(files.read(&path).unwrap(), b"original");
-        assert!(!temporary.exists());
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while files.exists(&temporary).unwrap() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
         std::fs::remove_dir_all(root).ok();
     }
 
