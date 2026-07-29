@@ -173,7 +173,7 @@ fn spawn_log_tailer(
     status: Arc<Mutex<RunStatus>>,
     logs: Arc<Mutex<Vec<LogLine>>>,
 ) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let path = files.paths().run_log(&running_id, stream);
         let mut offset = 0;
         let mut pending = Vec::new();
@@ -310,7 +310,7 @@ pub fn spawn_process(
     let sup_status = status.clone();
     let sup_running_id = running_id.to_string();
     let sup_instance_id = instance_id.to_string();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let exit = tokio::select! {
             result = child.wait() => result,
             _ = kill_rx => {
@@ -411,7 +411,7 @@ fn monitor_recovered_process(
     run: ActiveRun,
     status: Arc<Mutex<RunStatus>>,
 ) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(RECOVERY_POLL_INTERVAL).await;
             if process_matches(run.pid, run.process_started_at, &run.running_id) {
