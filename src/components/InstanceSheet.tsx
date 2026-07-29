@@ -46,7 +46,7 @@ export function InstanceSheet({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 380, damping: 40 }}
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-3xl border-t border-border bg-surface/95 backdrop-blur-xl"
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-3xl border border-b-0 border-border bg-surface/95 backdrop-blur-xl"
           >
             <div className="sticky top-0 z-10 flex flex-col items-center bg-gradient-to-b from-surface to-transparent pb-2 pt-3">
               <button

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Boxes,
@@ -17,7 +16,7 @@ import { LOADERS, loaderLabel } from "../lib/loader";
 import { mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance, JavaInfo } from "../lib/types";
-import { useEscape } from "../lib/useEscape";
+import { Modal } from "./Modal";
 import { Select } from "./Select";
 import { useStore } from "../store";
 
@@ -160,8 +159,6 @@ export function EditInstanceModal({
     };
   }, [loader, gameVersion, instance?.id]);
 
-  useEscape(!!instance, onClose);
-
   if (!instance) return null;
   const media = mediaMap[instance.id] ?? null;
 
@@ -223,22 +220,7 @@ export function EditInstanceModal({
   };
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-6 backdrop-blur-sm"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.97, y: 8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.97, y: 8 }}
-          transition={{ duration: 0.18 }}
-          onClick={(e) => e.stopPropagation()}
-          className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-        >
+    <Modal open onClose={onClose} size="xl">
           <div className="relative h-44 shrink-0">
             {media ? (
               <img
@@ -489,8 +471,6 @@ export function EditInstanceModal({
               </button>
             </div>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </Modal>
   );
 }

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { Check, Loader2, Search, X } from "lucide-react";
+import { Check, Loader2, Search } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { LOADERS } from "../lib/loader";
-import { useEscape } from "../lib/useEscape";
+import { Modal, ModalHeader } from "./Modal";
 import { Select } from "./Select";
 import type { LoaderKind, VersionEntry } from "../lib/types";
 import { useStore } from "../store";
@@ -67,8 +66,6 @@ export function CreateInstanceModal({
     [versions, query],
   );
 
-  useEscape(open, onClose);
-
   const createDisabled = !selected || busy || (loader !== null && !loaderVersion);
 
   const create = async () => {
@@ -93,32 +90,8 @@ export function CreateInstanceModal({
   };
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-6 backdrop-blur-sm"
-          onClick={onClose}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.18 }}
-            onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[78vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-          >
-            <div className="flex items-center justify-between border-b border-border-soft px-5 py-4">
-              <h2 className="font-display text-lg font-semibold text-content">New instance</h2>
-              <button
-                onClick={onClose}
-                className="grid size-7 place-items-center rounded-md text-content-faint hover:bg-surface-2 hover:text-content"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
+    <Modal open={open} onClose={onClose} size="lg" labelledBy="new-instance-title">
+      <ModalHeader id="new-instance-title" title="New instance" onClose={onClose} />
 
             <div className="flex flex-col gap-3 px-5 py-4">
               <input
@@ -263,9 +236,6 @@ export function CreateInstanceModal({
                 Create
               </button>
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    </Modal>
   );
 }

@@ -3,6 +3,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowLeft,
   ArrowUpCircle,
+  Check,
   FileBox,
   HardDriveUpload,
   Loader2,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { EditInstanceModal } from "../components/EditInstanceModal";
+import { Modal } from "../components/Modal";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
@@ -24,7 +26,7 @@ import { api } from "../lib/api";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc, mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
-import type { ContentItem, ContentKind, ContentUpdate } from "../lib/types";
+import type { ContentItem, ContentKind, ContentUpdate, RemovalPlan } from "../lib/types";
 import { useActiveProjectIds } from "../lib/useTasks";
 import { useStore } from "../store";
 
@@ -164,8 +166,9 @@ export function InstanceView() {
   const [updatingAll, setUpdatingAll] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{
     item: ContentItem;
-    dependents: string[];
+    plan: RemovalPlan;
   } | null>(null);
+  const [dropOrphans, setDropOrphans] = useState<string[]>([]);
 
   const refresh = useCallback(
     async (reconcile = false) => {
@@ -321,20 +324,24 @@ export function InstanceView() {
 
   const askRemove = async (item: ContentItem) => {
     if (tab === "worlds") return;
-    const dependents = await api
-      .getContentDependents(instance.id, tab, item.file_name)
-      .catch(() => [] as string[]);
-    if (dependents.length === 0 && item.source?.origin !== "pack") {
-      await remove(item);
+    const plan = await api
+      .planContentRemoval(instance.id, tab, item.file_name)
+      .catch(() => ({ dependents: [], from_pack: false, orphans: [] }) as RemovalPlan);
+    if (plan.dependents.length === 0 && !plan.from_pack && plan.orphans.length === 0) {
+      await remove(item, []);
       return;
     }
-    setConfirmDelete({ item, dependents });
+    setDropOrphans(plan.orphans.map((o) => o.file_name));
+    setConfirmDelete({ item, plan });
   };
 
-  const remove = async (item: ContentItem) => {
+  const remove = async (item: ContentItem, alsoRemove: string[]) => {
     if (tab === "worlds") return;
     setConfirmDelete(null);
     await api.deleteInstanceContent(instance.id, tab, item.file_name);
+    for (const fileName of alsoRemove) {
+      await api.deleteInstanceContent(instance.id, tab, fileName).catch(() => {});
+    }
     await refresh();
   };
 
@@ -746,38 +753,92 @@ export function InstanceView() {
         )}
       </div>
 
-      {confirmDelete && (
-        <div
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-6 backdrop-blur-sm"
-          onClick={() => setConfirmDelete(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-          >
+      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} nested>
+        {confirmDelete && (
+          <>
             <div className="flex items-start gap-3 border-b border-border-soft px-5 py-4">
-              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" />
+              <TriangleAlert
+                className={cn(
+                  "mt-0.5 size-4 shrink-0",
+                  confirmDelete.plan.dependents.length > 0 ? "text-danger" : "text-warn",
+                )}
+              />
               <div className="min-w-0">
                 <h2 className="font-display text-base font-semibold text-content">
                   Remove {confirmDelete.item.source?.title ?? confirmDelete.item.file_name}?
                 </h2>
                 <div className="mt-1 text-xs text-content-muted">
-                  {confirmDelete.dependents.length > 0 ? (
+                  {confirmDelete.plan.dependents.length > 0 ? (
                     <>
-                      {confirmDelete.dependents.length === 1
-                        ? "This mod is required by "
-                        : "This mod is required by "}
-                      <span className="font-medium text-warn">
-                        {confirmDelete.dependents.join(", ")}
-                      </span>
-                      . Removing it will likely break the game.
+                      <span className="font-medium text-danger">
+                        {confirmDelete.plan.dependents.join(", ")}
+                      </span>{" "}
+                      {confirmDelete.plan.dependents.length === 1 ? "requires" : "require"} this
+                      file. Removing it will likely break the game.
                     </>
-                  ) : (
+                  ) : confirmDelete.plan.from_pack ? (
                     "This file came from a modpack. Removing it may break the pack."
+                  ) : (
+                    "This file brought other mods in with it."
                   )}
                 </div>
               </div>
             </div>
+
+            {confirmDelete.plan.orphans.length > 0 && (
+              <div className="border-b border-border-soft px-5 py-4">
+                <div className="text-xs font-medium text-content">
+                  {confirmDelete.plan.orphans.length === 1
+                    ? "It installed one dependency that nothing else needs"
+                    : `It installed ${confirmDelete.plan.orphans.length} dependencies that nothing else needs`}
+                </div>
+                <div className="mt-2.5 flex flex-col gap-1">
+                  {confirmDelete.plan.orphans.map((orphan) => {
+                    const checked = dropOrphans.includes(orphan.file_name);
+                    return (
+                      <button
+                        key={orphan.file_name}
+                        onClick={() =>
+                          setDropOrphans((current) =>
+                            checked
+                              ? current.filter((f) => f !== orphan.file_name)
+                              : [...current, orphan.file_name],
+                          )
+                        }
+                        className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2"
+                      >
+                        <span
+                          className={cn(
+                            "grid size-4 shrink-0 place-items-center rounded border",
+                            checked
+                              ? "border-danger bg-danger/20 text-danger"
+                              : "border-border bg-surface-3",
+                          )}
+                        >
+                          {checked && <Check className="size-3" strokeWidth={3} />}
+                        </span>
+                        {orphan.icon_url ? (
+                          <img
+                            src={orphan.icon_url}
+                            alt=""
+                            className="size-6 shrink-0 rounded bg-surface-3 object-cover"
+                            draggable={false}
+                          />
+                        ) : (
+                          <span className="grid size-6 shrink-0 place-items-center rounded bg-surface-3 text-content-faint">
+                            <Package className="size-3" />
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-xs text-content-muted">
+                          {orphan.title}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 px-5 py-4">
               <button
                 onClick={() => setConfirmDelete(null)}
@@ -786,15 +847,19 @@ export function InstanceView() {
                 Keep it
               </button>
               <button
-                onClick={() => remove(confirmDelete.item)}
+                onClick={() => remove(confirmDelete.item, dropOrphans)}
                 className="rounded-lg bg-danger/15 px-4 py-2 text-sm font-semibold text-danger transition-colors hover:bg-danger/25"
               >
-                Remove anyway
+                {dropOrphans.length > 0
+                  ? `Remove ${dropOrphans.length + 1} files`
+                  : confirmDelete.plan.dependents.length > 0
+                    ? "Remove anyway"
+                    : "Remove"}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
       <EditInstanceModal
         instance={editOpen ? instance : null}

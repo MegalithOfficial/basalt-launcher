@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { Boxes, Check, ChevronDown, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
-import { useEscape } from "../lib/useEscape";
+import { Modal } from "./Modal";
 import type { Instance } from "../lib/types";
 
 function InstanceRow({
@@ -51,26 +50,9 @@ export function InstanceTargetPicker({
 }) {
   const [open, setOpen] = useState(false);
   const isModal = modalFor != null;
-  useEscape(isModal, () => onSelect(null));
-
   if (isModal) {
     return (
-      <AnimatePresence>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-6 backdrop-blur-sm"
-          onClick={() => onSelect(null)}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.18 }}
-            onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[70vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-          >
+      <Modal open onClose={() => onSelect(null)} nested>
             <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
               <div className="min-w-0">
                 <h2 className="font-display text-base font-semibold text-content">
@@ -102,9 +84,7 @@ export function InstanceTargetPicker({
                 ))
               )}
             </div>
-          </motion.div>
-        </motion.div>
-      </AnimatePresence>
+      </Modal>
     );
   }
 

@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowRight,
   Check,
@@ -10,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "../lib/cn";
-import { useEscape } from "../lib/useEscape";
+import { Modal } from "./Modal";
 import type { InstallPlan, PlannedFile, Task } from "../lib/types";
 import { taskFraction } from "../lib/useTasks";
 
@@ -77,8 +76,6 @@ export function InstallPlanPrompt({
   onSkipDependencies: () => void;
   onCancel: () => void;
 }) {
-  useEscape(!!plan && !busy, onCancel);
-
   const deps = plan?.dependencies ?? [];
   const skipped = plan?.skipped ?? [];
   const conflicts = plan?.conflicts ?? [];
@@ -86,23 +83,9 @@ export function InstallPlanPrompt({
   const total = (plan?.primary ? 1 : 0) + deps.length;
 
   return (
-    <AnimatePresence>
+    <Modal open={!!plan} onClose={onCancel} size="lg" nested dismissable={!busy}>
       {plan && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-6 backdrop-blur-sm"
-          onClick={busy ? undefined : onCancel}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.18 }}
-            onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-          >
+        <>
             <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
               <div className="min-w-0">
                 <h2 className="truncate font-display text-base font-semibold text-content">
@@ -239,9 +222,8 @@ export function InstallPlanPrompt({
                 {deps.length > 0 ? `Install ${total} files` : "Install"}
               </button>
             </div>
-          </motion.div>
-        </motion.div>
+        </>
       )}
-    </AnimatePresence>
+    </Modal>
   );
 }

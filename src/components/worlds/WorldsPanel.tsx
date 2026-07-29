@@ -12,7 +12,6 @@ import {
   ShieldAlert,
   Trash2,
   TriangleAlert,
-  X,
 } from "lucide-react";
 
 import { api } from "../../lib/api";
@@ -25,7 +24,7 @@ import type {
   WorldStatus,
   WorldSummary,
 } from "../../lib/types";
-import { useEscape } from "../../lib/useEscape";
+import { Modal, ModalHeader } from "../Modal";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -149,8 +148,6 @@ function ImportDialog({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEscape(!inspecting && !importing, onClose);
-
   const choose = async (kind: "directory" | "zip") => {
     const picked = await openFileDialog({
       multiple: false,
@@ -207,43 +204,28 @@ function ImportDialog({
     }
   };
 
+  const busy = inspecting || importing;
+
   return (
-    <div
-      className="fixed inset-0 z-[70] grid place-items-center bg-black/65 p-6 backdrop-blur-sm"
-      onClick={() => !inspecting && !importing && onClose()}
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      nested
+      dismissable={!busy}
+      labelledBy="world-import-title"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="world-import-title"
-        onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[min(720px,calc(100vh-48px))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-      >
-        <div className="flex items-start gap-3 border-b border-border-soft px-5 py-4">
-          <div className="grid size-9 shrink-0 place-items-center rounded-xl border border-border-soft bg-surface-2 text-[var(--accent)]">
+      <ModalHeader
+        id="world-import-title"
+        title="Import worlds"
+        subtitle={`Basalt copies worlds directly into ${instance.name}. Your files never pass through the webview.`}
+        icon={
+          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-[var(--accent)]">
             <HardDriveUpload className="size-4" />
           </div>
-          <div className="min-w-0 flex-1">
-            <h2
-              id="world-import-title"
-              className="font-display text-base font-semibold text-content"
-            >
-              Import worlds
-            </h2>
-            <p className="mt-0.5 text-xs text-content-muted">
-              Basalt copies worlds directly into {instance.name}. Your files never pass
-              through the webview.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={inspecting || importing}
-            aria-label="Close"
-            className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-40"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+        }
+        onClose={busy ? undefined : onClose}
+      />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           {!inspection && !inspecting && (
@@ -365,8 +347,7 @@ function ImportDialog({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
