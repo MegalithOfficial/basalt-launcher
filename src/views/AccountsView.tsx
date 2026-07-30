@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { LogIn, Trash2, UserCircle2 } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { Button, EmptyState } from "../components/ui";
 import { PlayerHead } from "../components/Avatar";
 import { AppearancePanel } from "../components/AppearancePanel";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SignInModal } from "../components/SignInModal";
+import type { AccountView } from "../lib/types";
 import { useStore } from "../store";
 
 function AccountCard({
@@ -77,6 +80,7 @@ function AccountCard({
 }
 
 export function AccountsView() {
+  const [removing, setRemoving] = useState<AccountView | null>(null);
   const accounts = useStore((s) => s.accounts);
   const auth = useStore((s) => s.auth);
   const addAccount = useStore((s) => s.addAccount);
@@ -125,7 +129,7 @@ export function AccountsView() {
                 name={acc.name}
                 active={acc.active}
                 onActivate={() => setActiveAccount(acc.id)}
-                onRemove={() => removeAccount(acc.id)}
+                onRemove={() => setRemoving(acc)}
               />
             ))}
           </div>
@@ -137,6 +141,18 @@ export function AccountsView() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!removing}
+        title={removing ? `Sign out ${removing.name}?` : ""}
+        description="The account is removed from Basalt. Nothing on the Mojang side changes, and you can sign back in at any time."
+        confirmLabel="Sign out"
+        onConfirm={async () => {
+          if (removing) await removeAccount(removing.id);
+          setRemoving(null);
+        }}
+        onCancel={() => setRemoving(null)}
+      />
 
       <SignInModal />
     </div>

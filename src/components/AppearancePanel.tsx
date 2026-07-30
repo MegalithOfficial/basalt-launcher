@@ -14,6 +14,7 @@ import {
 
 import { api } from "../lib/api";
 import { notifyRemoved } from "../lib/notify";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
 import { useStore } from "../store";
@@ -190,6 +191,7 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
   const [importing, setImporting] = useState(false);
   const [walking, setWalking] = useState(true);
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [removingSkin, setRemovingSkin] = useState<SkinEntry | null>(null);
   const bumpSkinRevision = useStore((s) => s.bumpSkinRevision);
   const setSkinHead = useStore((s) => s.setSkinHead);
 
@@ -477,7 +479,7 @@ Your current skin is saved here automatically. Upload a PNG or pull one in by
                     selected={previewId === skin.id}
                     worn={appearance?.library_id === skin.id}
                     onSelect={() => setPreviewId(skin.id)}
-                    onDelete={() => void removeSkin(skin.id)}
+                    onDelete={() => setRemovingSkin(skin)}
                     onRename={(name) => void renameSkin(skin.id, name)}
                   />
                 ))}
@@ -548,6 +550,18 @@ Your current skin is saved here automatically. Upload a PNG or pull one in by
           </section>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!removingSkin}
+        title={removingSkin ? `Delete ${removingSkin.name}?` : ""}
+        description="The skin file is removed from the library. Anyone currently wearing it keeps it until they change."
+        confirmLabel="Delete skin"
+        onConfirm={async () => {
+          if (removingSkin) await removeSkin(removingSkin.id);
+          setRemovingSkin(null);
+        }}
+        onCancel={() => setRemovingSkin(null)}
+      />
     </div>
   );
 }

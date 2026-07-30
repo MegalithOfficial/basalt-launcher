@@ -12,12 +12,11 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
-import { Modal } from "../components/Modal";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SuggestedContent } from "../components/SuggestedContent";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
@@ -848,113 +847,99 @@ export function InstanceView() {
         )}
       </div>
 
-      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} nested>
-        {confirmDelete && (
+      <ConfirmDialog
+        open={!!confirmDelete}
+        nested
+        tone={confirmDelete && confirmDelete.plan.dependents.length > 0 ? "danger" : "warn"}
+        title={
+          confirmDelete
+            ? `Remove ${confirmDelete.item.source?.title ?? confirmDelete.item.file_name}?`
+            : ""
+        }
+        description={
+          confirmDelete ? (
+            confirmDelete.plan.dependents.length > 0 ? (
+              <>
+                <span className="font-medium text-danger">
+                  {confirmDelete.plan.dependents.join(", ")}
+                </span>{" "}
+                {confirmDelete.plan.dependents.length === 1 ? "requires" : "require"} this file.
+                Removing it will likely break the game.
+              </>
+            ) : confirmDelete.plan.from_pack ? (
+              "This file came from a modpack. Removing it may break the pack."
+            ) : (
+              "This file brought other mods in with it."
+            )
+          ) : null
+        }
+        cancelLabel="Keep it"
+        confirmLabel={
+          dropOrphans.length > 0
+            ? `Remove ${dropOrphans.length + 1} files`
+            : confirmDelete && confirmDelete.plan.dependents.length > 0
+              ? "Remove anyway"
+              : "Remove"
+        }
+        onConfirm={async () => {
+          if (confirmDelete) await remove(confirmDelete.item, dropOrphans);
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      >
+        {confirmDelete && confirmDelete.plan.orphans.length > 0 ? (
           <>
-            <div className="flex items-start gap-3 border-b border-border-soft px-5 py-4">
-              <TriangleAlert
-                className={cn(
-                  "mt-0.5 size-4 shrink-0",
-                  confirmDelete.plan.dependents.length > 0 ? "text-danger" : "text-warn",
-                )}
-              />
-              <div className="min-w-0">
-                <h2 className="font-display text-base font-semibold text-content">
-                  Remove {confirmDelete.item.source?.title ?? confirmDelete.item.file_name}?
-                </h2>
-                <div className="mt-1 text-xs text-content-muted">
-                  {confirmDelete.plan.dependents.length > 0 ? (
-                    <>
-                      <span className="font-medium text-danger">
-                        {confirmDelete.plan.dependents.join(", ")}
-                      </span>{" "}
-                      {confirmDelete.plan.dependents.length === 1 ? "requires" : "require"} this
-                      file. Removing it will likely break the game.
-                    </>
-                  ) : confirmDelete.plan.from_pack ? (
-                    "This file came from a modpack. Removing it may break the pack."
-                  ) : (
-                    "This file brought other mods in with it."
-                  )}
-                </div>
-              </div>
+            <div className="text-xs font-medium text-content">
+              {confirmDelete.plan.orphans.length === 1
+                ? "It installed one dependency that nothing else needs"
+                : `It installed ${confirmDelete.plan.orphans.length} dependencies that nothing else needs`}
             </div>
-
-            {confirmDelete.plan.orphans.length > 0 && (
-              <div className="border-b border-border-soft px-5 py-4">
-                <div className="text-xs font-medium text-content">
-                  {confirmDelete.plan.orphans.length === 1
-                    ? "It installed one dependency that nothing else needs"
-                    : `It installed ${confirmDelete.plan.orphans.length} dependencies that nothing else needs`}
-                </div>
-                <div className="mt-2.5 flex flex-col gap-1">
-                  {confirmDelete.plan.orphans.map((orphan) => {
-                    const checked = dropOrphans.includes(orphan.file_name);
-                    return (
-                      <button
-                        key={orphan.file_name}
-                        onClick={() =>
-                          setDropOrphans((current) =>
-                            checked
-                              ? current.filter((f) => f !== orphan.file_name)
-                              : [...current, orphan.file_name],
-                          )
-                        }
-                        className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2"
-                      >
-                        <span
-                          className={cn(
-                            "grid size-4 shrink-0 place-items-center rounded border",
-                            checked
-                              ? "border-danger bg-danger/20 text-danger"
-                              : "border-border bg-surface-3",
-                          )}
-                        >
-                          {checked && <Check className="size-3" strokeWidth={3} />}
-                        </span>
-                        {orphan.icon_url ? (
-                          <img
-                            src={orphan.icon_url}
-                            alt=""
-                            className="size-6 shrink-0 rounded bg-surface-3 object-cover"
-                            draggable={false}
-                          />
-                        ) : (
-                          <span className="grid size-6 shrink-0 place-items-center rounded bg-surface-3 text-content-faint">
-                            <Package className="size-3" />
-                          </span>
-                        )}
-                        <span className="min-w-0 flex-1 truncate text-xs text-content-muted">
-                          {orphan.title}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 px-5 py-4">
-              <button
-                onClick={() => setConfirmDelete(null)}
-                className="rounded-lg px-3 py-2 text-sm font-medium text-content-muted transition-colors hover:text-content"
-              >
-                Keep it
-              </button>
-              <button
-                onClick={() => remove(confirmDelete.item, dropOrphans)}
-                className="rounded-lg bg-danger/15 px-4 py-2 text-sm font-semibold text-danger transition-colors hover:bg-danger/25"
-              >
-                {dropOrphans.length > 0
-                  ? `Remove ${dropOrphans.length + 1} files`
-                  : confirmDelete.plan.dependents.length > 0
-                    ? "Remove anyway"
-                    : "Remove"}
-              </button>
+            <div className="mt-2.5 flex flex-col gap-1">
+              {confirmDelete.plan.orphans.map((orphan) => {
+                const checked = dropOrphans.includes(orphan.file_name);
+                return (
+                  <button
+                    key={orphan.file_name}
+                    onClick={() =>
+                      setDropOrphans((current) =>
+                        checked
+                          ? current.filter((f) => f !== orphan.file_name)
+                          : [...current, orphan.file_name],
+                      )
+                    }
+                    className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2"
+                  >
+                    <span
+                      className={cn(
+                        "grid size-4 shrink-0 place-items-center rounded border",
+                        checked
+                          ? "border-danger bg-danger/20 text-danger"
+                          : "border-border bg-surface-3",
+                      )}
+                    >
+                      {checked && <Check className="size-3" strokeWidth={3} />}
+                    </span>
+                    {orphan.icon_url ? (
+                      <img
+                        src={orphan.icon_url}
+                        alt=""
+                        className="size-6 shrink-0 rounded bg-surface-3 object-cover"
+                        draggable={false}
+                      />
+                    ) : (
+                      <span className="grid size-6 shrink-0 place-items-center rounded bg-surface-3 text-content-faint">
+                        <Package className="size-3" />
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-xs text-content-muted">
+                      {orphan.title}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </>
-        )}
-      </Modal>
+        ) : null}
+      </ConfirmDialog>
 
       <InstallPlanPrompt
         plan={suggestPlan?.plan ?? null}

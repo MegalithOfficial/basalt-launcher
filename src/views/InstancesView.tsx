@@ -12,6 +12,7 @@ import {
 import { Button, EmptyState } from "../components/ui";
 import { Select } from "../components/Select";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
@@ -149,6 +150,7 @@ export function InstancesView() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
+  const [removing, setRemoving] = useState<Instance | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(
     () => (localStorage.getItem("instances-view") as ViewMode) ?? "grid",
@@ -298,7 +300,7 @@ export function InstancesView() {
                     <PlayButton instance={it} onError={setLaunchError} />
                     <RowActions
                       onEdit={() => setEditing(it)}
-                      onDelete={() => deleteInstance(it.id)}
+                      onDelete={() => setRemoving(it)}
                     />
                   </div>
                 </div>
@@ -358,7 +360,7 @@ export function InstancesView() {
                       <RowActions
                         floating
                         onEdit={() => setEditing(it)}
-                        onDelete={() => deleteInstance(it.id)}
+                        onDelete={() => setRemoving(it)}
                       />
                     </div>
                   </div>
@@ -394,6 +396,19 @@ export function InstancesView() {
         onCreated={() => {}}
       />
       <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
+
+      <ConfirmDialog
+        open={!!removing}
+        title={removing ? `Delete ${removing.name}?` : ""}
+        description="The whole instance folder is removed from disk, including its worlds, mods, configs and screenshots. This cannot be undone."
+        confirmLabel="Delete instance"
+        requireText={removing?.name}
+        onConfirm={async () => {
+          if (removing) await deleteInstance(removing.id);
+          setRemoving(null);
+        }}
+        onCancel={() => setRemoving(null)}
+      />
     </div>
   );
 }

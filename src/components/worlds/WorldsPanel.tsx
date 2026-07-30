@@ -25,6 +25,7 @@ import type {
   WorldStatus,
   WorldSummary,
 } from "../../lib/types";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { Modal, ModalHeader } from "../Modal";
 
 function formatSize(bytes: number): string {
@@ -373,7 +374,6 @@ function WorldCard({
   onDelete: () => Promise<void>;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
 
   const chips = [
     world.game_mode || null,
@@ -460,42 +460,15 @@ function WorldCard({
         </button>
       </div>
 
-      {confirming && (
-        <div className="absolute inset-0 z-10 flex items-center gap-3 rounded-2xl border border-danger/40 bg-base/95 px-3.5 backdrop-blur">
-          <TriangleAlert className="size-4 shrink-0 text-danger" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-semibold text-content">
-              Delete {world.name}?
-            </div>
-            <div className="text-[11px] text-content-faint">
-              The save folder is removed from disk. This cannot be undone.
-            </div>
-          </div>
-          <button
-            onClick={() => setConfirming(false)}
-            disabled={busy}
-            className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-content-muted transition-colors hover:text-content disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await onDelete();
-              } finally {
-                setBusy(false);
-                setConfirming(false);
-              }
-            }}
-            disabled={busy}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/15 px-2.5 py-1.5 text-xs font-semibold text-danger transition-colors hover:bg-danger/25 disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-            Delete
-          </button>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirming}
+        presentation="inline"
+        title={`Delete ${world.name}?`}
+        description="The save folder is removed from disk. This cannot be undone."
+        confirmIcon={<Trash2 className="size-3.5" />}
+        onConfirm={onDelete}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   );
 }
