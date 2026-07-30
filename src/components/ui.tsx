@@ -118,3 +118,65 @@ export function Toggle({
     </button>
   );
 }
+
+export function SettingGroup({
+  title,
+  description,
+  children,
+  className,
+}: {
+  title?: string;
+  description?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("break-inside-avoid", className)}>
+      {title && (
+        <div className="mb-2 px-1">
+          <h2 className="font-display text-sm font-semibold text-content">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-content-muted">{description}</p>}
+        </div>
+      )}
+      <div className="divide-y divide-border-soft rounded-2xl border border-border-soft bg-surface-2/60">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+export function SettingRow({
+  label,
+  hint,
+  children,
+  stacked,
+  action,
+}: {
+  label: string;
+  hint?: string;
+  children?: ReactNode;
+  stacked?: boolean;
+  action?: ReactNode;
+}) {
+  if (stacked) {
+    return (
+      <div className="px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-content">{label}</div>
+          {action}
+        </div>
+        {hint && <div className="mt-0.5 break-words text-xs text-content-faint">{hint}</div>}
+        {children && <div className="mt-3 flex items-center gap-2">{children}</div>}
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between gap-5 px-5 py-4">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-content">{label}</div>
+        {hint && <div className="mt-0.5 break-words text-xs text-content-faint">{hint}</div>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">{children}</div>
+    </div>
+  );
+}
