@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { MemoryRange } from "../components/MemoryRange";
 import { MigrateModal } from "../components/MigrateModal";
 import { Select } from "../components/Select";
 import { SettingGroup, SettingRow as Row, Toggle } from "../components/ui";
@@ -41,7 +42,7 @@ const TABS = [
   { id: "java", label: "Java" },
   { id: "game", label: "Game" },
   { id: "integrations", label: "Integrations" },
-  { id: "diagnostics", label: "Diagnostics" },
+  { id: "resources", label: "Resources" },
 ];
 
 function Section(props: React.ComponentProps<typeof SettingGroup>) {
@@ -442,39 +443,6 @@ export function SettingsView() {
           <div>
           <div className="gap-6 [column-fill:balance] lg:columns-2">
           <Section
-            title="Game defaults"
-            description="Applied to every launch unless an instance overrides them."
-          >
-            <Row label="Minimum memory" hint="JVM initial heap">
-              <input
-                type="number"
-                value={draft.min_memory_mb}
-                onChange={(e) => set({ min_memory_mb: parseNum(e.target.value, 512) })}
-                className={cn(inputCls, numberCls)}
-              />
-              <span className="text-xs text-content-faint">MB</span>
-            </Row>
-            <Row label="Maximum memory" hint={memoryHint}>
-              <input
-                type="number"
-                value={draft.max_memory_mb}
-                onChange={(e) => set({ max_memory_mb: parseNum(e.target.value, 2048) })}
-                className={cn(inputCls, numberCls)}
-              />
-              <span className="text-xs text-content-faint">MB</span>
-            </Row>
-            <Row label="Concurrent downloads" hint="parallel files during installs">
-              <input
-                type="number"
-                value={draft.concurrent_downloads}
-                onChange={(e) =>
-                  set({ concurrent_downloads: parseNum(e.target.value, 16) })
-                }
-                className={cn(inputCls, numberCls)}
-              />
-            </Row>
-          </Section>
-          <Section
             title="Migration"
             description="Bring instances over from another launcher."
           >
@@ -649,6 +617,55 @@ export function SettingsView() {
         {tab === "game" && (
           <div className="gap-6 [column-fill:balance] lg:columns-2">
           <Section
+            title="Memory"
+            description="Applied to every launch unless an instance overrides it."
+          >
+            <div className="px-5 py-5">
+              <div className="mb-2 flex items-end justify-between gap-4">
+                <div>
+                  <div className="text-[11px] font-medium text-content-muted">Minimum</div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={draft.min_memory_mb}
+                      onChange={(e) => set({ min_memory_mb: parseNum(e.target.value, 512) })}
+                      className={cn(inputCls, numberCls)}
+                    />
+                    <span className="text-xs text-content-faint">MB</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] font-medium text-content-muted">Maximum</div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={draft.max_memory_mb}
+                      onChange={(e) => set({ max_memory_mb: parseNum(e.target.value, 2048) })}
+                      className={cn(inputCls, numberCls)}
+                    />
+                    <span className="text-xs text-content-faint">MB</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-1 pt-3">
+                <MemoryRange
+                  min={draft.min_memory_mb}
+                  max={draft.max_memory_mb}
+                  ceiling={Math.max(4096, stats?.total_memory_mb ?? 16384)}
+                  available={stats?.available_memory_mb}
+                  onChange={(low, high) =>
+                    set({ min_memory_mb: low, max_memory_mb: high })
+                  }
+                />
+              </div>
+
+              <div className="mt-4 border-t border-border-soft pt-3 text-[11px] text-content-faint">
+                {memoryHint}
+              </div>
+            </div>
+          </Section>
+          <Section
             title="Game window"
             description="How Minecraft opens. Instances inherit these unless the pack overrides them."
           >
@@ -766,8 +783,23 @@ export function SettingsView() {
           </div>
         )}
 
-        {tab === "diagnostics" && (
+        {tab === "resources" && (
           <div>
+          <Section
+            title="Downloads"
+            description="How hard Basalt pulls while installing."
+          >
+            <Row label="Concurrent downloads" hint="parallel files during installs">
+              <input
+                type="number"
+                value={draft.concurrent_downloads}
+                onChange={(e) =>
+                  set({ concurrent_downloads: parseNum(e.target.value, 16) })
+                }
+                className={cn(inputCls, numberCls)}
+              />
+            </Row>
+          </Section>
           <Section
             title="Diagnostics"
             description="Logs are written to disk and kept for seven days. Raise the level before reproducing a problem."

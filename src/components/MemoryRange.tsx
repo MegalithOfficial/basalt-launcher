@@ -106,12 +106,7 @@ export function MemoryRange({
         dragging === which && "scale-110 cursor-grabbing",
       )}
     >
-      <span
-        className={cn(
-          "size-2 rounded-full transition-colors",
-          tight ? "bg-warn" : "bg-[var(--accent)]",
-        )}
-      />
+      <span className="size-2 rounded-full bg-[var(--accent)]" />
       <span
         className={cn(
           "pointer-events-none absolute -top-8 whitespace-nowrap rounded-md border border-border bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-content opacity-0 shadow-lg transition-opacity",
@@ -134,22 +129,21 @@ export function MemoryRange({
         }}
         className="relative h-2 w-full cursor-pointer rounded-full bg-surface-3"
       >
-        {available != null && available < ceiling && (
-          <div
-            className="absolute inset-y-0 right-0 rounded-r-full bg-warn/15"
-            style={{ left: `${percent(available)}%` }}
-          />
-        )}
-
         <div
-          className={cn(
-            "absolute inset-y-0 rounded-full transition-colors",
-            tight
-              ? "bg-gradient-to-r from-warn/70 to-warn"
-              : "[background:linear-gradient(to_right,var(--accent-deep),var(--accent))]",
-          )}
+          className="absolute inset-y-0 rounded-full [background:linear-gradient(to_right,var(--accent-deep),var(--accent))]"
           style={{ left: `${percent(min)}%`, width: `${percent(max) - percent(min)}%` }}
         />
+
+        {available != null && available > FLOOR && available < ceiling && (
+          <span
+            title={`${label(available)} free right now`}
+            style={{ left: `${percent(available)}%` }}
+            className={cn(
+              "absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors",
+              tight ? "bg-warn" : "bg-content-faint",
+            )}
+          />
+        )}
 
         {ticks.map((tick) => (
           <span
