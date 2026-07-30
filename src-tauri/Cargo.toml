@@ -29,7 +29,7 @@ tauri-plugin-single-window = "1.2.0"
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "fs", "io-util", "sync", "time"] }
 tokio-util = { version = "0.7.19", features = ["rt"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart", "socks"] }
 futures = "0.3"
 cap-std = "4.0.2"
 bytes = "1"

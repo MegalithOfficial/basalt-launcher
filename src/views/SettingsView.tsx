@@ -9,11 +9,14 @@ import {
   FolderOpen,
   HardDriveDownload,
   KeyRound,
+  Loader2,
   Plus,
+  Radio,
   RefreshCw,
   ScrollText,
   Tag,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 
 import { MemoryRange } from "../components/MemoryRange";
@@ -31,6 +34,8 @@ import type {
   LaunchPreview,
   LauncherSettings,
   LogLevel,
+  NetworkProbe,
+  ProxyMode,
   SystemStats,
   SystemUsage,
   UpdateInfo,
@@ -42,12 +47,20 @@ const TABS = [
   { id: "java", label: "Java" },
   { id: "game", label: "Game" },
   { id: "integrations", label: "Integrations" },
+  { id: "network", label: "Network" },
   { id: "resources", label: "Resources" },
 ];
 
 function Section(props: React.ComponentProps<typeof SettingGroup>) {
   return <SettingGroup {...props} className={cn("mb-6", props.className)} />;
 }
+
+const PROXY_LABELS: Record<ProxyMode, string> = {
+  system: "Use system settings",
+  none: "Direct, no proxy",
+  http: "HTTP proxy",
+  socks5: "SOCKS5 proxy",
+};
 
 const AUTO_DETECT = "Auto-detect";
 const CUSTOM_PATH = "Custom path";
@@ -171,6 +184,8 @@ function SystemCard({
 
 export function SettingsView() {
   const [migrateOpen, setMigrateOpen] = useState(false);
+  const [probe, setProbe] = useState<NetworkProbe | null>(null);
+  const [probing, setProbing] = useState(false);
   const settings = useStore((s) => s.settings);
   const logConfig = useStore((s) => s.logConfig);
   const setLogLevel = useStore((s) => s.setLogLevel);
@@ -781,6 +796,161 @@ export function SettingsView() {
               >
                 <KeyRound className="size-4" />
               </button>
+            </Row>
+          </Section>
+          </div>
+        )}
+
+        {tab === "network" && (
+          <div className="gap-6 [column-fill:balance] lg:columns-2">
+          <Section
+            title="Proxy"
+            description="Routes every request Basalt makes. The game itself is not affected."
+          >
+            <Row label="Mode" hint="System follows the environment variables">
+              <div className="w-44">
+                <Select
+                  compact
+                  value={PROXY_LABELS[draft.proxy_mode] ?? PROXY_LABELS.system}
+                  options={Object.values(PROXY_LABELS)}
+                  onChange={(label) => {
+                    const mode = (Object.keys(PROXY_LABELS) as ProxyMode[]).find(
+                      (key) => PROXY_LABELS[key] === label,
+                    );
+                    set({ proxy_mode: mode ?? "system" });
+                    setProbe(null);
+                  }}
+                />
+              </div>
+            </Row>
+            {(draft.proxy_mode === "http" || draft.proxy_mode === "socks5") && (
+              <>
+                <Row label="Address" hint="host name or address of the proxy">
+                  <input
+                    value={draft.proxy_host}
+                    onChange={(e) => set({ proxy_host: e.target.value })}
+                    placeholder="127.0.0.1"
+                    spellCheck={false}
+                    className={cn(inputCls, "w-56 font-mono text-xs")}
+                  />
+                </Row>
+                <Row label="Port" hint={draft.proxy_mode === "socks5" ? "1080 by default" : "8080 by default"}>
+                  <input
+                    type="number"
+                    value={draft.proxy_port || ""}
+                    onChange={(e) => set({ proxy_port: parseNum(e.target.value, 0) })}
+                    placeholder={draft.proxy_mode === "socks5" ? "1080" : "8080"}
+                    className={cn(inputCls, numberCls)}
+                  />
+                </Row>
+                <Row label="Username" hint="leave empty if the proxy is open">
+                  <input
+                    value={draft.proxy_username}
+                    onChange={(e) => set({ proxy_username: e.target.value })}
+                    spellCheck={false}
+                    className={cn(inputCls, "w-56")}
+                  />
+                </Row>
+                <Row label="Password">
+                  <input
+                    type="password"
+                    value={draft.proxy_password}
+                    onChange={(e) => set({ proxy_password: e.target.value })}
+                    className={cn(inputCls, "w-56")}
+                  />
+                </Row>
+              </>
+            )}
+            <Row
+              label="Test the connection"
+              hint={
+                probe
+                  ? probe.ok
+                    ? `Reached Modrinth in ${probe.millis} ms${probe.via_proxy ? " through the proxy" : ""}`
+                    : (probe.error ?? "The request failed")
+                  : "Saves first, then asks Modrinth for a small response"
+              }
+              stacked
+              action={
+                probe && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 text-xs font-medium",
+                      probe.ok ? "text-ok" : "text-danger",
+                    )}
+                  >
+                    {probe.ok ? (
+                      <CircleCheck className="size-3.5" />
+                    ) : (
+                      <TriangleAlert className="size-3.5" />
+                    )}
+                    {probe.ok ? "Reachable" : "No answer"}
+                  </span>
+                )
+              }
+            >
+              <button
+                onClick={async () => {
+                  setProbing(true);
+                  setProbe(null);
+                  try {
+                    await api.updateSettings(draft);
+                    setProbe(await api.testNetwork());
+                  } catch (e) {
+                    setProbe({
+                      ok: false,
+                      status: null,
+                      millis: 0,
+                      via_proxy: false,
+                      error: String(e),
+                    });
+                  } finally {
+                    setProbing(false);
+                  }
+                }}
+                disabled={probing}
+                className={cn(actionCls, "disabled:opacity-50")}
+              >
+                {probing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Radio className="size-3.5" />
+                )}
+                Test connection
+              </button>
+            </Row>
+          </Section>
+
+          <Section
+            title="Requests"
+            description="How patient Basalt is with slow or flaky servers."
+          >
+            <Row label="Timeout" hint="how long a single request may take">
+              <input
+                type="number"
+                value={draft.request_timeout_secs}
+                onChange={(e) => set({ request_timeout_secs: parseNum(e.target.value, 45) })}
+                className={cn(inputCls, numberCls)}
+              />
+              <span className="text-xs text-content-faint">sec</span>
+            </Row>
+            <Row label="Retries" hint="attempts before a download is given up on">
+              <input
+                type="number"
+                value={draft.max_retries}
+                onChange={(e) => set({ max_retries: parseNum(e.target.value, 4) })}
+                className={cn(inputCls, numberCls)}
+              />
+            </Row>
+            <Row
+              label="Accept invalid certificates"
+              hint="Only for a proxy that inspects traffic with its own certificate. Leave off otherwise."
+            >
+              <Toggle
+                label="Accept invalid certificates"
+                checked={draft.allow_insecure_tls}
+                onChange={(v) => set({ allow_insecure_tls: v })}
+              />
             </Row>
           </Section>
           </div>

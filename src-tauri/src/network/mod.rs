@@ -19,28 +19,82 @@ const MAX_BACKOFF: Duration = Duration::from_secs(20);
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(5 * 60);
 const MAX_BUFFERED_BODY: usize = 16 * 1024 * 1024;
 
+pub const USER_AGENT: &str = concat!(
+    "MegalithOfficial/basalt-launcher/",
+    env!("CARGO_PKG_VERSION"),
+    " (github.com/MegalithOfficial/basalt-launcher)"
+);
+
 pub struct NetworkManager {
-    client: reqwest::Client,
+    client: std::sync::RwLock<reqwest::Client>,
+    max_attempts: std::sync::atomic::AtomicU32,
     limiter: RateLimiter,
+}
+
+pub fn build_client(settings: &crate::config::LauncherSettings) -> Result<reqwest::Client> {
+    let mut builder =
+        reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_secs(
+                settings.request_timeout_secs.clamp(5, 600),
+            ));
+
+    if settings.allow_insecure_tls {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+
+    match settings.proxy_mode.as_str() {
+        "none" => builder = builder.no_proxy(),
+        "http" | "socks5" => {
+            let host = settings.proxy_host.trim();
+            if host.is_empty() {
+                return Err(Error::other("A proxy host is required."));
+            }
+            let scheme = if settings.proxy_mode == "socks5" {
+                "socks5"
+            } else {
+                "http"
+            };
+            let port = if settings.proxy_port == 0 {
+                if scheme == "socks5" {
+                    1080
+                } else {
+                    8080
+                }
+            } else {
+                settings.proxy_port
+            };
+            let url = if host.contains("://") {
+                host.to_string()
+            } else {
+                format!("{scheme}://{host}:{port}")
+            };
+            let mut proxy = reqwest::Proxy::all(&url)
+                .map_err(|error| Error::other(format!("proxy address {url}: {error}")))?;
+            if !settings.proxy_username.trim().is_empty() {
+                proxy = proxy.basic_auth(settings.proxy_username.trim(), &settings.proxy_password);
+            }
+            builder = builder.proxy(proxy);
+        }
+        _ => {}
+    }
+
+    builder
+        .build()
+        .map_err(|error| Error::other(format!("building the HTTP client: {error}")))
 }
 
 impl NetworkManager {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
-            .user_agent(concat!(
-                "MegalithOfficial/basalt-launcher/",
-                env!("CARGO_PKG_VERSION"),
-                " (github.com/MegalithOfficial/basalt-launcher)"
-            ))
-            .timeout(Duration::from_secs(45))
-            .build()
+        let client = build_client(&crate::config::LauncherSettings::default())
             .expect("failed to build HTTP client");
         Self::with_client(client)
     }
 
     pub fn with_client(client: reqwest::Client) -> Self {
         Self {
-            client,
+            client: std::sync::RwLock::new(client),
+            max_attempts: std::sync::atomic::AtomicU32::new(MAX_ATTEMPTS),
             limiter: RateLimiter::new(
                 REQUESTS_PER_MINUTE,
                 Duration::from_secs(60),
@@ -49,20 +103,39 @@ impl NetworkManager {
         }
     }
 
+    fn client(&self) -> reqwest::Client {
+        self.client.read().unwrap().clone()
+    }
+
+    fn attempts(&self) -> u32 {
+        self.max_attempts.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn reconfigure(&self, settings: &crate::config::LauncherSettings) -> Result<()> {
+        let client = build_client(settings)?;
+        *self.client.write().unwrap() = client;
+        self.max_attempts.store(
+            settings.max_retries.clamp(1, 10),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        tracing::info!(proxy = %settings.proxy_mode, "network settings applied");
+        Ok(())
+    }
+
     pub fn get(&self, url: impl IntoUrl) -> RequestBuilder {
-        self.client.get(url)
+        self.client().get(url)
     }
 
     pub fn post(&self, url: impl IntoUrl) -> RequestBuilder {
-        self.client.post(url)
+        self.client().post(url)
     }
 
     pub fn put(&self, url: impl IntoUrl) -> RequestBuilder {
-        self.client.put(url)
+        self.client().put(url)
     }
 
     pub fn delete(&self, url: impl IntoUrl) -> RequestBuilder {
-        self.client.delete(url)
+        self.client().delete(url)
     }
 
     pub async fn send_once(&self, request: RequestBuilder) -> Result<ManagedResponse> {
@@ -71,7 +144,7 @@ impl NetworkManager {
 
     async fn execute_once(&self, request: Request) -> Result<ManagedResponse> {
         let lease = self.limiter.acquire().await;
-        let response = self.client.execute(request).await?;
+        let response = self.client().execute(request).await?;
         Ok(ManagedResponse {
             response,
             _lease: lease,
@@ -94,7 +167,7 @@ impl NetworkManager {
                 Ok(response) if should_retry(response.status()) => {
                     let wait = retry_after(&response).unwrap_or_else(|| backoff(attempt));
                     attempt += 1;
-                    if attempt >= MAX_ATTEMPTS {
+                    if attempt >= self.attempts() {
                         return Err(Error::HttpStatus(response.status()));
                     }
                     drop(response);
@@ -106,7 +179,7 @@ impl NetworkManager {
                         if error.is_body() || error.is_decode() || error.is_timeout() =>
                     {
                         attempt += 1;
-                        if attempt >= MAX_ATTEMPTS {
+                        if attempt >= self.attempts() {
                             return Err(error.into());
                         }
                         tokio::time::sleep(backoff(attempt - 1)).await;
@@ -115,7 +188,7 @@ impl NetworkManager {
                 },
                 Err(Error::Http(error)) if error.is_timeout() || error.is_connect() => {
                     attempt += 1;
-                    if attempt >= MAX_ATTEMPTS {
+                    if attempt >= self.attempts() {
                         return Err(error.into());
                     }
                     tokio::time::sleep(backoff(attempt - 1)).await;

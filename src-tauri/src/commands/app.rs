@@ -52,7 +52,49 @@ pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Re
     if logging::normalize_level(&settings.log_level) != logging::current_level() {
         logging::set_level(&settings.log_level)?;
     }
-    state.db.save_settings(&settings)
+    state.db.save_settings(&settings)?;
+    state.network.reconfigure(&settings)
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct NetworkProbe {
+    pub ok: bool,
+    pub status: Option<u16>,
+    pub millis: u64,
+    pub via_proxy: bool,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn test_network(state: State<'_, AppState>, url: Option<String>) -> Result<NetworkProbe> {
+    let settings = state.db.load_settings()?;
+    let target = url
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "https://api.modrinth.com/v2/tag/loader".to_string());
+    let via_proxy = matches!(settings.proxy_mode.as_str(), "http" | "socks5");
+
+    let started = std::time::Instant::now();
+    let result = state.network.get(&target).send().await;
+    let millis = started.elapsed().as_millis() as u64;
+
+    Ok(match result {
+        Ok(response) => NetworkProbe {
+            ok: response.status().is_success(),
+            status: Some(response.status().as_u16()),
+            millis,
+            via_proxy,
+            error: (!response.status().is_success())
+                .then(|| format!("server answered {}", response.status())),
+        },
+        Err(error) => NetworkProbe {
+            ok: false,
+            status: None,
+            millis,
+            via_proxy,
+            error: Some(error.to_string()),
+        },
+    })
 }
 
 #[tauri::command]

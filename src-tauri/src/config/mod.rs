@@ -24,6 +24,34 @@ pub struct LauncherSettings {
     pub fullscreen: bool,
     pub ignore_java_checks: bool,
     pub env_vars: Vec<EnvVar>,
+    #[serde(default = "default_proxy_mode")]
+    pub proxy_mode: String,
+    #[serde(default)]
+    pub proxy_host: String,
+    #[serde(default)]
+    pub proxy_port: u16,
+    #[serde(default)]
+    pub proxy_username: String,
+    #[serde(default)]
+    pub proxy_password: String,
+    #[serde(default = "default_timeout_secs")]
+    pub request_timeout_secs: u64,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    #[serde(default)]
+    pub allow_insecure_tls: bool,
+}
+
+pub fn default_proxy_mode() -> String {
+    "system".to_string()
+}
+
+pub fn default_timeout_secs() -> u64 {
+    45
+}
+
+pub fn default_max_retries() -> u32 {
+    4
 }
 
 impl Default for LauncherSettings {
@@ -42,6 +70,14 @@ impl Default for LauncherSettings {
             fullscreen: false,
             ignore_java_checks: false,
             env_vars: Vec::new(),
+            proxy_mode: default_proxy_mode(),
+            proxy_host: String::new(),
+            proxy_port: 0,
+            proxy_username: String::new(),
+            proxy_password: String::new(),
+            request_timeout_secs: default_timeout_secs(),
+            max_retries: default_max_retries(),
+            allow_insecure_tls: false,
         }
     }
 }

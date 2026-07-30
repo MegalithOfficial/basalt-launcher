@@ -18,6 +18,7 @@ import type {
   JavaInfo,
   JavaStatus,
   LauncherSource,
+  NetworkProbe,
   LaunchPreview,
   MigrationOutcome,
   MigrationScan,
@@ -269,6 +270,7 @@ export const api = {
   deleteInstanceLog: (instanceId: string, name: string) =>
     call<void>("delete_instance_log", { instanceId, name }),
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
+  testNetwork: (url?: string) => call<NetworkProbe>("test_network", { url: url ?? null }),
   checkForUpdates: () => call<UpdateInfo>("check_for_updates"),
   getAboutLinks: () => call<AboutLinks>("get_about_links"),
   getSystemStats: () => call<SystemStats>("get_system_stats"),

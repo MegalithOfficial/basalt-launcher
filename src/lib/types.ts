@@ -13,6 +13,24 @@ export interface LauncherSettings {
   fullscreen: boolean;
   ignore_java_checks: boolean;
   env_vars: EnvVar[];
+  proxy_mode: ProxyMode;
+  proxy_host: string;
+  proxy_port: number;
+  proxy_username: string;
+  proxy_password: string;
+  request_timeout_secs: number;
+  max_retries: number;
+  allow_insecure_tls: boolean;
+}
+
+export type ProxyMode = "system" | "none" | "http" | "socks5";
+
+export interface NetworkProbe {
+  ok: boolean;
+  status: number | null;
+  millis: number;
+  via_proxy: boolean;
+  error: string | null;
 }
 
 export interface EnvVar {

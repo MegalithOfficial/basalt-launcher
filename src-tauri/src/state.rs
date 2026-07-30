@@ -28,8 +28,14 @@ impl AppState {
     pub fn new(files: FileManager, db: Db) -> Self {
         let paths = files.paths().clone();
         let tasks = std::sync::Arc::new(Tasks::new(db.clone()));
+        let network = NetworkManager::new();
+        if let Ok(settings) = db.load_settings() {
+            if let Err(error) = network.reconfigure(&settings) {
+                tracing::warn!(error = %error, "could not apply the saved network settings");
+            }
+        }
         Self {
-            network: Arc::new(NetworkManager::new()),
+            network: Arc::new(network),
             files,
             paths,
             db,

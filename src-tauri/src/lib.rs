@@ -150,6 +150,7 @@ pub fn run() {
             commands::logging_commands::list_instance_logs,
             commands::logging_commands::search_instance_log,
             commands::logging_commands::delete_instance_log,
+            commands::app::test_network,
             commands::app::check_for_updates,
             commands::app::get_about_links,
             commands::app::get_system_stats,
