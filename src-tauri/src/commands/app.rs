@@ -1,9 +1,11 @@
+use std::path::PathBuf;
+
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::{
     config::LauncherSettings,
-    error::Result,
+    error::{Error, Result},
     java, launch, logging,
     state::AppState,
     sysinfo_probe::{self, SystemStats, SystemUsage},
@@ -95,6 +97,60 @@ pub async fn test_network(state: State<'_, AppState>, url: Option<String>) -> Re
             error: Some(error.to_string()),
         },
     })
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub fn reset_launcher(app: AppHandle, state: State<AppState>, deep: bool) -> Result<()> {
+    let running = state
+        .running
+        .lock()
+        .unwrap()
+        .values()
+        .any(|handle| handle.status.lock().unwrap().state == "running");
+    if running {
+        return Err(Error::other("Close the game before resetting Basalt."));
+    }
+
+    let paths = state.files.paths().clone();
+    let mut removed: Vec<PathBuf> = vec![
+        paths.instances(),
+        paths.root.join("media"),
+        paths.skins(),
+        paths.logs(),
+        paths.root.join("basalt.db"),
+        paths.root.join("basalt.db-wal"),
+        paths.root.join("basalt.db-shm"),
+    ];
+    if deep {
+        removed.extend([
+            paths.versions(),
+            paths.libraries(),
+            paths.assets(),
+            paths.natives(),
+            paths.runtimes(),
+        ]);
+    }
+
+    for path in removed {
+        let outcome = if path.is_dir() {
+            std::fs::remove_dir_all(&path).map(|_| ())
+        } else {
+            std::fs::remove_file(&path).or_else(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            })
+        };
+        if let Err(error) = outcome {
+            tracing::warn!(path = %path.display(), error = %error, "could not remove during reset");
+        }
+    }
+
+    tracing::warn!(deep, "launcher reset, restarting");
+    app.restart()
 }
 
 #[tauri::command]

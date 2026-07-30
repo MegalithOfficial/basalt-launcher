@@ -14,11 +14,13 @@ import {
   Radio,
   RefreshCw,
   ScrollText,
+  Sparkles,
   Tag,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
 
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { MemoryRange } from "../components/MemoryRange";
 import { MigrateModal } from "../components/MigrateModal";
 import { Select } from "../components/Select";
@@ -185,6 +187,8 @@ function SystemCard({
 export function SettingsView() {
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [probe, setProbe] = useState<NetworkProbe | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [deepReset, setDeepReset] = useState(false);
   const [probing, setProbing] = useState(false);
   const settings = useStore((s) => s.settings);
   const logConfig = useStore((s) => s.logConfig);
@@ -463,12 +467,43 @@ export function SettingsView() {
           >
             <Row
               label="Import instances"
-              hint="Copies from ATLauncher, leaving it untouched"
+              hint="Copies from ATLauncher or Prism, leaving them untouched"
               stacked
             >
               <button onClick={() => setMigrateOpen(true)} className={actionCls}>
                 <HardDriveDownload className="size-3.5" />
                 Import
+              </button>
+            </Row>
+            {appInfo?.build_channel === "dev" && (
+              <Row
+                label="Run setup again"
+                hint="Walks through the first launch steps from the start"
+                stacked
+              >
+                <button onClick={() => set({ onboarded: false })} className={actionCls}>
+                  <Sparkles className="size-3.5" />
+                  Start setup
+                </button>
+              </Row>
+            )}
+          </Section>
+
+          <Section
+            title="Reset"
+            description="Puts Basalt back to how it was the day you installed it."
+          >
+            <Row
+              label="Reset everything"
+              hint="Removes every instance with its worlds, the accounts, the skins and all settings, then restarts into setup"
+              stacked
+            >
+              <button
+                onClick={() => setResetting(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger transition-colors hover:bg-danger/20"
+              >
+                <TriangleAlert className="size-3.5" />
+                Reset Basalt
               </button>
             </Row>
           </Section>
@@ -1011,6 +1046,43 @@ export function SettingsView() {
         )}
 
       <MigrateModal open={migrateOpen} onClose={() => setMigrateOpen(false)} />
+
+      <ConfirmDialog
+        open={resetting}
+        title="Reset Basalt?"
+        description="Every instance goes, with its worlds, mods and configs. Accounts, skins and settings go with them. Basalt restarts into first time setup."
+        confirmLabel="Reset and restart"
+        requireText="reset"
+        onConfirm={async () => {
+          await api.resetLauncher(deepReset);
+        }}
+        onCancel={() => {
+          setResetting(false);
+          setDeepReset(false);
+        }}
+      >
+        <button
+          onClick={() => setDeepReset((v) => !v)}
+          className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2"
+        >
+          <span
+            className={cn(
+              "grid size-4 shrink-0 place-items-center rounded border",
+              deepReset ? "border-danger bg-danger/20 text-danger" : "border-border bg-surface-3",
+            )}
+          >
+            {deepReset && <Check className="size-3" strokeWidth={3} />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-medium text-content">
+              Also remove downloaded game files
+            </span>
+            <span className="block text-[11px] text-content-faint">
+              Versions, libraries, assets and Java runtimes are fetched again on the next launch
+            </span>
+          </span>
+        </button>
+      </ConfirmDialog>
       </div>
     </div>
   );
