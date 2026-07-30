@@ -210,13 +210,50 @@ export interface InstallPlan {
   total_bytes: number;
 }
 
+export type LauncherKind = "atlauncher" | "prism";
+
+export interface LauncherSource {
+  kind: LauncherKind;
+  label: string;
+  root: string;
+  instance_count: number;
+}
+
+export interface MigrationCandidate {
+  id: string;
+  name: string;
+  version_id: string;
+  loader: string | null;
+  loader_version: string | null;
+  icon_data_url: string | null;
+  pack: string | null;
+  mod_count: number;
+  file_count: number;
+  total_bytes: number;
+  last_played_ms: number | null;
+  warnings: string[];
+  importable: boolean;
+}
+
+export interface MigrationScan {
+  kind: LauncherKind;
+  root: string;
+  candidates: MigrationCandidate[];
+}
+
+export interface MigrationOutcome {
+  imported: string[];
+  failed: Array<[string, string]>;
+}
+
 export type TaskKind =
   | "game_install"
   | "loader_install"
   | "modpack_install"
   | "content_install"
   | "content_update"
-  | "world_import";
+  | "world_import"
+  | "instance_import";
 
 export type WorldStatus = "ok" | "recovered" | "damaged";
 

@@ -7,6 +7,7 @@ import {
   Check,
   CircleCheck,
   FolderOpen,
+  HardDriveDownload,
   KeyRound,
   Plus,
   RefreshCw,
@@ -15,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { MigrateModal } from "../components/MigrateModal";
 import { Select } from "../components/Select";
 import { Toggle } from "../components/ui";
 import { api } from "../lib/api";
@@ -225,6 +227,7 @@ function Row({
 }
 
 export function SettingsView() {
+  const [migrateOpen, setMigrateOpen] = useState(false);
   const settings = useStore((s) => s.settings);
   const logConfig = useStore((s) => s.logConfig);
   const setLogLevel = useStore((s) => s.setLogLevel);
@@ -527,6 +530,21 @@ export function SettingsView() {
                 }
                 className={cn(inputCls, numberCls)}
               />
+            </Row>
+          </Section>
+          <Section
+            title="Migration"
+            description="Bring instances over from another launcher."
+          >
+            <Row
+              label="Import instances"
+              hint="Copies from ATLauncher, leaving it untouched"
+              stacked
+            >
+              <button onClick={() => setMigrateOpen(true)} className={actionCls}>
+                <HardDriveDownload className="size-3.5" />
+                Import
+              </button>
             </Row>
           </Section>
           <Section title="Storage">
@@ -845,6 +863,7 @@ export function SettingsView() {
           </div>
         )}
 
+      <MigrateModal open={migrateOpen} onClose={() => setMigrateOpen(false)} />
       </div>
     </div>
   );

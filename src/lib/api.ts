@@ -17,7 +17,10 @@ import type {
   Instance,
   JavaInfo,
   JavaStatus,
+  LauncherSource,
   LaunchPreview,
+  MigrationOutcome,
+  MigrationScan,
   LauncherSettings,
   InstanceLogFile,
   LogConfig,
@@ -215,6 +218,11 @@ export const api = {
   clearInstanceLogo: (instanceId: string) =>
     call<void>("clear_instance_logo", { instanceId }),
   backfillPackLogos: () => call<Instance[]>("backfill_pack_logos"),
+  detectLaunchers: () => call<LauncherSource[]>("detect_launchers"),
+  scanLauncher: (kind: string, root: string) =>
+    call<MigrationScan>("scan_launcher", { kind, root }),
+  migrateInstances: (kind: string, root: string, ids: string[]) =>
+    call<MigrationOutcome>("migrate_instances", { kind, root, ids }),
   listTasks: () => call<Task[]>("list_tasks"),
   clearFinishedTasks: () => call<void>("clear_finished_tasks"),
   cancelTask: (taskId: string) => call<boolean>("cancel_task", { taskId }),

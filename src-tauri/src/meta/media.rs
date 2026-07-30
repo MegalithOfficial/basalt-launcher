@@ -301,6 +301,24 @@ async fn write_logo(
     Ok(dest.display().to_string())
 }
 
+pub fn write_instance_logo_sync(
+    files: &FileManager,
+    instance_id: &str,
+    ext: &str,
+    bytes: &[u8],
+) -> crate::error::Result<String> {
+    let paths = files.paths();
+    for path in logo_paths(paths, instance_id) {
+        let _ = files.remove_file_if_exists(path);
+    }
+    let dest = paths
+        .root
+        .join("media")
+        .join(format!("logo-{instance_id}.{ext}"));
+    files.write_atomic(&dest, bytes)?;
+    Ok(dest.display().to_string())
+}
+
 pub async fn set_instance_logo(
     files: &FileManager,
     instance_id: &str,

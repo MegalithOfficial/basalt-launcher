@@ -1,0 +1,350 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  Boxes,
+  Check,
+  HardDriveDownload,
+  Loader2,
+  Package,
+  TriangleAlert,
+} from "lucide-react";
+
+import { api } from "../lib/api";
+import { cn } from "../lib/cn";
+import { LOADERS } from "../lib/loader";
+import { relativeTime } from "../lib/time";
+import type { LauncherSource, MigrationCandidate, MigrationOutcome } from "../lib/types";
+import { useStore } from "../store";
+import { Modal, ModalFooter, ModalHeader } from "./Modal";
+
+function shortPath(path: string): string {
+  const home = path.match(/^(\/home\/[^/]+|\/Users\/[^/]+|[A-Z]:\\Users\\[^\\]+)/);
+  return home ? `~${path.slice(home[0].length)}` : path;
+}
+
+function SourceCard({
+  source,
+  active,
+  onSelect,
+}: {
+  source: LauncherSource;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={cn(
+        "flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+        active
+          ? "border-[var(--accent)]/60 bg-[var(--accent-glow)]"
+          : "border-border-soft bg-base/40 hover:border-border",
+      )}
+    >
+      <span
+        className={cn(
+          "grid size-8 shrink-0 place-items-center rounded-lg",
+          active ? "bg-[var(--accent)]/20 text-[var(--accent)]" : "bg-surface-3 text-content-faint",
+        )}
+      >
+        <Boxes className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium text-content">{source.label}</span>
+        <span className="block truncate font-mono text-[10px] text-content-faint">
+          {shortPath(source.root)}
+        </span>
+      </span>
+      <span className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-content-muted">
+        {source.instance_count}
+      </span>
+    </button>
+  );
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function CandidateRow({
+  candidate,
+  selected,
+  onToggle,
+}: {
+  candidate: MigrationCandidate;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!candidate.importable}
+      onClick={onToggle}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+        selected
+          ? "border-[var(--accent)]/60 bg-[var(--accent-glow)]"
+          : "border-border-soft bg-base/60 hover:border-border",
+        !candidate.importable && "cursor-not-allowed opacity-55",
+      )}
+    >
+      <span
+        className={cn(
+          "grid size-4 shrink-0 place-items-center rounded border",
+          selected ? "border-[var(--accent)] bg-[var(--accent)] text-black" : "border-border bg-surface-3",
+        )}
+      >
+        {selected && <Check className="size-3" strokeWidth={3} />}
+      </span>
+
+      {candidate.icon_data_url ? (
+        <img
+          src={candidate.icon_data_url}
+          alt=""
+          className="size-9 shrink-0 rounded-lg bg-surface-3 object-cover"
+          draggable={false}
+        />
+      ) : (
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+          <Package className="size-4" />
+        </span>
+      )}
+
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-content">{candidate.name}</span>
+          {candidate.pack && (
+            <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
+              {candidate.pack === "modrinth" ? "Modrinth pack" : "CurseForge pack"}
+            </span>
+          )}
+        </span>
+        <span className="block truncate text-[11px] text-content-faint">
+          {candidate.version_id || "unknown version"}
+          {candidate.loader
+            ? ` · ${LOADERS.find((l) => l.id === candidate.loader)?.label ?? candidate.loader}`
+            : ""}
+          {` · ${candidate.mod_count} mods · ${formatSize(candidate.total_bytes)}`}
+          {candidate.last_played_ms
+            ? ` · played ${relativeTime(Math.floor(candidate.last_played_ms / 1000))}`
+            : ""}
+        </span>
+        {candidate.warnings.map((warning) => (
+          <span key={warning} className="mt-0.5 block text-[11px] text-warn">
+            {warning}
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
+export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const refreshInstances = useStore((s) => s.refreshInstances);
+
+  const [sources, setSources] = useState<LauncherSource[]>([]);
+  const [source, setSource] = useState<LauncherSource | null>(null);
+  const [candidates, setCandidates] = useState<MigrationCandidate[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [scanning, setScanning] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [outcome, setOutcome] = useState<MigrationOutcome | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (next: LauncherSource) => {
+    setSource(next);
+    setOutcome(null);
+    const result = await api.scanLauncher(next.kind, next.root);
+    setCandidates(result.candidates);
+    setSelected(new Set(result.candidates.filter((c) => c.importable).map((c) => c.id)));
+  }, []);
+
+  const scan = useCallback(async () => {
+    setScanning(true);
+    setError(null);
+    setOutcome(null);
+    try {
+      const found = await api.detectLaunchers();
+      setSources(found);
+      const first = found[0] ?? null;
+      setSource(first);
+      if (!first) {
+        setCandidates([]);
+        return;
+      }
+      await load(first);
+    } catch (cause) {
+      setError(String(cause));
+      setCandidates([]);
+    } finally {
+      setScanning(false);
+    }
+  }, [load]);
+
+  useEffect(() => {
+    if (open) void scan();
+  }, [open, scan]);
+
+  const toggle = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const submit = async () => {
+    if (!source || selected.size === 0) return;
+    setImporting(true);
+    setError(null);
+    try {
+      const result = await api.migrateInstances(source.kind, source.root, [...selected]);
+      setOutcome(result);
+      await refreshInstances();
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const totalBytes = candidates
+    .filter((c) => selected.has(c.id))
+    .reduce((sum, c) => sum + c.total_bytes, 0);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      dismissable={!importing}
+      labelledBy="migrate-title"
+    >
+      <ModalHeader
+        id="migrate-title"
+        title="Import from another launcher"
+        subtitle="Instances are copied, so the other launcher keeps its own."
+        icon={
+          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-[var(--accent)]">
+            <HardDriveDownload className="size-4" />
+          </div>
+        }
+        onClose={importing ? undefined : onClose}
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {scanning && (
+          <div className="flex flex-col items-center gap-3 py-14 text-center">
+            <Loader2 className="size-5 animate-spin text-[var(--accent)]" />
+            <div className="text-sm font-medium text-content">Looking for launchers</div>
+          </div>
+        )}
+
+        {!scanning && !source && (
+          <div className="flex flex-col items-center gap-3 py-14 text-center">
+            <div className="grid size-12 place-items-center rounded-2xl border border-border-soft bg-surface-2 text-content-faint">
+              <Boxes className="size-6" />
+            </div>
+            <div className="text-sm font-medium text-content-muted">No other launcher found</div>
+            <p className="max-w-sm text-xs text-content-faint">
+              ATLauncher and Prism Launcher are detected in their default data folders.
+              Nothing was found there.
+            </p>
+          </div>
+        )}
+
+        {!scanning && source && outcome === null && (
+          <>
+            {sources.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {sources.map((entry) => (
+                  <SourceCard
+                    key={entry.root}
+                    source={entry}
+                    active={entry.root === source.root}
+                    onSelect={() => void load(entry)}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div className="mb-2 text-[11px] text-content-faint">
+              Minecraft and the loader are downloaded by Basalt the first time you play.
+            </div>
+            <div className="flex flex-col gap-2">
+              {candidates.map((candidate) => (
+                <CandidateRow
+                  key={candidate.id}
+                  candidate={candidate}
+                  selected={selected.has(candidate.id)}
+                  onToggle={() => toggle(candidate.id)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {outcome && (
+          <div className="flex flex-col gap-3 py-6">
+            <div className="flex items-center gap-2.5 text-sm text-content">
+              <span className="grid size-8 place-items-center rounded-lg bg-ok/15 text-ok">
+                <Check className="size-4" strokeWidth={3} />
+              </span>
+              {outcome.imported.length === 1
+                ? "1 instance imported"
+                : `${outcome.imported.length} instances imported`}
+            </div>
+            {outcome.failed.map(([id, reason]) => (
+              <div
+                key={id}
+                className="flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger"
+              >
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                <span className="break-words">
+                  <span className="font-medium">{id}</span> · {reason}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-4 flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            <span className="break-words">{error}</span>
+          </div>
+        )}
+      </div>
+
+      {!scanning && source && (
+        <ModalFooter className="justify-between">
+          <span className="text-xs text-content-faint">
+            {outcome
+              ? "Imported instances are ready to play."
+              : `${selected.size} selected · ${formatSize(totalBytes)} to copy`}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              disabled={importing}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-content-muted transition-colors hover:text-content disabled:opacity-50"
+            >
+              {outcome ? "Done" : "Cancel"}
+            </button>
+            {!outcome && (
+              <button
+                onClick={submit}
+                disabled={selected.size === 0 || importing}
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {importing && <Loader2 className="size-3.5 animate-spin" />}
+                Import {selected.size === 1 ? "instance" : `${selected.size} instances`}
+              </button>
+            )}
+          </div>
+        </ModalFooter>
+      )}
+    </Modal>
+  );
+}

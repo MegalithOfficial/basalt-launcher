@@ -13,6 +13,7 @@ mod launch;
 mod loaders;
 mod logging;
 mod meta;
+mod migrate;
 mod modpack;
 mod network;
 mod paths;
@@ -133,6 +134,9 @@ pub fn run() {
             commands::worlds::inspect_world_source,
             commands::worlds::import_worlds,
             commands::worlds::delete_instance_world,
+            commands::migrate_commands::detect_launchers,
+            commands::migrate_commands::scan_launcher,
+            commands::migrate_commands::migrate_instances,
             commands::launch_commands::launch_instance,
             commands::launch_commands::kill_instance,
             commands::launch_commands::list_running,
