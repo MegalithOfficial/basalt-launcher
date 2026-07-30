@@ -298,7 +298,7 @@ export function ProjectView() {
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="-mt-9 flex min-h-0 flex-1 flex-col">
       <ProjectHero
         details={details}
         provider={projectRef.provider}

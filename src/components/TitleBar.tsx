@@ -4,6 +4,7 @@ import { ArrowLeft, Minus, Square, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useStore } from "../store";
 import { ActivityCenter } from "./ActivityCenter";
+import { Breadcrumbs } from "./Breadcrumbs";
 import { RunningPill } from "./RunningPill";
 
 const win = getCurrentWindow();
@@ -50,10 +51,8 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
     <div
       data-tauri-drag-region
       className={cn(
-        "flex h-9 shrink-0 items-center justify-between",
-        immersive
-          ? "absolute inset-x-0 top-0 z-50"
-          : "relative z-50 border-b border-border-soft bg-base/80 backdrop-blur",
+        "absolute inset-x-0 top-0 z-50 flex h-9 items-center justify-between",
+        !immersive && "border-b border-border-soft bg-base/80 backdrop-blur",
       )}
     >
       {immersive && (
@@ -63,7 +62,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
         />
       )}
 
-      <div className="relative flex w-24 items-center">
+      <div className="relative flex min-w-0 flex-1 items-center">
         {canGoBack && (
           <button
             onClick={goBack}
@@ -79,6 +78,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
             <ArrowLeft className="size-5" />
           </button>
         )}
+        <Breadcrumbs immersive={immersive} />
       </div>
 
       <div
@@ -93,7 +93,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
         BASALT
       </div>
 
-      <div className="relative flex items-center">
+      <div className="relative flex shrink-0 items-center">
         <RunningPill immersive={immersive} />
         <ActivityCenter immersive={immersive} />
         <Control label="Minimize" immersive={immersive} onClick={() => win.minimize()}>

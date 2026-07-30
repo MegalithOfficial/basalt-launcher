@@ -613,7 +613,7 @@ export function DiscoverView() {
                           : alsoIn.length > 0
                             ? `Installed in ${alsoIn.map((i) => i.name).join(", ")}`
                             : undefined,
-                    onOpen: () => openProject(provider, project.id, kind),
+                    onOpen: () => openProject(provider, project.id, kind, project.title),
                     action: done ? (
                       <button
                         onClick={(e) => {

@@ -459,7 +459,7 @@ export function InstanceView() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="-mt-9 flex min-h-0 flex-1 flex-col">
       <div className="relative h-68 shrink-0 overflow-hidden">
         {media ? (
           <img
@@ -731,7 +731,9 @@ export function InstanceView() {
                 query={filter}
                 busyId={suggestBusy}
                 onInstall={(provider, project) => void installSuggestion(provider, project)}
-                onOpen={(provider, project) => openProject(provider, project.id, tab)}
+                onOpen={(provider, project) =>
+                  openProject(provider, project.id, tab, project.title)
+                }
               />
             )}
           </>
@@ -769,7 +771,12 @@ export function InstanceView() {
                     className={cn("min-w-0 flex-1", linked && "cursor-pointer")}
                     onClick={() =>
                       linked &&
-                      openProject(source!.provider!, source!.project_id!, tab)
+                      openProject(
+                        source!.provider!,
+                        source!.project_id!,
+                        tab,
+                        source!.title ?? undefined,
+                      )
                     }
                   >
                     <div className="flex items-center gap-2">

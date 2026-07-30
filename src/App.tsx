@@ -87,7 +87,7 @@ function App() {
       <Sidebar />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <TitleBar immersive={immersive} />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col pt-9">
         <RecoveryBanner />
         {!ready ? (
           <div className="grid flex-1 place-items-center text-sm text-content-muted">

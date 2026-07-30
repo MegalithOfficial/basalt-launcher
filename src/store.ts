@@ -140,7 +140,7 @@ interface AppStore {
   discoverKind: ContentKind;
   discoverTargetId: string | null;
   discoverBrowse: DiscoverBrowse;
-  projectRef: { provider: SearchProvider; id: string } | null;
+  projectRef: { provider: SearchProvider; id: string; title?: string } | null;
   contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
   updates: Record<string, ContentUpdate[]>;
   interrupted: PendingOperation[];
@@ -189,7 +189,12 @@ interface AppStore {
   selectInstance: (id: string) => void;
   openInstance: (id: string) => void;
   openSearch: (kind: ContentKind) => void;
-  openProject: (provider: SearchProvider, id: string, kind?: ContentKind) => void;
+  openProject: (
+    provider: SearchProvider,
+    id: string,
+    kind?: ContentKind,
+    title?: string,
+  ) => void;
   openDiscover: (kind?: ContentKind, targetInstanceId?: string | null) => void;
   setDiscoverKind: (kind: ContentKind) => void;
   setDiscoverBrowse: (patch: Partial<DiscoverBrowse>) => void;
@@ -201,6 +206,7 @@ interface AppStore {
     versionId: string,
   ) => Promise<Instance>;
   goBack: () => void;
+  goBackTo: (index: number) => void;
   refreshContentSources: (instanceId: string, kind: string) => Promise<void>;
   installContent: (params: {
     provider: SearchProvider;
@@ -270,6 +276,12 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       view: s.viewStack[s.viewStack.length - 1] ?? "home",
       viewStack: s.viewStack.slice(0, -1),
+    })),
+
+  goBackTo: (index) =>
+    set((s) => ({
+      view: s.viewStack[index] ?? s.view,
+      viewStack: s.viewStack.slice(0, index),
     })),
 
   openSearch: (kind) =>
@@ -414,9 +426,9 @@ export const useStore = create<AppStore>((set) => ({
     await useStore.getState().refreshContentSources(instanceId, kind);
   },
 
-  openProject: (provider, id, kind) =>
+  openProject: (provider, id, kind, title) =>
     set((s) => ({
-      projectRef: { provider, id },
+      projectRef: { provider, id, title },
       searchKind: kind ?? s.searchKind,
       view: "project",
       viewStack: s.view !== "project" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
