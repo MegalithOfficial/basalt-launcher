@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Read, path::Path};
+use std::{collections::HashMap, path::Path};
 
 use serde::Deserialize;
 
@@ -139,6 +139,8 @@ fn clean(value: Option<String>) -> Option<String> {
 }
 
 fn read_entry(zip: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Option<String> {
+    use std::io::Read;
+
     let mut entry = zip.by_name(name).ok()?;
     let mut body = String::new();
     entry.read_to_string(&mut body).ok()?;
