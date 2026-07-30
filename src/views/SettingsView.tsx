@@ -457,7 +457,10 @@ export function SettingsView() {
               </button>
             </Row>
           </Section>
-          <Section title="Storage">
+          <Section
+            title="Storage"
+            description="Where instances, assets and logs are kept on disk."
+          >
             <Row label="Data directory" hint={appInfo?.data_dir ?? "resolving"} stacked>
               <button
                 onClick={() => appInfo && openPath(appInfo.data_dir)}

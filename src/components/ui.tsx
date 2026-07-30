@@ -133,7 +133,7 @@ export function SettingGroup({
   return (
     <section className={cn("break-inside-avoid", className)}>
       {title && (
-        <div className="mb-2 px-1">
+        <div className="mb-2 min-h-9 px-1">
           <h2 className="font-display text-sm font-semibold text-content">{title}</h2>
           {description && <p className="mt-0.5 text-xs text-content-muted">{description}</p>}
         </div>
