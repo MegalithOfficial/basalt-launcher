@@ -27,8 +27,9 @@ pub async fn scan_launcher(
 ) -> Result<MigrationScan> {
     let kind = LauncherKind::parse(&kind)?;
     let files = state.files.clone();
+    let db = state.db.clone();
     let root = PathBuf::from(root);
-    tokio::task::spawn_blocking(move || migrate::scan(&files, kind, &root))
+    tokio::task::spawn_blocking(move || migrate::scan(&files, &db, kind, &root))
         .await
         .map_err(|error| Error::other(format!("launcher scan failed: {error}")))?
 }

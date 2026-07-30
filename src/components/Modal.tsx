@@ -10,6 +10,7 @@ const SIZES = {
   md: "max-w-md",
   lg: "max-w-xl",
   xl: "max-w-2xl",
+  wide: "max-w-3xl",
   full: "max-w-5xl",
 } as const;
 

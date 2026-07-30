@@ -276,6 +276,7 @@ fn candidate_for(files: &FileManager, root: &Path, dir: &Path) -> MigrationCandi
                 last_played_ms: None,
                 warnings: vec![error.to_string()],
                 importable: false,
+                imported: false,
             };
         }
     };
@@ -333,6 +334,7 @@ fn candidate_for(files: &FileManager, root: &Path, dir: &Path) -> MigrationCandi
         total_bytes: entries.iter().map(|(_, size)| size).sum(),
         last_played_ms: config.number("lastLaunchTime").filter(|value| *value > 0),
         importable: !version_id.is_empty() && game.is_some(),
+        imported: false,
         warnings,
     }
 }
@@ -552,6 +554,8 @@ pub fn import(
                 pack_provider: pack.as_ref().map(|(provider, _, _)| provider.to_string()),
                 pack_project_id: pack.as_ref().map(|(_, project, _)| project.clone()),
                 pack_version_id: pack.as_ref().and_then(|(_, _, version)| version.clone()),
+                import_source: Some("prism".to_string()),
+                import_source_id: Some(id.clone()),
                 jvm_args: None,
                 jvm_args_mode: None,
                 env_vars: None,

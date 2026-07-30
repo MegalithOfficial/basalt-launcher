@@ -53,6 +53,8 @@ pub fn create_instance(
         loader,
         loader_version,
         launch_version_id: None,
+        import_source: None,
+        import_source_id: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,

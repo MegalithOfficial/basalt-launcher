@@ -1,4 +1,5 @@
 mod atlauncher;
+mod modrinth;
 mod prism;
 
 use std::path::{Path, PathBuf};
@@ -17,13 +18,23 @@ use crate::{
 pub enum LauncherKind {
     Atlauncher,
     Prism,
+    Modrinth,
 }
 
 impl LauncherKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Atlauncher => "atlauncher",
+            Self::Prism => "prism",
+            Self::Modrinth => "modrinth",
+        }
+    }
+
     pub fn parse(value: &str) -> Result<Self> {
         match value {
             "atlauncher" => Ok(Self::Atlauncher),
             "prism" => Ok(Self::Prism),
+            "modrinth" => Ok(Self::Modrinth),
             other => Err(Error::other(format!("unknown launcher {other}"))),
         }
     }
@@ -52,6 +63,7 @@ pub struct MigrationCandidate {
     pub last_played_ms: Option<i64>,
     pub warnings: Vec<String>,
     pub importable: bool,
+    pub imported: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -68,17 +80,41 @@ pub struct MigrationOutcome {
 }
 
 pub fn detect(files: &FileManager) -> Vec<LauncherSource> {
-    [atlauncher::detect(files), prism::detect(files)]
-        .into_iter()
-        .flatten()
-        .collect()
+    [
+        atlauncher::detect(files),
+        prism::detect(files),
+        modrinth::detect(files),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
-pub fn scan(files: &FileManager, kind: LauncherKind, root: &Path) -> Result<MigrationScan> {
-    match kind {
-        LauncherKind::Atlauncher => atlauncher::scan(files, root),
-        LauncherKind::Prism => prism::scan(files, root),
+pub fn scan(
+    files: &FileManager,
+    db: &Db,
+    kind: LauncherKind,
+    root: &Path,
+) -> Result<MigrationScan> {
+    let already: std::collections::HashSet<String> = db
+        .imported_sources(kind.as_str())
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    let mut scan = match kind {
+        LauncherKind::Atlauncher => atlauncher::scan(files, root)?,
+        LauncherKind::Prism => prism::scan(files, root)?,
+        LauncherKind::Modrinth => modrinth::scan(files, root)?,
+    };
+
+    for candidate in &mut scan.candidates {
+        if already.contains(&candidate.id) {
+            candidate.imported = true;
+            candidate.importable = false;
+        }
     }
+    Ok(scan)
 }
 
 pub fn import(
@@ -92,6 +128,7 @@ pub fn import(
     match kind {
         LauncherKind::Atlauncher => atlauncher::import(files, db, root, ids, task),
         LauncherKind::Prism => prism::import(files, db, root, ids, task),
+        LauncherKind::Modrinth => modrinth::import(files, db, root, ids, task),
     }
 }
 

@@ -122,4 +122,8 @@ pub struct Instance {
     pub env_vars: Option<String>,
     #[serde(default)]
     pub env_vars_mode: Option<String>,
+    #[serde(default)]
+    pub import_source: Option<String>,
+    #[serde(default)]
+    pub import_source_id: Option<String>,
 }

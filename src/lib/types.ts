@@ -233,7 +233,7 @@ export interface InstallPlan {
   total_bytes: number;
 }
 
-export type LauncherKind = "atlauncher" | "prism";
+export type LauncherKind = "atlauncher" | "prism" | "modrinth";
 
 export interface LauncherSource {
   kind: LauncherKind;
@@ -256,6 +256,7 @@ export interface MigrationCandidate {
   last_played_ms: number | null;
   warnings: string[];
   importable: boolean;
+  imported: boolean;
 }
 
 export interface MigrationScan {

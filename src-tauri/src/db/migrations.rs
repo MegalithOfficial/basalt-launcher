@@ -142,6 +142,8 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         ("jvm_args_mode", "TEXT"),
         ("env_vars", "TEXT"),
         ("env_vars_mode", "TEXT"),
+        ("import_source", "TEXT"),
+        ("import_source_id", "TEXT"),
     ] {
         add_column_if_missing(conn, "instances", column, declaration)?;
     }

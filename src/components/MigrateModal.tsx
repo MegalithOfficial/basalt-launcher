@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { motion } from "motion/react";
 import {
   Boxes,
   Check,
@@ -10,9 +11,15 @@ import {
 
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
+import { logoSrc } from "../lib/media";
 import { LOADERS } from "../lib/loader";
 import { relativeTime } from "../lib/time";
-import type { LauncherSource, MigrationCandidate, MigrationOutcome } from "../lib/types";
+import type {
+  Instance,
+  LauncherSource,
+  MigrationCandidate,
+  MigrationOutcome,
+} from "../lib/types";
 import { useStore } from "../store";
 import { Modal, ModalFooter, ModalHeader } from "./Modal";
 
@@ -21,7 +28,7 @@ function shortPath(path: string): string {
   return home ? `~${path.slice(home[0].length)}` : path;
 }
 
-function SourceCard({
+function SourceTab({
   source,
   active,
   onSelect,
@@ -34,27 +41,19 @@ function SourceCard({
     <button
       onClick={onSelect}
       className={cn(
-        "flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+        "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
         active
-          ? "border-[var(--accent)]/60 bg-[var(--accent-glow)]"
-          : "border-border-soft bg-base/40 hover:border-border",
+          ? "bg-surface-3 text-content"
+          : "text-content-faint hover:text-content-muted",
       )}
     >
+      {source.label}
       <span
         className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-lg",
-          active ? "bg-[var(--accent)]/20 text-[var(--accent)]" : "bg-surface-3 text-content-faint",
+          "rounded px-1.5 text-[10px] font-semibold tabular-nums",
+          active ? "bg-[var(--accent)]/20 text-[var(--accent-bright)]" : "bg-surface-3",
         )}
       >
-        <Boxes className="size-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-content">{source.label}</span>
-        <span className="block truncate font-mono text-[10px] text-content-faint">
-          {shortPath(source.root)}
-        </span>
-      </span>
-      <span className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-content-muted">
         {source.instance_count}
       </span>
     </button>
@@ -82,11 +81,9 @@ function CandidateRow({
       disabled={!candidate.importable}
       onClick={onToggle}
       className={cn(
-        "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
-        selected
-          ? "border-[var(--accent)]/60 bg-[var(--accent-glow)]"
-          : "border-border-soft bg-base/60 hover:border-border",
-        !candidate.importable && "cursor-not-allowed opacity-55",
+        "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
+        selected ? "bg-surface-2" : "hover:bg-surface-2/50",
+        !candidate.importable && "cursor-not-allowed opacity-50",
       )}
     >
       <span
@@ -130,6 +127,11 @@ function CandidateRow({
             ? ` · played ${relativeTime(Math.floor(candidate.last_played_ms / 1000))}`
             : ""}
         </span>
+        {candidate.imported && (
+          <span className="mt-0.5 block text-[11px] text-ok">
+            Already imported into Basalt
+          </span>
+        )}
         {candidate.warnings.map((warning) => (
           <span key={warning} className="mt-0.5 block text-[11px] text-warn">
             {warning}
@@ -142,6 +144,7 @@ function CandidateRow({
 
 export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const refreshInstances = useStore((s) => s.refreshInstances);
+  const instances = useStore((s) => s.instances);
 
   const [sources, setSources] = useState<LauncherSource[]>([]);
   const [source, setSource] = useState<LauncherSource | null>(null);
@@ -157,7 +160,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
     setOutcome(null);
     const result = await api.scanLauncher(next.kind, next.root);
     setCandidates(result.candidates);
-    setSelected(new Set(result.candidates.filter((c) => c.importable).map((c) => c.id)));
+    setSelected(new Set());
   }, []);
 
   const scan = useCallback(async () => {
@@ -209,6 +212,12 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
     }
   };
 
+  const imported = outcome
+    ? outcome.imported
+        .map((id) => instances.find((instance) => instance.id === id))
+        .filter((instance): instance is Instance => !!instance)
+    : [];
+
   const totalBytes = candidates
     .filter((c) => selected.has(c.id))
     .reduce((sum, c) => sum + c.total_bytes, 0);
@@ -217,7 +226,8 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
     <Modal
       open={open}
       onClose={onClose}
-      size="lg"
+      size="wide"
+      className="h-[min(640px,calc(100vh-48px))]"
       dismissable={!importing}
       labelledBy="migrate-title"
     >
@@ -257,22 +267,41 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
         {!scanning && source && outcome === null && (
           <>
             {sources.length > 0 && (
-              <div className="mb-3 flex flex-wrap gap-2">
-                {sources.map((entry) => (
-                  <SourceCard
-                    key={entry.root}
-                    source={entry}
-                    active={entry.root === source.root}
-                    onSelect={() => void load(entry)}
-                  />
-                ))}
+              <div className="mb-3 flex items-center gap-3">
+                <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border-soft bg-surface-2/60 p-1">
+                  {sources.map((entry) => (
+                    <SourceTab
+                      key={entry.root}
+                      source={entry}
+                      active={entry.root === source.root}
+                      onSelect={() => void load(entry)}
+                    />
+                  ))}
+                </div>
+                <span className="min-w-0 flex-1 truncate text-right font-mono text-[10px] text-content-faint">
+                  {shortPath(source.root)}
+                </span>
               </div>
             )}
 
-            <div className="mb-2 text-[11px] text-content-faint">
-              Minecraft and the loader are downloaded by Basalt the first time you play.
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-[11px] text-content-faint">
+                Minecraft and the loader are downloaded the first time you play.
+              </span>
+              <button
+                onClick={() =>
+                  setSelected(
+                    selected.size > 0
+                      ? new Set()
+                      : new Set(candidates.filter((c) => c.importable).map((c) => c.id)),
+                  )
+                }
+                className="shrink-0 text-[11px] font-medium text-content-muted transition-colors hover:text-content"
+              >
+                {selected.size > 0 ? "Clear" : "Select all"}
+              </button>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-0.5">
               {candidates.map((candidate) => (
                 <CandidateRow
                   key={candidate.id}
@@ -286,26 +315,75 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
         )}
 
         {outcome && (
-          <div className="flex flex-col gap-3 py-6">
-            <div className="flex items-center gap-2.5 text-sm text-content">
-              <span className="grid size-8 place-items-center rounded-lg bg-ok/15 text-ok">
-                <Check className="size-4" strokeWidth={3} />
-              </span>
-              {outcome.imported.length === 1
-                ? "1 instance imported"
-                : `${outcome.imported.length} instances imported`}
-            </div>
-            {outcome.failed.map(([id, reason]) => (
-              <div
-                key={id}
-                className="flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger"
-              >
-                <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                <span className="break-words">
-                  <span className="font-medium">{id}</span> · {reason}
-                </span>
+          <div className="flex h-full flex-col items-center justify-center gap-5 py-6 text-center">
+            <motion.span
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 220, damping: 16 }}
+              className="grid size-16 place-items-center rounded-2xl bg-ok/15 text-ok"
+            >
+              <Check className="size-8" strokeWidth={2.5} />
+            </motion.span>
+
+            <div>
+              <div className="font-display text-xl font-semibold text-content">
+                {outcome.imported.length === 1
+                  ? "1 instance imported"
+                  : `${outcome.imported.length} instances imported`}
               </div>
-            ))}
+              <p className="mt-1 text-xs text-content-muted">
+                They are ready to play. Minecraft downloads on the first launch.
+              </p>
+            </div>
+
+            {imported.length > 0 && (
+              <div className="flex w-full max-w-sm flex-col gap-1.5">
+                {imported.map((instance) => (
+                  <div
+                    key={instance.id}
+                    className="flex items-center gap-3 rounded-xl border border-border-soft bg-surface-2/60 px-3 py-2 text-left"
+                  >
+                    {logoSrc(instance.logo) ? (
+                      <img
+                        src={logoSrc(instance.logo) as string}
+                        alt=""
+                        className="size-8 shrink-0 rounded-lg bg-surface-3 object-cover"
+                        draggable={false}
+                      />
+                    ) : (
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+                        <Package className="size-4" />
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium text-content">
+                        {instance.name}
+                      </span>
+                      <span className="block truncate text-[11px] text-content-faint">
+                        {instance.version_id}
+                        {instance.loader ? ` · ${instance.loader}` : ""}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {outcome.failed.length > 0 && (
+              <div className="flex w-full max-w-sm flex-col gap-1.5 text-left">
+                {outcome.failed.map(([id, reason]) => (
+                  <div
+                    key={id}
+                    className="flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-2.5 text-xs text-danger"
+                  >
+                    <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                    <span className="break-words">
+                      <span className="font-medium">{id}</span> · {reason}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -320,9 +398,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
       {!scanning && source && (
         <ModalFooter className="justify-between">
           <span className="text-xs text-content-faint">
-            {outcome
-              ? "Imported instances are ready to play."
-              : `${selected.size} selected · ${formatSize(totalBytes)} to copy`}
+            {outcome ? "" : `${selected.size} selected · ${formatSize(totalBytes)} to copy`}
           </span>
           <div className="flex items-center gap-2">
             <button

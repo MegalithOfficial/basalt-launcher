@@ -351,6 +351,7 @@ fn candidate_for(files: &FileManager, dir: &Path) -> MigrationCandidate {
                 last_played_ms: None,
                 warnings: vec![error.to_string()],
                 importable: false,
+                imported: false,
             };
         }
     };
@@ -396,6 +397,7 @@ fn candidate_for(files: &FileManager, dir: &Path) -> MigrationCandidate {
         total_bytes,
         last_played_ms: manifest.launcher.last_played.filter(|value| *value > 0),
         importable: !version_id.is_empty(),
+        imported: false,
         warnings,
     }
 }
@@ -711,6 +713,8 @@ pub fn import(
                 pack_provider: pack.as_ref().map(|(provider, _, _)| provider.to_string()),
                 pack_project_id: pack.as_ref().map(|(_, project, _)| project.clone()),
                 pack_version_id: pack.as_ref().and_then(|(_, _, version)| version.clone()),
+                import_source: Some("atlauncher".to_string()),
+                import_source_id: Some(id.clone()),
                 jvm_args: None,
                 jvm_args_mode: None,
                 env_vars: None,

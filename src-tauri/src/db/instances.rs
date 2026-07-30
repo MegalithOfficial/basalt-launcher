@@ -12,7 +12,8 @@ impl Db {
             "SELECT id, name, version_id, created_at, min_memory_mb, max_memory_mb,
                     java_path, last_played_at, playtime_secs, loader, loader_version,
                     launch_version_id, pack_provider, pack_project_id, pack_version_id,
-                    jvm_args, jvm_args_mode, env_vars, env_vars_mode
+                    jvm_args, jvm_args_mode, env_vars, env_vars_mode,
+                    import_source, import_source_id
              FROM instances ORDER BY created_at",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -42,6 +43,8 @@ impl Db {
                 jvm_args_mode: row.get(16)?,
                 env_vars: row.get(17)?,
                 env_vars_mode: row.get(18)?,
+                import_source: row.get(19)?,
+                import_source_id: row.get(20)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -54,9 +57,10 @@ impl Db {
                 (id, name, version_id, created_at, min_memory_mb, max_memory_mb,
                  java_path, last_played_at, playtime_secs, loader, loader_version,
                  launch_version_id, pack_provider, pack_project_id, pack_version_id,
-                 jvm_args, jvm_args_mode, env_vars, env_vars_mode)
+                 jvm_args, jvm_args_mode, env_vars, env_vars_mode,
+                 import_source, import_source_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                     ?16, ?17, ?18, ?19)",
+                     ?16, ?17, ?18, ?19, ?20, ?21)",
             params![
                 instance.id,
                 instance.name,
@@ -77,6 +81,8 @@ impl Db {
                 instance.jvm_args_mode,
                 instance.env_vars,
                 instance.env_vars_mode,
+                instance.import_source,
+                instance.import_source_id,
             ],
         )?;
         Ok(())
@@ -146,6 +152,16 @@ impl Db {
             )?;
         }
         Ok(())
+    }
+
+    pub fn imported_sources(&self, source: &str) -> Result<Vec<String>> {
+        let conn = self.0.lock().unwrap();
+        let mut statement = conn.prepare(
+            "SELECT import_source_id FROM instances
+             WHERE import_source = ?1 AND import_source_id IS NOT NULL",
+        )?;
+        let rows = statement.query_map([source], |row| row.get::<_, String>(0))?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
     pub fn delete_instance(&self, instance_id: &str) -> Result<()> {

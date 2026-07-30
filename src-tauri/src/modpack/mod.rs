@@ -314,6 +314,8 @@ pub async fn install_modpack(
         pack_provider: Some(provider.as_str().to_string()),
         pack_project_id: Some(project_id.to_string()),
         pack_version_id: Some(target.id.clone()),
+        import_source: None,
+        import_source_id: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,
