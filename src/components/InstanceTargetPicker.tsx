@@ -22,11 +22,11 @@ function InstanceRow({
 }) {
   return (
     <button
-      onClick={installed ? undefined : onClick}
-      disabled={installed}
+      onClick={installed || incompatible ? undefined : onClick}
+      disabled={installed || incompatible}
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-        installed
+        installed || incompatible
           ? "cursor-not-allowed opacity-60"
           : selected
             ? "bg-[var(--accent-glow)]"
@@ -61,7 +61,7 @@ function InstanceRow({
       ) : (
         incompatible && (
           <span className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] font-medium text-warn">
-            Mismatch
+            Incompatible
           </span>
         )
       )}

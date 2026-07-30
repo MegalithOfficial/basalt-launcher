@@ -15,6 +15,25 @@ use crate::{
 
 const MAX_DEPTH: u8 = 5;
 
+fn ensure_loader_for(kind: ContentKind, loader: Option<&str>) -> Result<()> {
+    if kind == ContentKind::Mod && loader.is_none() {
+        return Err(crate::error::Error::other(
+            "Mods cannot be installed to a vanilla instance. Add a mod loader first.",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_instance_supports(state: &AppState, instance_id: &str, kind: ContentKind) -> Result<()> {
+    let instance = state
+        .db
+        .list_instances(&state.files)?
+        .into_iter()
+        .find(|instance| instance.id == instance_id)
+        .ok_or_else(|| crate::error::Error::NotFound(format!("instance {instance_id}")))?;
+    ensure_loader_for(kind, instance.loader.as_deref())
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct InstalledItem {
     pub file_name: String,
@@ -195,6 +214,8 @@ pub async fn plan(
     version_id: Option<&str>,
     with_dependencies: bool,
 ) -> Result<InstallPlan> {
+    ensure_instance_supports(state, instance_id, kind)?;
+
     let installed = index_installed(state, instance_id, kind);
     let mut plan = InstallPlan::default();
 
@@ -364,6 +385,8 @@ pub async fn apply(
     kind: ContentKind,
     pack_version_id: Option<&str>,
 ) -> Result<Vec<InstalledItem>> {
+    ensure_instance_supports(state, instance_id, kind)?;
+
     if plan.is_empty() {
         return Ok(Vec::new());
     }
@@ -653,7 +676,19 @@ pub fn dependents_of(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_stem;
+    use super::{ensure_loader_for, normalize_stem};
+    use crate::search::ContentKind;
+
+    #[test]
+    fn vanilla_instances_reject_mod_installs() {
+        let error = ensure_loader_for(ContentKind::Mod, None).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Mods cannot be installed to a vanilla instance. Add a mod loader first."
+        );
+        assert!(ensure_loader_for(ContentKind::Mod, Some("fabric")).is_ok());
+        assert!(ensure_loader_for(ContentKind::ResourcePack, None).is_ok());
+    }
 
     #[test]
     fn stems_ignore_version_and_loader_suffixes() {

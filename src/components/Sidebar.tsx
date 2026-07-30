@@ -245,7 +245,12 @@ export function Sidebar() {
         ? [{ label: "Live logs", icon: SquareChartGantt, onSelect: () => openConsole(run.running_id) }]
         : []),
       { label: "Open instance", icon: Boxes, onSelect: () => openInstance(instance.id) },
-      { label: "Find mods", icon: Compass, onSelect: () => openDiscover("mods", instance.id) },
+      {
+        label: instance.loader ? "Find mods" : "Find mods (requires loader)",
+        icon: Compass,
+        disabled: !instance.loader,
+        onSelect: () => openDiscover("mods", instance.id),
+      },
       {
         label: pinned ? "Unpin from sidebar" : "Pin to sidebar",
         icon: pinned ? PinOff : Pin,

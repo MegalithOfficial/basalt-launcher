@@ -132,6 +132,7 @@ export function DiscoverView() {
 
   const isPack = kind === "modpacks";
   const usesLoaders = kind === "mods" || kind === "modpacks";
+  const modsBlocked = kind === "mods" && !!target && !target.loader;
 
   useEffect(() => {
     if (provider === "curseforge" && !hasCfKey) setProvider("modrinth");
@@ -353,28 +354,36 @@ export function DiscoverView() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-3 border-b border-border-soft px-6 pt-5">
         <div className="flex gap-1">
-          {KINDS.map((k) => (
-            <button
-              key={k.id}
-              onClick={() => setKind(k.id)}
-              className={cn(
-                "relative px-3.5 py-2.5 text-sm font-medium transition-colors",
-                kind === k.id
-                  ? "text-content"
-                  : "text-content-faint hover:text-content-muted",
-              )}
-            >
-              {k.label}
-              {kind === k.id && (
-                <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--accent)] transition-colors duration-500" />
-              )}
-            </button>
-          ))}
+          {KINDS.map((k) => {
+            const disabled = k.id === "mods" && !!target && !target.loader;
+            return (
+              <button
+                key={k.id}
+                onClick={() => setKind(k.id)}
+                disabled={disabled}
+                title={disabled ? "Add a mod loader to this instance first" : undefined}
+                className={cn(
+                  "relative px-3.5 py-2.5 text-sm font-medium transition-colors",
+                  kind === k.id
+                    ? "text-content"
+                    : "text-content-faint hover:text-content-muted",
+                  disabled && "cursor-not-allowed opacity-35 hover:text-content-faint",
+                )}
+              >
+                {k.label}
+                {kind === k.id && (
+                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--accent)] transition-colors duration-500" />
+                )}
+              </button>
+            );
+          })}
         </div>
         <div className="ml-auto pb-2">
           {!isPack && (
             <InstanceTargetPicker
-              instances={instances}
+              instances={
+                kind === "mods" ? instances.filter((instance) => !!instance.loader) : instances
+              }
               selected={target}
               onSelect={(instance) => setTarget(instance?.id ?? null)}
             />
@@ -472,7 +481,20 @@ export function DiscoverView() {
         )}
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-          {searching && hits.length === 0 ? (
+          {modsBlocked ? (
+            <div className="flex flex-col items-center gap-3 py-20 text-center">
+              <div className="grid size-12 place-items-center rounded-2xl border border-warn/30 bg-warn/10 text-warn">
+                <TriangleAlert className="size-6" />
+              </div>
+              <div className="text-sm font-medium text-content">
+                Mods are unavailable for vanilla instances
+              </div>
+              <p className="max-w-sm text-xs text-content-faint">
+                Add Fabric, Forge, NeoForge, or Quilt to {target?.name ?? "this instance"} before
+                browsing or installing mods.
+              </p>
+            </div>
+          ) : searching && hits.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-16 text-sm text-content-muted">
               <Loader2 className="size-4 animate-spin" />
               Searching
