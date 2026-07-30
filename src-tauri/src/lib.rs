@@ -67,6 +67,27 @@ pub fn run() {
             }
 
             let state = AppState::new(files, db);
+            match state.db.load_settings() {
+                Ok(mut settings) if !settings.onboarded => {
+                    let has_history = state
+                        .db
+                        .list_instances(&state.files)
+                        .map(|list| !list.is_empty())
+                        .unwrap_or(false)
+                        || state
+                            .db
+                            .load_accounts()
+                            .map(|store| !store.accounts.is_empty())
+                            .unwrap_or(false);
+                    if has_history {
+                        settings.onboarded = true;
+                        if let Err(e) = state.db.save_settings(&settings) {
+                            tracing::warn!(error = %e, "could not mark setup as done");
+                        }
+                    }
+                }
+                _ => {}
+            }
             if let Err(e) = skin::reconcile_library(&state) {
                 tracing::warn!(error = %e, "could not reconcile the skin library");
             }
@@ -151,6 +172,7 @@ pub fn run() {
             commands::logging_commands::search_instance_log,
             commands::logging_commands::delete_instance_log,
             commands::app::test_network,
+            commands::app::reset_launcher,
             commands::app::check_for_updates,
             commands::app::get_about_links,
             commands::app::get_system_stats,

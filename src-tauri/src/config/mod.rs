@@ -40,6 +40,8 @@ pub struct LauncherSettings {
     pub max_retries: u32,
     #[serde(default)]
     pub allow_insecure_tls: bool,
+    #[serde(default)]
+    pub onboarded: bool,
 }
 
 pub fn default_proxy_mode() -> String {
@@ -78,6 +80,7 @@ impl Default for LauncherSettings {
             request_timeout_secs: default_timeout_secs(),
             max_retries: default_max_retries(),
             allow_insecure_tls: false,
+            onboarded: false,
         }
     }
 }

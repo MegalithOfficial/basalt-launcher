@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 
 import { accentVars } from "./lib/accent";
 import { cn } from "./lib/cn";
+import { Onboarding } from "./components/onboarding/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { TitleBar } from "./components/TitleBar";
@@ -40,6 +41,7 @@ function App() {
   );
 
   const [maximized, setMaximized] = useState(false);
+  const onboarding = useStore((s) => s.ready && s.settings?.onboarded === false);
 
   useEffect(() => {
     init();
@@ -64,7 +66,7 @@ function App() {
         "flex h-full w-full overflow-hidden bg-base text-content",
         !maximized && "rounded-xl border border-border-soft",
       )}
-      style={accentVars(accent)}
+      style={accentVars(onboarding ? null : accent)}
     >
       <Toaster
         theme="dark"
@@ -84,16 +86,31 @@ function App() {
           },
         }}
       />
+      {!ready ? (
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <TitleBar />
+          <div className="grid flex-1 place-items-center pt-9">
+            <img
+              src="/logo.png"
+              alt=""
+              draggable={false}
+              className="size-12 animate-pulse object-contain opacity-60"
+            />
+          </div>
+        </div>
+      ) : onboarding ? (
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <TitleBar />
+          <Onboarding />
+        </div>
+      ) : (
+        <>
       <Sidebar />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <TitleBar immersive={immersive} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col pt-9">
         <RecoveryBanner />
-        {!ready ? (
-          <div className="grid flex-1 place-items-center text-sm text-content-muted">
-            Loading…
-          </div>
-        ) : error ? (
+        {error ? (
           <div className="grid flex-1 place-items-center px-8 text-center">
             <div>
               <div className="font-display text-lg font-semibold text-danger">
@@ -118,6 +135,8 @@ function App() {
         )}
         </main>
       </div>
+        </>
+      )}
     </div>
   );
 }

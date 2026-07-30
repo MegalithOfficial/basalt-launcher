@@ -21,6 +21,7 @@ export interface LauncherSettings {
   request_timeout_secs: number;
   max_retries: number;
   allow_insecure_tls: boolean;
+  onboarded: boolean;
 }
 
 export type ProxyMode = "system" | "none" | "http" | "socks5";
