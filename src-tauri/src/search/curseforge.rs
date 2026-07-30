@@ -391,6 +391,7 @@ pub async fn project_details(state: &AppState, project_id: &str) -> Result<Proje
         .iter()
         .filter_map(|s| {
             s.url.clone().map(|url| GalleryImage {
+                raw_url: None,
                 url,
                 title: s.title.clone(),
                 description: s.description.clone(),

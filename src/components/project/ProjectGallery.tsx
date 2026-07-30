@@ -54,8 +54,8 @@ export function ProjectGallery({ images }: { images: GalleryImage[] }) {
               <X className="size-4" />
             </button>
             <img
-              src={active.url}
-              className="max-h-[80vh] max-w-full cursor-default rounded-xl object-contain"
+              src={active.raw_url ?? active.url}
+              className="max-h-[calc(100vh-9rem)] w-auto max-w-full cursor-default rounded-xl object-contain"
               draggable={false}
             />
             {(active.title || active.description) && (

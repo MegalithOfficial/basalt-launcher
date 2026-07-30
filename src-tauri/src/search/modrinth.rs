@@ -220,6 +220,8 @@ struct License {
 struct GalleryItem {
     url: String,
     #[serde(default)]
+    raw_url: Option<String>,
+    #[serde(default)]
     title: Option<String>,
     #[serde(default)]
     description: Option<String>,
@@ -315,6 +317,7 @@ pub async fn project_details(state: &AppState, project_id: &str) -> Result<Proje
         gallery: gallery
             .into_iter()
             .map(|g| GalleryImage {
+                raw_url: g.raw_url,
                 url: g.url,
                 title: g.title,
                 description: g.description,

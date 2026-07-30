@@ -389,6 +389,7 @@ export interface ProjectLink {
 
 export interface GalleryImage {
   url: string;
+  raw_url: string | null;
   title: string | null;
   description: string | null;
   featured: boolean;

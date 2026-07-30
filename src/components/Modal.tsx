@@ -132,7 +132,7 @@ export function Modal({
             className={cn(
               variant === "panel"
                 ? "flex max-h-[min(760px,calc(100vh-48px))] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-                : "flex max-h-full min-h-0 w-full flex-col items-center justify-center gap-3",
+                : "flex h-full w-full min-h-0 flex-col items-center justify-center gap-3",
               variant === "panel" ? SIZES[size] : "max-w-none",
               className,
             )}

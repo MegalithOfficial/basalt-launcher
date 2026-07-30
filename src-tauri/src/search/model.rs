@@ -160,6 +160,7 @@ pub struct ProjectLink {
 #[derive(Debug, Clone, Serialize)]
 pub struct GalleryImage {
     pub url: String,
+    pub raw_url: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
     pub featured: bool,
