@@ -552,6 +552,10 @@ pub fn import(
                 pack_provider: pack.as_ref().map(|(provider, _, _)| provider.to_string()),
                 pack_project_id: pack.as_ref().map(|(_, project, _)| project.clone()),
                 pack_version_id: pack.as_ref().and_then(|(_, _, version)| version.clone()),
+                jvm_args: None,
+                jvm_args_mode: None,
+                env_vars: None,
+                env_vars_mode: None,
             };
             db.insert_instance(&instance)?;
             record_index(

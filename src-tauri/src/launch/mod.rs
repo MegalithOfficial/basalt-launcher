@@ -115,6 +115,63 @@ pub fn sample_placeholders(
     ])
 }
 
+/// An instance either adds to the launcher-wide arguments or stands in for them.
+fn replaces_defaults(mode: Option<&str>) -> bool {
+    matches!(mode, Some("replace"))
+}
+
+fn instance_jvm_template(
+    settings: &crate::config::LauncherSettings,
+    instance: &crate::config::Instance,
+) -> String {
+    let base = if settings.jvm_args.trim().is_empty() {
+        crate::config::DEFAULT_JVM_ARGS
+    } else {
+        settings.jvm_args.as_str()
+    };
+    let extra = instance.jvm_args.as_deref().unwrap_or("").trim();
+    if extra.is_empty() {
+        return base.to_string();
+    }
+    if replaces_defaults(instance.jvm_args_mode.as_deref()) {
+        extra.to_string()
+    } else {
+        format!("{base} {extra}")
+    }
+}
+
+/// Instance variables are written as KEY=VALUE, one per line.
+fn parse_env_text(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| line.trim().split_once('='))
+        .map(|(key, value)| (key.trim().to_string(), value.trim().to_string()))
+        .filter(|(key, _)| !key.is_empty())
+        .collect()
+}
+
+fn instance_env(
+    settings: &crate::config::LauncherSettings,
+    instance: &crate::config::Instance,
+) -> Vec<(String, String)> {
+    let own = parse_env_text(instance.env_vars.as_deref().unwrap_or(""));
+    if replaces_defaults(instance.env_vars_mode.as_deref()) {
+        return own;
+    }
+    let mut merged: Vec<(String, String)> = settings
+        .env_vars
+        .iter()
+        .filter(|v| !v.key.trim().is_empty())
+        .map(|v| (v.key.trim().to_string(), v.value.clone()))
+        .collect();
+    for (key, value) in own {
+        match merged.iter_mut().find(|(name, _)| name == &key) {
+            Some(slot) => slot.1 = value,
+            None => merged.push((key, value)),
+        }
+    }
+    merged
+}
+
 pub fn preview(
     paths: &crate::paths::Paths,
     settings: &crate::config::LauncherSettings,
@@ -330,12 +387,8 @@ pub async fn launch_instance(
     placeholders.insert("launcher_name", "basalt".to_string());
     placeholders.insert("launcher_version", env!("CARGO_PKG_VERSION").to_string());
 
-    let template = if settings.jvm_args.trim().is_empty() {
-        crate::config::DEFAULT_JVM_ARGS
-    } else {
-        settings.jvm_args.as_str()
-    };
-    let mut args: Vec<String> = split_args(&render_placeholders(template, &placeholders));
+    let template = instance_jvm_template(&settings, instance);
+    let mut args: Vec<String> = split_args(&render_placeholders(&template, &placeholders));
     let running_id = uuid::Uuid::new_v4().to_string();
 
     if let Some(arguments) = &version.arguments {
@@ -373,12 +426,7 @@ pub async fn launch_instance(
     let extra_game = split_args(&render_placeholders(&settings.game_args, &placeholders));
     args.extend(extra_game.iter().cloned());
 
-    let env: Vec<(String, String)> = settings
-        .env_vars
-        .iter()
-        .filter(|v| !v.key.trim().is_empty())
-        .map(|v| (v.key.trim().to_string(), v.value.clone()))
-        .collect();
+    let env = instance_env(&settings, instance);
 
     tracing::info!(
         main_class = %version.main_class,

@@ -191,6 +191,10 @@ export const api = {
     loader: string | null,
     loaderVersion: string | null,
     versionId: string,
+    jvmArgs: string | null = null,
+    jvmArgsMode: string | null = null,
+    envVars: string | null = null,
+    envVarsMode: string | null = null,
   ) =>
     call<Instance>("update_instance", {
       instanceId,
@@ -201,6 +205,10 @@ export const api = {
       loader,
       loaderVersion,
       versionId,
+      jvmArgs,
+      jvmArgsMode,
+      envVars,
+      envVarsMode,
     }),
   deleteInstance: (instanceId: string) =>
     call<void>("delete_instance", { instanceId }),

@@ -53,6 +53,10 @@ pub fn create_instance(
         loader,
         loader_version,
         launch_version_id: None,
+        jvm_args: None,
+        jvm_args_mode: None,
+        env_vars: None,
+        env_vars_mode: None,
         pack_provider: None,
         pack_project_id: None,
         pack_version_id: None,
@@ -94,6 +98,10 @@ pub fn update_instance(
     loader: Option<String>,
     loader_version: Option<String>,
     version_id: String,
+    jvm_args: Option<String>,
+    jvm_args_mode: Option<String>,
+    env_vars: Option<String>,
+    env_vars_mode: Option<String>,
 ) -> Result<Instance> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -121,6 +129,14 @@ pub fn update_instance(
         loader,
         loader_version,
         &version_id,
+        jvm_args
+            .map(|value| value.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        jvm_args_mode,
+        env_vars
+            .map(|value| value.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        env_vars_mode,
         needs_reset,
     )?;
     if existing.version_id != version_id {

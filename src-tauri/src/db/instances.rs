@@ -11,7 +11,8 @@ impl Db {
         let mut stmt = conn.prepare(
             "SELECT id, name, version_id, created_at, min_memory_mb, max_memory_mb,
                     java_path, last_played_at, playtime_secs, loader, loader_version,
-                    launch_version_id, pack_provider, pack_project_id, pack_version_id
+                    launch_version_id, pack_provider, pack_project_id, pack_version_id,
+                    jvm_args, jvm_args_mode, env_vars, env_vars_mode
              FROM instances ORDER BY created_at",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -37,6 +38,10 @@ impl Db {
                 pack_provider: row.get(12)?,
                 pack_project_id: row.get(13)?,
                 pack_version_id: row.get(14)?,
+                jvm_args: row.get(15)?,
+                jvm_args_mode: row.get(16)?,
+                env_vars: row.get(17)?,
+                env_vars_mode: row.get(18)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -48,8 +53,10 @@ impl Db {
             "INSERT OR REPLACE INTO instances
                 (id, name, version_id, created_at, min_memory_mb, max_memory_mb,
                  java_path, last_played_at, playtime_secs, loader, loader_version,
-                 launch_version_id, pack_provider, pack_project_id, pack_version_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                 launch_version_id, pack_provider, pack_project_id, pack_version_id,
+                 jvm_args, jvm_args_mode, env_vars, env_vars_mode)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                     ?16, ?17, ?18, ?19)",
             params![
                 instance.id,
                 instance.name,
@@ -66,6 +73,10 @@ impl Db {
                 instance.pack_provider,
                 instance.pack_project_id,
                 instance.pack_version_id,
+                instance.jvm_args,
+                instance.jvm_args_mode,
+                instance.env_vars,
+                instance.env_vars_mode,
             ],
         )?;
         Ok(())
@@ -81,6 +92,10 @@ impl Db {
         loader: Option<String>,
         loader_version: Option<String>,
         version_id: &str,
+        jvm_args: Option<String>,
+        jvm_args_mode: Option<String>,
+        env_vars: Option<String>,
+        env_vars_mode: Option<String>,
         reset_launch_version: bool,
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
@@ -89,6 +104,7 @@ impl Db {
                 "UPDATE instances
                  SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
                      loader = ?6, loader_version = ?7, version_id = ?8,
+                     jvm_args = ?9, jvm_args_mode = ?10, env_vars = ?11, env_vars_mode = ?12,
                      launch_version_id = NULL
                  WHERE id = ?1",
                 params![
@@ -99,14 +115,19 @@ impl Db {
                     java_path,
                     loader,
                     loader_version,
-                    version_id
+                    version_id,
+                    jvm_args,
+                    jvm_args_mode,
+                    env_vars,
+                    env_vars_mode
                 ],
             )?;
         } else {
             conn.execute(
                 "UPDATE instances
                  SET name = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
-                     loader = ?6, loader_version = ?7, version_id = ?8
+                     loader = ?6, loader_version = ?7, version_id = ?8,
+                     jvm_args = ?9, jvm_args_mode = ?10, env_vars = ?11, env_vars_mode = ?12
                  WHERE id = ?1",
                 params![
                     instance_id,
@@ -116,7 +137,11 @@ impl Db {
                     java_path,
                     loader,
                     loader_version,
-                    version_id
+                    version_id,
+                    jvm_args,
+                    jvm_args_mode,
+                    env_vars,
+                    env_vars_mode
                 ],
             )?;
         }

@@ -38,6 +38,10 @@ export interface Instance {
   pack_provider: string | null;
   pack_project_id: string | null;
   pack_version_id: string | null;
+  jvm_args: string | null;
+  jvm_args_mode: string | null;
+  env_vars: string | null;
+  env_vars_mode: string | null;
 }
 
 export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";

@@ -75,4 +75,12 @@ pub struct Instance {
     pub pack_project_id: Option<String>,
     #[serde(default)]
     pub pack_version_id: Option<String>,
+    #[serde(default)]
+    pub jvm_args: Option<String>,
+    #[serde(default)]
+    pub jvm_args_mode: Option<String>,
+    #[serde(default)]
+    pub env_vars: Option<String>,
+    #[serde(default)]
+    pub env_vars_mode: Option<String>,
 }

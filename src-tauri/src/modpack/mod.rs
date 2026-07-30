@@ -314,6 +314,10 @@ pub async fn install_modpack(
         pack_provider: Some(provider.as_str().to_string()),
         pack_project_id: Some(project_id.to_string()),
         pack_version_id: Some(target.id.clone()),
+        jvm_args: None,
+        jvm_args_mode: None,
+        env_vars: None,
+        env_vars_mode: None,
     };
     let instance_dir = state.paths.instance_dir(&instance.id);
     state.files.ensure_dir(&instance_dir)?;

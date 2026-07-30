@@ -166,6 +166,10 @@ interface AppStore {
     loader: string | null,
     loaderVersion: string | null,
     versionId: string,
+    jvmArgs?: string | null,
+    jvmArgsMode?: string | null,
+    envVars?: string | null,
+    envVarsMode?: string | null,
   ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
   installInstance: (id: string) => Promise<void>;
@@ -848,6 +852,10 @@ export const useStore = create<AppStore>((set) => ({
     loader,
     loaderVersion,
     versionId,
+    jvmArgs = null,
+    jvmArgsMode = null,
+    envVars = null,
+    envVarsMode = null,
   ) => {
     const updated = await api.updateInstance(
       id,
@@ -858,6 +866,10 @@ export const useStore = create<AppStore>((set) => ({
       loader,
       loaderVersion,
       versionId,
+      jvmArgs,
+      jvmArgsMode,
+      envVars,
+      envVarsMode,
     );
     const installedVersions = await api.listInstalledVersions();
     set((s) => {

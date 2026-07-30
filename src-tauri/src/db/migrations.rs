@@ -138,6 +138,10 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         ("pack_provider", "TEXT"),
         ("pack_project_id", "TEXT"),
         ("pack_version_id", "TEXT"),
+        ("jvm_args", "TEXT"),
+        ("jvm_args_mode", "TEXT"),
+        ("env_vars", "TEXT"),
+        ("env_vars_mode", "TEXT"),
     ] {
         add_column_if_missing(conn, "instances", column, declaration)?;
     }
