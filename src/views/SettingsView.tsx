@@ -312,7 +312,39 @@ export function SettingsView() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-        <section className="relative mb-8 overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 p-7">
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          className="mb-6 flex flex-wrap items-center gap-6 border-b border-border-soft"
+        >
+          {TABS.map((entry) => (
+            <button
+              key={entry.id}
+              role="tab"
+              aria-selected={tab === entry.id}
+              onClick={() => setTab(entry.id)}
+              className={cn(
+                "relative -mb-px pb-3 pt-1 text-sm font-medium transition-colors",
+                tab === entry.id
+                  ? "text-content"
+                  : "text-content-faint hover:text-content-muted",
+              )}
+            >
+              {entry.label}
+              {tab === entry.id && (
+                <motion.span
+                  layoutId="settings-tab-underline"
+                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--accent)]"
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {tab === "general" && (
+          <div>
+        <section className="relative mb-6 overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 p-7">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 [background:radial-gradient(90%_170%_at_0%_0%,var(--accent-glow),transparent_65%)]"
@@ -409,38 +441,6 @@ export function SettingsView() {
           </div>
         </section>
 
-        <div
-          role="tablist"
-          aria-label="Settings sections"
-          className="mb-7 flex flex-wrap items-center gap-6 border-b border-border-soft"
-        >
-          {TABS.map((entry) => (
-            <button
-              key={entry.id}
-              role="tab"
-              aria-selected={tab === entry.id}
-              onClick={() => setTab(entry.id)}
-              className={cn(
-                "relative -mb-px pb-3 pt-1 text-sm font-medium transition-colors",
-                tab === entry.id
-                  ? "text-content"
-                  : "text-content-faint hover:text-content-muted",
-              )}
-            >
-              {entry.label}
-              {tab === entry.id && (
-                <motion.span
-                  layoutId="settings-tab-underline"
-                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
-                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--accent)]"
-                />
-              )}
-            </button>
-          ))}
-        </div>
-
-        {tab === "general" && (
-          <div>
           <div className="gap-6 [column-fill:balance] lg:columns-2">
           <Section
             title="Migration"
