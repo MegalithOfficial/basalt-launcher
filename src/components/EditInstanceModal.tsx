@@ -1,28 +1,57 @@
 import { useEffect, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import {
-  Boxes,
-  Clock,
-  FolderOpen,
-  ImageOff,
-  ImagePlus,
-  Loader2,
-  Trash2,
-  X,
-} from "lucide-react";
+import { motion } from "motion/react";
+import { Boxes, FolderOpen, ImageOff, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
 
 import { api } from "../lib/api";
+import { cn } from "../lib/cn";
 import { LOADERS, loaderLabel } from "../lib/loader";
-import { mediaSrc } from "../lib/media";
+import { logoSrc, mediaSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
-import type { Instance, JavaInfo } from "../lib/types";
+import type { EnvVar, Instance, JavaInfo, SystemStats } from "../lib/types";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { MemoryRange } from "./MemoryRange";
 import { Modal } from "./Modal";
 import { Select } from "./Select";
+import { SettingGroup, SettingRow } from "./ui";
 import { useStore } from "../store";
 
 const VANILLA = "vanilla";
 const JAVA_AUTO = "Auto-detect";
 const JAVA_CUSTOM = "Custom path";
+
+const APPEND = "Append to defaults";
+const REPLACE = "Replace defaults";
+const MODES = [APPEND, REPLACE];
+
+function parseEnv(text: string | null): EnvVar[] {
+  return (text ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const at = line.indexOf("=");
+      return at === -1
+        ? { key: line, value: "" }
+        : { key: line.slice(0, at).trim(), value: line.slice(at + 1).trim() };
+    });
+}
+
+function serializeEnv(entries: EnvVar[]): string {
+  return entries
+    .filter((entry) => entry.key.trim())
+    .map((entry) => `${entry.key.trim()}=${entry.value}`)
+    .join("\n");
+}
+
+type Tab = "general" | "appearance" | "installation" | "java";
+
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: "general", label: "General" },
+  { id: "appearance", label: "Appearance" },
+  { id: "installation", label: "Installation" },
+  { id: "java", label: "Java" },
+];
 
 function loaderWarning(
   oldLoader: string | null,
@@ -59,19 +88,10 @@ function loaderWarning(
 }
 
 const inputCls =
-  "w-full rounded-lg border border-border bg-base px-3 py-2.5 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]";
+  "rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]";
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-sm font-medium text-content">{label}</span>
-        {hint && <span className="text-xs text-content-faint">{hint}</span>}
-      </div>
-      {children}
-    </label>
-  );
-}
+const chipCls =
+  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content";
 
 export function EditInstanceModal({
   instance,
@@ -88,6 +108,7 @@ export function EditInstanceModal({
   const updateInstance = useStore((s) => s.updateInstance);
   const deleteInstance = useStore((s) => s.deleteInstance);
 
+  const [tab, setTab] = useState<Tab>("general");
   const [name, setName] = useState("");
   const [minMem, setMinMem] = useState("");
   const [maxMem, setMaxMem] = useState("");
@@ -99,17 +120,28 @@ export function EditInstanceModal({
   const [gameVersion, setGameVersion] = useState("");
   const [gameVersions, setGameVersions] = useState<string[]>([]);
   const [javas, setJavas] = useState<JavaInfo[]>([]);
+  const [stats, setStats] = useState<SystemStats | null>(null);
   const [javaCustom, setJavaCustom] = useState(false);
+  const [jvmArgs, setJvmArgs] = useState("");
+  const [jvmArgsMode, setJvmArgsMode] = useState("append");
+  const [envVars, setEnvVars] = useState<EnvVar[]>([]);
+  const [envVarsMode, setEnvVarsMode] = useState("append");
   const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!instance) return;
+    setTab("general");
     setName(instance.name);
     setMinMem(instance.min_memory_mb?.toString() ?? "");
     setMaxMem(instance.max_memory_mb?.toString() ?? "");
     setJavaPath(instance.java_path ?? "");
     setJavaCustom(false);
+    setJvmArgs(instance.jvm_args ?? "");
+    setJvmArgsMode(instance.jvm_args_mode ?? "append");
+    setEnvVars(parseEnv(instance.env_vars));
+    setEnvVarsMode(instance.env_vars_mode ?? "append");
     setLoader(instance.loader ?? VANILLA);
     setLoaderVersion(instance.loader_version ?? null);
     setGameVersion(instance.version_id);
@@ -119,6 +151,7 @@ export function EditInstanceModal({
   useEffect(() => {
     if (!instance) return;
     api.listJavas().then(setJavas).catch(() => {});
+    api.getSystemStats().then(setStats).catch(() => {});
   }, [instance?.id]);
 
   useEffect(() => {
@@ -161,6 +194,12 @@ export function EditInstanceModal({
 
   if (!instance) return null;
   const media = mediaMap[instance.id] ?? null;
+  const logo = logoSrc(instance.logo);
+
+  const memoryCeiling = Math.max(4096, stats?.total_memory_mb ?? 16384);
+  const usingDefaults = !minMem.trim() && !maxMem.trim();
+  const sliderMin = Number(minMem) > 0 ? Number(minMem) : 512;
+  const sliderMax = Number(maxMem) > 0 ? Number(maxMem) : 4096;
 
   const parseMem = (value: string) => {
     const trimmed = value.trim();
@@ -200,6 +239,10 @@ export function EditInstanceModal({
         newLoader,
         newLoaderVersion,
         gameVersion,
+        jvmArgs.trim() || null,
+        jvmArgsMode,
+        serializeEnv(envVars) || null,
+        envVarsMode,
       );
       onClose();
     } catch (e) {
@@ -210,267 +253,567 @@ export function EditInstanceModal({
   };
 
   const remove = async () => {
-    setBusy(true);
-    try {
-      await deleteInstance(instance.id);
-      onClose();
-    } finally {
-      setBusy(false);
-    }
+    await deleteInstance(instance.id);
+    setConfirmRemove(false);
+    onClose();
   };
 
   return (
-    <Modal open onClose={onClose} size="xl">
-          <div className="relative h-44 shrink-0">
-            {media ? (
-              <img
-                src={mediaSrc(media)}
-                className="h-full w-full object-cover"
-                draggable={false}
-              />
-            ) : (
-              <div className="grid h-full w-full place-items-center bg-surface-2 text-content-faint">
-                <Boxes className="size-8" />
-              </div>
+    <Modal open onClose={onClose} size="xl" className="h-[min(680px,calc(100vh-48px))]">
+      <div className="relative h-24 shrink-0 overflow-hidden">
+        {media ? (
+          <img
+            src={mediaSrc(media)}
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        ) : (
+          <div className="h-full w-full bg-surface-2" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/85 to-surface/40" />
+
+        <div className="absolute inset-x-5 bottom-3 flex items-end gap-3">
+          {logo ? (
+            <img
+              src={logo}
+              alt=""
+              className="size-11 shrink-0 rounded-xl bg-surface-3 object-cover ring-1 ring-white/10"
+              draggable={false}
+            />
+          ) : (
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface-3 text-content-faint ring-1 ring-white/10">
+              <Boxes className="size-5" />
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-display text-lg font-semibold text-content">
+              {instance.name}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-content-faint">
+              <span className="font-pixel">{instance.version_id}</span>
+              <span>·</span>
+              <span>{loaderLabel(instance)}</span>
+              {instance.last_played_at && (
+                <>
+                  <span>·</span>
+                  <span>played {relativeTime(instance.last_played_at)}</span>
+                </>
+              )}
+              {formatPlaytime(instance.playtime_secs) && (
+                <>
+                  <span>·</span>
+                  <span>{formatPlaytime(instance.playtime_secs)}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 grid size-8 place-items-center rounded-lg bg-black/40 text-white/80 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+
+      <div
+        role="tablist"
+        aria-label="Instance settings"
+        className="flex shrink-0 items-center gap-6 border-b border-border-soft px-5"
+      >
+        {TABS.map((entry) => (
+          <button
+            key={entry.id}
+            role="tab"
+            aria-selected={tab === entry.id}
+            onClick={() => setTab(entry.id)}
+            className={cn(
+              "relative -mb-px pb-3 pt-2.5 text-sm font-medium transition-colors",
+              tab === entry.id
+                ? "text-content"
+                : "text-content-faint hover:text-content-muted",
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-            <button
-              onClick={onClose}
-              className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-black/50 text-white/80 backdrop-blur hover:bg-black/70 hover:text-white"
-            >
-              <X className="size-4" />
-            </button>
-            <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-display text-xl font-bold text-white">
-                  {instance.name}
+          >
+            {entry.label}
+            {tab === entry.id && (
+              <motion.span
+                layoutId="instance-settings-underline"
+                transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--accent)]"
+              />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
+        {tab === "general" && (
+          <>
+            <SettingGroup>
+              <SettingRow label="Name" hint="Shown across the launcher">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={cn(inputCls, "w-64")}
+                />
+              </SettingRow>
+              <SettingRow label="Instance folder" hint={instance.dir} stacked>
+                <button onClick={() => openPath(instance.dir)} className={chipCls}>
+                  <FolderOpen className="size-3.5" />
+                  Open folder
+                </button>
+              </SettingRow>
+            </SettingGroup>
+          </>
+        )}
+
+        {tab === "appearance" && (
+          <>
+            <SettingGroup title="Banner" description="Fills the hero on the play and instance pages.">
+              <div className="p-4">
+                <div className="h-32 overflow-hidden rounded-xl border border-border-soft">
+                  {media ? (
+                    <img
+                      src={mediaSrc(media)}
+                      className="h-full w-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center bg-surface-3 text-content-faint">
+                      <Boxes className="size-6" />
+                    </div>
+                  )}
                 </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/60">
-                  <span className="font-pixel">
-                    {instance.version_id}
-                    {instance.loader && ` · ${loaderLabel(instance)}`}
-                  </span>
-                  {instance.last_played_at && (
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="size-3" />
-                      {relativeTime(instance.last_played_at)}
-                      {formatPlaytime(instance.playtime_secs) &&
-                        ` · ${formatPlaytime(instance.playtime_secs)}`}
-                    </span>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => pickBanner(instance.id)} className={chipCls}>
+                    <ImagePlus className="size-3.5" />
+                    Change banner
+                  </button>
+                  {media?.local && (
+                    <button onClick={() => clearBanner(instance.id)} className={chipCls}>
+                      <ImageOff className="size-3.5" />
+                      Remove banner
+                    </button>
                   )}
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                <button
-                  onClick={() => pickLogo(instance.id)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur hover:bg-black/70"
-                >
-                  <ImagePlus className="size-3.5" />
-                  {instance.logo ? "Change logo" : "Add logo"}
-                </button>
-                {instance.logo && (
-                  <button
-                    onClick={() => clearLogo(instance.id)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur hover:bg-black/70"
-                  >
-                    <ImageOff className="size-3.5" />
-                    Logo
-                  </button>
+            </SettingGroup>
+
+            <SettingGroup title="Logo" description="Used in the sidebar dock and lists.">
+              <div className="flex items-center gap-4 p-4">
+                {logo ? (
+                  <img
+                    src={logo}
+                    alt=""
+                    className="size-16 shrink-0 rounded-xl bg-surface-3 object-cover"
+                    draggable={false}
+                  />
+                ) : (
+                  <span className="grid size-16 shrink-0 place-items-center rounded-xl bg-surface-3 text-content-faint">
+                    <Boxes className="size-6" />
+                  </span>
                 )}
-                <button
-                  onClick={() => pickBanner(instance.id)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur hover:bg-black/70"
-                >
-                  <ImagePlus className="size-3.5" />
-                  Change banner
-                </button>
-                {media?.local && (
-                  <button
-                    onClick={() => clearBanner(instance.id)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white/85 backdrop-blur hover:bg-black/70"
-                  >
-                    <ImageOff className="size-3.5" />
-                    Remove
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => pickLogo(instance.id)} className={chipCls}>
+                    <ImagePlus className="size-3.5" />
+                    {instance.logo ? "Change logo" : "Add logo"}
                   </button>
-                )}
+                  {instance.logo && (
+                    <button onClick={() => clearLogo(instance.id)} className={chipCls}>
+                      <ImageOff className="size-3.5" />
+                      Remove logo
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
+            </SettingGroup>
+          </>
+        )}
 
-          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
-            <Field label="Name">
-              <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Minimum memory" hint="MB, empty = default">
-                <input
-                  type="number"
-                  value={minMem}
-                  onChange={(e) => setMinMem(e.target.value)}
-                  placeholder="default"
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Maximum memory" hint="MB, empty = default">
-                <input
-                  type="number"
-                  value={maxMem}
-                  onChange={(e) => setMaxMem(e.target.value)}
-                  placeholder="default"
-                  className={inputCls}
-                />
-              </Field>
-            </div>
-
-            <Field label="Java runtime" hint={`${javas.length} detected`}>
-              <Select
-                value={
-                  javaCustom
-                    ? JAVA_CUSTOM
-                    : !javaPath
-                      ? JAVA_AUTO
-                      : (javas.find((j) => j.path === javaPath)
-                          ? `Java ${javas.find((j) => j.path === javaPath)!.major} · ${javaPath}`
-                          : JAVA_CUSTOM)
-                }
-                options={[
-                  JAVA_AUTO,
-                  ...javas.map((j) => `Java ${j.major} · ${j.path}`),
-                  JAVA_CUSTOM,
-                ]}
-                onChange={(choice) => {
-                  if (choice === JAVA_AUTO) {
-                    setJavaCustom(false);
-                    setJavaPath("");
-                    return;
+        {tab === "installation" && (
+          <>
+            {instance.pack_project_id && (
+              <SettingGroup title="Modpack">
+                <SettingRow
+                  label={instance.pack_provider === "modrinth" ? "Modrinth" : "CurseForge"}
+                  hint={
+                    instance.pack_version_id
+                      ? `Version ${instance.pack_version_id}`
+                      : "Linked project"
                   }
-                  if (choice === JAVA_CUSTOM) {
-                    setJavaCustom(true);
-                    return;
-                  }
-                  const picked = javas.find((j) => `Java ${j.major} · ${j.path}` === choice);
-                  if (picked) {
-                    setJavaCustom(false);
-                    setJavaPath(picked.path);
-                  }
-                }}
-              />
-            </Field>
-
-            {(javaCustom || (!!javaPath && !javas.some((j) => j.path === javaPath))) && (
-              <Field label="Custom java path" hint="path to a java executable">
-                <input
-                  value={javaPath}
-                  onChange={(e) => setJavaPath(e.target.value)}
-                  placeholder="/path/to/bin/java"
-                  className={inputCls}
-                />
-              </Field>
+                >
+                  <span className="rounded-md bg-surface-3 px-2 py-1 font-mono text-[11px] text-content-muted">
+                    {instance.pack_project_id}
+                  </span>
+                </SettingRow>
+              </SettingGroup>
             )}
 
-            <Field label="Game version" hint="changing requires a reinstall">
-              <Select
-                value={gameVersion || null}
-                options={gameVersions.length > 0 ? gameVersions : [instance.version_id]}
-                onChange={setGameVersion}
-                placeholder="Pick a version"
-              />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Loader">
-                <Select
-                  value={loader === VANILLA ? "Vanilla" : (LOADERS.find((l) => l.id === loader)?.label ?? loader)}
-                  options={["Vanilla", ...LOADERS.map((l) => l.label)]}
-                  onChange={(label) => {
-                    const picked = LOADERS.find((l) => l.label === label);
-                    setLoader(picked?.id ?? VANILLA);
-                    if (!picked) setLoaderVersion(null);
-                  }}
-                />
-              </Field>
-              <Field label="Loader version">
-                {loader === VANILLA ? (
-                  <div className="rounded-lg border border-border-soft bg-surface-2 px-3 py-2 text-sm text-content-faint">
-                    Not applicable
-                  </div>
-                ) : loaderLoading ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-border-soft bg-surface-2 px-3 py-2 text-sm text-content-muted">
-                    <Loader2 className="size-3.5 animate-spin" />
-                    Loading
-                  </div>
-                ) : loaderVersions.length === 0 ? (
-                  <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
-                    No builds for {instance.version_id}
-                  </div>
-                ) : (
+            <SettingGroup
+              title="Version and loader"
+              description="Changing either one needs a reinstall before the next launch."
+            >
+              <SettingRow label="Game version">
+                <div className="w-56">
                   <Select
-                    value={loaderVersion}
-                    options={loaderVersions.slice(0, 100)}
-                    onChange={setLoaderVersion}
+                    value={gameVersion || null}
+                    options={gameVersions.length > 0 ? gameVersions : [instance.version_id]}
+                    onChange={setGameVersion}
                     placeholder="Pick a version"
                   />
-                )}
-              </Field>
-            </div>
+                </div>
+              </SettingRow>
+              <SettingRow label="Loader">
+                <div className="w-56">
+                  <Select
+                    value={
+                      loader === VANILLA
+                        ? "Vanilla"
+                        : (LOADERS.find((l) => l.id === loader)?.label ?? loader)
+                    }
+                    options={["Vanilla", ...LOADERS.map((l) => l.label)]}
+                    onChange={(label) => {
+                      const picked = LOADERS.find((l) => l.label === label);
+                      setLoader(picked?.id ?? VANILLA);
+                      if (!picked) setLoaderVersion(null);
+                    }}
+                  />
+                </div>
+              </SettingRow>
+              <SettingRow label="Loader version">
+                <div className="w-56">
+                  {loader === VANILLA ? (
+                    <div className="rounded-lg border border-border-soft bg-surface-3 px-3 py-2 text-sm text-content-faint">
+                      Not applicable
+                    </div>
+                  ) : loaderLoading ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-border-soft bg-surface-3 px-3 py-2 text-sm text-content-muted">
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Loading
+                    </div>
+                  ) : loaderVersions.length === 0 ? (
+                    <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
+                      No builds
+                    </div>
+                  ) : (
+                    <Select
+                      value={loaderVersion}
+                      options={loaderVersions.slice(0, 100)}
+                      onChange={setLoaderVersion}
+                      placeholder="Pick a version"
+                    />
+                  )}
+                </div>
+              </SettingRow>
+            </SettingGroup>
 
             {warnings.map((warning) => (
               <div
                 key={warning.message}
-                className={
+                className={cn(
+                  "rounded-xl border px-3.5 py-3 text-xs leading-relaxed",
                   warning.tone === "danger"
-                    ? "rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+                    ? "border-danger/30 bg-danger/10 text-danger"
                     : warning.tone === "warn"
-                      ? "rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
-                      : "rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-content-muted"
-                }
+                      ? "border-warn/30 bg-warn/10 text-warn"
+                      : "border-border bg-surface-2 text-content-muted",
+                )}
               >
                 {warning.message}
               </div>
             ))}
+          </>
+        )}
 
-            <button
-              onClick={() => openPath(instance.dir)}
-              className="inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+        {tab === "java" && (
+          <>
+            <SettingGroup
+              title="Memory"
+              description="Leave both empty to follow the launcher defaults."
             >
-              <FolderOpen className="size-3.5" />
-              Open instance folder
-            </button>
+              <div className="px-5 py-5">
+                <div className="mb-2 flex items-end justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-medium text-content-muted">Minimum</div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        value={minMem}
+                        onChange={(e) => setMinMem(e.target.value)}
+                        placeholder="default"
+                        className={cn(inputCls, "w-24 text-right tabular-nums")}
+                      />
+                      <span className="text-xs text-content-faint">MB</span>
+                    </div>
+                  </div>
 
-            {error && (
-              <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-                {error}
+                  <div className="text-right">
+                    <div className="text-[11px] font-medium text-content-muted">Maximum</div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        value={maxMem}
+                        onChange={(e) => setMaxMem(e.target.value)}
+                        placeholder="default"
+                        className={cn(inputCls, "w-24 text-right tabular-nums")}
+                      />
+                      <span className="text-xs text-content-faint">MB</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-1 pt-3">
+                  <MemoryRange
+                    min={sliderMin}
+                    max={sliderMax}
+                    ceiling={memoryCeiling}
+                    available={stats?.available_memory_mb}
+                    onChange={(low, high) => {
+                      setMinMem(String(low));
+                      setMaxMem(String(high));
+                    }}
+                  />
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-4 border-t border-border-soft pt-3 text-[11px]">
+                  <span
+                    className={cn(
+                      stats && sliderMax > stats.available_memory_mb && !usingDefaults
+                        ? "text-warn"
+                        : "text-content-faint",
+                    )}
+                  >
+                    {usingDefaults
+                      ? "Following the launcher defaults"
+                      : stats && sliderMax > stats.available_memory_mb
+                        ? `More than the ${(stats.available_memory_mb / 1024).toFixed(1)} GB free right now`
+                        : `Starts at ${(sliderMin / 1024).toFixed(1)} GB, never above ${(sliderMax / 1024).toFixed(1)} GB`}
+                  </span>
+                  {!usingDefaults && (
+                    <button
+                      onClick={() => {
+                        setMinMem("");
+                        setMaxMem("");
+                      }}
+                      className="shrink-0 font-medium text-content-muted transition-colors hover:text-content"
+                    >
+                      Use defaults
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+            </SettingGroup>
 
-          <div className="flex items-center justify-between border-t border-border-soft px-6 py-4">
-            <button
-              onClick={remove}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger transition-colors hover:bg-danger/20 disabled:opacity-50"
+            <SettingGroup title="Java">
+              <SettingRow label="Runtime" hint={`${javas.length} detected on this system`}>
+                <div className="w-64">
+                  <Select
+                    value={
+                      javaCustom
+                        ? JAVA_CUSTOM
+                        : !javaPath
+                          ? JAVA_AUTO
+                          : javas.find((j) => j.path === javaPath)
+                            ? `Java ${javas.find((j) => j.path === javaPath)!.major} · ${javaPath}`
+                            : JAVA_CUSTOM
+                    }
+                    options={[
+                      JAVA_AUTO,
+                      ...javas.map((j) => `Java ${j.major} · ${j.path}`),
+                      JAVA_CUSTOM,
+                    ]}
+                    onChange={(choice) => {
+                      if (choice === JAVA_AUTO) {
+                        setJavaCustom(false);
+                        setJavaPath("");
+                        return;
+                      }
+                      if (choice === JAVA_CUSTOM) {
+                        setJavaCustom(true);
+                        return;
+                      }
+                      const picked = javas.find(
+                        (j) => `Java ${j.major} · ${j.path}` === choice,
+                      );
+                      if (picked) {
+                        setJavaCustom(false);
+                        setJavaPath(picked.path);
+                      }
+                    }}
+                  />
+                </div>
+              </SettingRow>
+              {(javaCustom || (!!javaPath && !javas.some((j) => j.path === javaPath))) && (
+                <SettingRow label="Custom path" hint="path to a java executable" stacked>
+                  <input
+                    value={javaPath}
+                    onChange={(e) => setJavaPath(e.target.value)}
+                    placeholder="/path/to/bin/java"
+                    className={cn(inputCls, "w-full")}
+                  />
+                </SettingRow>
+              )}
+            </SettingGroup>
+
+            <SettingGroup title="Java arguments">
+              <SettingRow
+                label="Arguments"
+                hint={
+                  jvmArgsMode === "replace"
+                    ? "Used on their own, ignoring the launcher defaults"
+                    : "Added after the launcher defaults"
+                }
+                stacked
+                action={
+                  <div className="w-48">
+                    <Select
+                      compact
+                      value={jvmArgsMode === "replace" ? REPLACE : APPEND}
+                      options={MODES}
+                      onChange={(choice) =>
+                        setJvmArgsMode(choice === REPLACE ? "replace" : "append")
+                      }
+                    />
+                  </div>
+                }
+              >
+                <textarea
+                  value={jvmArgs}
+                  onChange={(e) => setJvmArgs(e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  placeholder="-XX:+UseG1GC -Dsome.flag=true"
+                  className={cn(inputCls, "w-full resize-y font-mono text-xs")}
+                />
+              </SettingRow>
+            </SettingGroup>
+
+            <SettingGroup
+              title="Environment variables"
+              description="Set on the game process only. Useful for driver and GPU switches."
             >
-              <Trash2 className="size-3.5" />
-              Delete instance
-            </button>
-            <div className="flex gap-2">
-              <button
-                onClick={onClose}
-                className="rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-content hover:bg-surface-3"
+              <SettingRow
+                label="When launching"
+                hint={
+                  envVarsMode === "replace"
+                    ? "Only these are set, the launcher defaults are ignored"
+                    : "Merged over the launcher defaults, matching names win"
+                }
               >
-                Cancel
-              </button>
-              <button
-                onClick={save}
-                disabled={busy || !name.trim()}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {busy && <Loader2 className="size-4 animate-spin" />}
-                Save
-              </button>
-            </div>
+                <div className="w-48">
+                  <Select
+                    compact
+                    value={envVarsMode === "replace" ? REPLACE : APPEND}
+                    options={MODES}
+                    onChange={(choice) =>
+                      setEnvVarsMode(choice === REPLACE ? "replace" : "append")
+                    }
+                  />
+                </div>
+              </SettingRow>
+
+              <div className="flex flex-col gap-2 px-5 py-4">
+                {envVars.length === 0 && (
+                  <p className="text-xs text-content-faint">Nothing set for this instance.</p>
+                )}
+                {envVars.map((entry, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      value={entry.key}
+                      onChange={(e) =>
+                        setEnvVars((current) =>
+                          current.map((v, i) =>
+                            i === index ? { ...v, key: e.target.value } : v,
+                          ),
+                        )
+                      }
+                      placeholder="MESA_GL_VERSION_OVERRIDE"
+                      spellCheck={false}
+                      className={cn(inputCls, "min-w-0 flex-1 font-mono text-xs")}
+                    />
+                    <span className="text-xs text-content-faint">=</span>
+                    <input
+                      value={entry.value}
+                      onChange={(e) =>
+                        setEnvVars((current) =>
+                          current.map((v, i) =>
+                            i === index ? { ...v, value: e.target.value } : v,
+                          ),
+                        )
+                      }
+                      placeholder="4.5"
+                      spellCheck={false}
+                      className={cn(inputCls, "min-w-0 flex-1 font-mono text-xs")}
+                    />
+                    <button
+                      onClick={() =>
+                        setEnvVars((current) => current.filter((_, i) => i !== index))
+                      }
+                      title={`Remove ${entry.key || "variable"}`}
+                      className="grid size-8 shrink-0 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setEnvVars((current) => [...current, { key: "", value: "" }])}
+                  className={cn(chipCls, "mt-1 self-start")}
+                >
+                  <Plus className="size-3.5" />
+                  Add variable
+                </button>
+              </div>
+            </SettingGroup>
+          </>
+        )}
+
+        {error && (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-3 text-sm text-danger">
+            {error}
           </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-border-soft px-5 py-3.5">
+        <button
+          onClick={() => setConfirmRemove(true)}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger transition-colors hover:bg-danger/20 disabled:opacity-50"
+        >
+          <Trash2 className="size-3.5" />
+          Delete instance
+        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-content hover:bg-surface-3"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={busy || !name.trim()}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy && <Loader2 className="size-4 animate-spin" />}
+            Save
+          </button>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        nested
+        title={`Delete ${instance.name}?`}
+        confirmLabel="Delete instance"
+        requireText={instance.name}
+        description="The whole instance folder is removed from disk, including its worlds, mods, configs and screenshots. This cannot be undone."
+        onConfirm={remove}
+        onCancel={() => setConfirmRemove(false)}
+      />
     </Modal>
   );
 }
