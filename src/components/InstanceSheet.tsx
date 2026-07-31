@@ -48,7 +48,7 @@ export function InstanceSheet({
             transition={{ type: "spring", stiffness: 380, damping: 40 }}
             className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-3xl border border-b-0 border-border bg-surface/95 backdrop-blur-xl"
           >
-            <div className="sticky top-0 z-10 flex flex-col items-center bg-gradient-to-b from-surface to-transparent pb-2 pt-3">
+            <div className="sticky top-0 z-10 flex flex-col items-center bg-linear-to-b from-surface to-transparent pb-2 pt-3">
               <button
                 onClick={onClose}
                 aria-label="Close"
@@ -71,9 +71,9 @@ export function InstanceSheet({
                       onClose();
                     }}
                     className={cn(
-                      "group relative aspect-[16/10] overflow-hidden rounded-2xl border text-left transition-all duration-300",
+                      "group relative aspect-16/10 overflow-hidden rounded-2xl border text-left transition-all duration-300",
                       active
-                        ? "border-transparent ring-2 ring-[var(--accent)] shadow-lg shadow-[var(--accent-glow)]"
+                        ? "border-transparent ring-2 ring-(--accent) shadow-lg shadow-(color:--accent-glow)"
                         : "border-border hover:border-content-faint/40",
                     )}
                   >
@@ -89,7 +89,7 @@ export function InstanceSheet({
                     ) : (
                       <div className="absolute inset-0 bg-surface-2" style={tileGrid} />
                     )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-4 pb-3 pt-8">
+                    <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 to-transparent px-4 pb-3 pt-8">
                       <div className="truncate text-sm font-semibold text-white">
                         {it.name}
                       </div>
@@ -99,7 +99,7 @@ export function InstanceSheet({
                       </div>
                     </div>
                     {active && (
-                      <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-[var(--accent)] text-black transition-colors duration-500">
+                      <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-(--accent) text-black transition-colors duration-500">
                         <Check className="size-4" />
                       </span>
                     )}
@@ -112,7 +112,7 @@ export function InstanceSheet({
                   onClose();
                   onCreate();
                 }}
-                className="flex aspect-[16/10] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border text-content-faint transition-colors hover:border-[var(--accent)] hover:text-content-muted"
+                className="flex aspect-16/10 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border text-content-faint transition-colors hover:border-(--accent) hover:text-content-muted"
               >
                 <Plus className="size-6" />
                 <span className="text-sm font-medium">New instance</span>

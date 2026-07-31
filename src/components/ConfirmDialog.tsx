@@ -105,7 +105,7 @@ export function ConfirmDialog({
           )}
         />
         <div className="min-w-0">
-          <h2 className="font-display text-base font-semibold text-content">{title}</h2>
+          <h2 className="font-display text-[1rem] font-semibold text-content">{title}</h2>
           {description && (
             <div className="mt-1 text-xs leading-relaxed text-content-muted">{description}</div>
           )}

@@ -28,7 +28,7 @@ function AccountCard({
       className={cn(
         "flex flex-col gap-4 rounded-2xl border p-4 transition-colors",
         active
-          ? "border-[var(--accent)]/45 bg-[var(--accent-glow)]/25"
+          ? "border-(--accent)/45 bg-(--accent-glow)/25"
           : "border-border-soft bg-surface-2/60 hover:border-border",
       )}
     >
@@ -39,15 +39,15 @@ function AccountCard({
           size={52}
           className={cn(
             "shrink-0 rounded-xl",
-            active && "shadow-lg shadow-[var(--accent-glow)]",
+            active && "shadow-lg shadow-(color:--accent-glow)",
           )}
         />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-display text-base font-semibold text-content">
+          <div className="truncate font-display text-[1rem] font-semibold text-content">
             {name}
           </div>
           {active ? (
-            <span className="mt-1.5 inline-block rounded-md border border-[var(--accent)]/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-bright)]">
+            <span className="mt-1.5 inline-block rounded-md border border-(--accent)/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-(--accent-bright)">
               Active
             </span>
           ) : (
@@ -94,7 +94,7 @@ export function AccountsView() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-4 border-b border-border-soft px-8 py-3.5">
         <div className="flex items-baseline gap-3">
-          <h1 className="font-display text-base font-semibold tracking-tight text-content">
+          <h1 className="font-display text-[1rem] font-semibold tracking-tight text-content">
             Accounts
           </h1>
           {accounts.length > 0 && (
@@ -121,7 +121,7 @@ export function AccountsView() {
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-          <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(17rem,1fr))]">
+          <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(17rem,1fr))]">
             {accounts.map((acc) => (
               <AccountCard
                 key={acc.id}

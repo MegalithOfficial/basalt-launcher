@@ -104,7 +104,7 @@ export function ImportPackModal({
         title="Import a modpack file"
         subtitle={path ? baseName(path) : undefined}
         icon={
-          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-[var(--accent)]">
+          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-(--accent)">
             <FileArchive className="size-4" />
           </div>
         }
@@ -114,7 +114,7 @@ export function ImportPackModal({
       <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
         {reading && (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-            <Loader2 className="size-5 animate-spin text-[var(--accent)]" />
+            <Loader2 className="size-5 animate-spin text-(--accent)" />
             <div className="text-sm font-medium text-content">Reading the pack</div>
           </div>
         )}
@@ -170,7 +170,7 @@ export function ImportPackModal({
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder={preview.name}
-                className="w-full rounded-lg border border-border bg-base px-3 py-2.5 text-sm text-content outline-none focus:border-[var(--accent)]"
+                className="w-full rounded-lg border border-border bg-base px-3 py-2.5 text-sm text-content outline-none focus:border-(--accent)"
               />
             </label>
 
@@ -182,7 +182,7 @@ export function ImportPackModal({
                     className="flex gap-2.5 rounded-xl border border-warn/25 bg-warn/[0.07] px-3.5 py-2.5 text-xs text-warn"
                   >
                     <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                    <span className="break-words">{warning}</span>
+                    <span className="wrap-break-word">{warning}</span>
                   </div>
                 ))}
               </div>
@@ -209,7 +209,7 @@ export function ImportPackModal({
                 {imported.loader ? ` · ${imported.loader}` : ""}
               </p>
               <p className="mt-3 flex items-center justify-center gap-2 text-xs text-content-faint">
-                <Loader2 className="size-3.5 animate-spin text-[var(--accent)]" />
+                <Loader2 className="size-3.5 animate-spin text-(--accent)" />
                 The files are downloading in the background.
               </p>
             </div>
@@ -228,7 +228,7 @@ export function ImportPackModal({
         {error && (
           <div className="mt-4 flex shrink-0 gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <span className="break-words">{error}</span>
+            <span className="wrap-break-word">{error}</span>
           </div>
         )}
       </div>
@@ -252,7 +252,7 @@ export function ImportPackModal({
               onClick={submit}
               disabled={!preview?.importable || importing || reading}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all",
+                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all",
                 "[background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
                 "disabled:cursor-not-allowed disabled:opacity-45",
               )}

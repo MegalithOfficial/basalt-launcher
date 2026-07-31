@@ -97,7 +97,7 @@ function CandidateRow({
       className={cn(
         "flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors",
         selected
-          ? "border-[var(--accent)]/60 bg-[var(--accent-glow)]"
+          ? "border-(--accent)/60 bg-(--accent-glow)"
           : "border-border-soft bg-base/60 hover:border-border",
         disabled && "cursor-not-allowed opacity-55",
       )}
@@ -106,7 +106,7 @@ function CandidateRow({
         className={cn(
           "mt-0.5 grid size-4 shrink-0 place-items-center rounded border",
           selected
-            ? "border-[var(--accent)] bg-[var(--accent)] text-black"
+            ? "border-(--accent) bg-(--accent) text-black"
             : "border-border bg-surface-3",
         )}
       >
@@ -222,7 +222,7 @@ function ImportDialog({
         title="Import worlds"
         subtitle={`Basalt copies worlds directly into ${instance.name}. Your files never pass through the webview.`}
         icon={
-          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-[var(--accent)]">
+          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-(--accent)">
             <HardDriveUpload className="size-4" />
           </div>
         }
@@ -234,9 +234,9 @@ function ImportDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 onClick={() => choose("directory")}
-                className="group rounded-xl border border-border-soft bg-base/50 p-4 text-left transition-colors hover:border-[var(--accent)]/50 hover:bg-surface-2"
+                className="group rounded-xl border border-border-soft bg-base/50 p-4 text-left transition-colors hover:border-(--accent)/50 hover:bg-surface-2"
               >
-                <FolderOpen className="size-5 text-[var(--accent)]" />
+                <FolderOpen className="size-5 text-(--accent)" />
                 <div className="mt-5 text-sm font-semibold text-content">
                   World folder
                 </div>
@@ -246,9 +246,9 @@ function ImportDialog({
               </button>
               <button
                 onClick={() => choose("zip")}
-                className="group rounded-xl border border-border-soft bg-base/50 p-4 text-left transition-colors hover:border-[var(--accent)]/50 hover:bg-surface-2"
+                className="group rounded-xl border border-border-soft bg-base/50 p-4 text-left transition-colors hover:border-(--accent)/50 hover:bg-surface-2"
               >
-                <Archive className="size-5 text-[var(--accent)]" />
+                <Archive className="size-5 text-(--accent)" />
                 <div className="mt-5 text-sm font-semibold text-content">
                   ZIP backup
                 </div>
@@ -261,7 +261,7 @@ function ImportDialog({
 
           {inspecting && (
             <div className="flex flex-col items-center gap-3 py-14 text-center">
-              <Loader2 className="size-5 animate-spin text-[var(--accent)]" />
+              <Loader2 className="size-5 animate-spin text-(--accent)" />
               <div>
                 <div className="text-sm font-medium text-content">
                   Inspecting the backup
@@ -320,7 +320,7 @@ function ImportDialog({
           {error && (
             <div className="mt-4 flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-              <span className="break-words">{error}</span>
+              <span className="wrap-break-word">{error}</span>
             </div>
           )}
         </div>
@@ -341,7 +341,7 @@ function ImportDialog({
               <button
                 onClick={submit}
                 disabled={selected.size === 0 || running || importing}
-                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {importing && <Loader2 className="size-3.5 animate-spin" />}
                 Import {selected.size === 1 ? "world" : `${selected.size} worlds`}
@@ -545,7 +545,7 @@ export function WorldsPanel({
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Filter worlds"
-              className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]"
+              className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
             />
           </div>
         )}
@@ -582,7 +582,7 @@ export function WorldsPanel({
           </p>
           <button
             onClick={() => onImportOpenChange(true)}
-            className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+            className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
           >
             <HardDriveUpload className="size-3.5" />
             Import a world

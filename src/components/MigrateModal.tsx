@@ -51,7 +51,7 @@ function SourceTab({
       <span
         className={cn(
           "rounded px-1.5 text-[10px] font-semibold tabular-nums",
-          active ? "bg-[var(--accent)]/20 text-[var(--accent-bright)]" : "bg-surface-3",
+          active ? "bg-(--accent)/20 text-(--accent-bright)" : "bg-surface-3",
         )}
       >
         {source.instance_count}
@@ -89,7 +89,7 @@ function CandidateRow({
       <span
         className={cn(
           "grid size-4 shrink-0 place-items-center rounded border",
-          selected ? "border-[var(--accent)] bg-[var(--accent)] text-black" : "border-border bg-surface-3",
+          selected ? "border-(--accent) bg-(--accent) text-black" : "border-border bg-surface-3",
         )}
       >
         {selected && <Check className="size-3" strokeWidth={3} />}
@@ -236,7 +236,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
         title="Import from another launcher"
         subtitle="Instances are copied, so the other launcher keeps its own."
         icon={
-          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-[var(--accent)]">
+          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-(--accent)">
             <HardDriveDownload className="size-4" />
           </div>
         }
@@ -246,7 +246,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
       <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
         {scanning && (
           <div className="flex flex-col items-center gap-3 py-14 text-center">
-            <Loader2 className="size-5 animate-spin text-[var(--accent)]" />
+            <Loader2 className="size-5 animate-spin text-(--accent)" />
             <div className="text-sm font-medium text-content">Looking for launchers</div>
           </div>
         )}
@@ -379,7 +379,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
                     className="flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-2.5 text-xs text-danger"
                   >
                     <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                    <span className="break-words">
+                    <span className="wrap-break-word">
                       <span className="font-medium">{id}</span> · {reason}
                     </span>
                   </div>
@@ -392,7 +392,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
         {error && (
           <div className="mt-4 flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <span className="break-words">{error}</span>
+            <span className="wrap-break-word">{error}</span>
           </div>
         )}
       </div>
@@ -414,7 +414,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
               <button
                 onClick={submit}
                 disabled={selected.size === 0 || importing}
-                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {importing && <Loader2 className="size-3.5 animate-spin" />}
                 Import {selected.size === 1 ? "instance" : `${selected.size} instances`}

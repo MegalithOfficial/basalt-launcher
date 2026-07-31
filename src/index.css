@@ -10,13 +10,11 @@
 }
 
 @theme {
-  /* Type system */
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
   --font-pixel: "Monocraft", "JetBrains Mono Variable", monospace;
 
-  /* Basalt / volcanic palette — OLED true-black base with a molten-lava accent */
   --color-base: #000000;
   --color-surface: #0c0e12;
   --color-surface-2: #15171d;

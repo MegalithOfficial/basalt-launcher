@@ -61,9 +61,9 @@ function StepDots({ steps, at }: { steps: StepId[]; at: number }) {
           className={cn(
             "h-1 rounded-full transition-all duration-300",
             index === at
-              ? "w-6 bg-[var(--accent)]"
+              ? "w-6 bg-(--accent)"
               : index < at
-                ? "w-1.5 bg-[var(--accent)]/40"
+                ? "w-1.5 bg-(--accent)/40"
                 : "w-1.5 bg-surface-3",
           )}
         />
@@ -85,7 +85,7 @@ function Card({
 }) {
   return (
     <div className="flex items-center gap-3.5 rounded-2xl border border-border-soft bg-surface-2/60 px-4 py-3.5">
-      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-3 text-[var(--accent)]">
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-3 text-(--accent)">
         {icon}
       </span>
       <div className="min-w-0 flex-1">
@@ -156,7 +156,7 @@ export function Onboarding() {
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-base">
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-52 left-1/2 size-[34rem] -translate-x-1/2 rounded-full opacity-[0.12] blur-3xl"
+        className="pointer-events-none absolute -top-52 left-1/2 size-136 -translate-x-1/2 rounded-full opacity-[0.12] blur-3xl"
         style={{
           background: "radial-gradient(circle, var(--accent) 0%, transparent 65%)",
         }}
@@ -289,7 +289,7 @@ export function Onboarding() {
                   <div className="rounded-2xl border border-border-soft bg-surface-2/60 px-4 py-4">
                     <div className="mb-3 flex items-center justify-between text-xs">
                       <span className="flex items-center gap-2 font-medium text-content">
-                        <MemoryStick className="size-4 text-[var(--accent)]" />
+                        <MemoryStick className="size-4 text-(--accent)" />
                         {(memory.max / 1024).toFixed(1)} GB ceiling
                       </span>
                       <span className="text-content-faint">
@@ -374,7 +374,7 @@ export function Onboarding() {
               setAt((v) => v + 1);
             }}
             disabled={finishing}
-            className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
           >
             {finishing && <Loader2 className="size-4 animate-spin" />}
             {last ? "Start playing" : "Continue"}

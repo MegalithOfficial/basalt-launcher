@@ -57,7 +57,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
     >
       {immersive && (
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/85 via-black/45 to-transparent"
+          className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-linear-to-b from-black/85 via-black/45 to-transparent"
         />
       )}
 

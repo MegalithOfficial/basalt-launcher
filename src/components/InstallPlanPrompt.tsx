@@ -91,7 +91,7 @@ export function InstallPlanPrompt({
         <>
             <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
               <div className="min-w-0">
-                <h2 className="truncate font-display text-base font-semibold text-content">
+                <h2 className="truncate font-display text-[1rem] font-semibold text-content">
                   {replacing.length > 0 ? "Replace" : "Install"}{" "}
                   {plan.primary?.title ?? "content"}
                 </h2>
@@ -197,7 +197,7 @@ export function InstallPlanPrompt({
                 <div className="h-1 overflow-hidden rounded-full bg-surface-3">
                   <div
                     className={cn(
-                      "h-full rounded-full bg-[var(--accent)]",
+                      "h-full rounded-full bg-(--accent)",
                       taskFraction(progress) == null
                         ? "w-1/3 animate-pulse"
                         : "transition-[width] duration-300",
@@ -232,7 +232,7 @@ export function InstallPlanPrompt({
               <button
                 onClick={onConfirm}
                 disabled={busy}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
               >
                 {busy ? (
                   <Loader2 className="size-4 animate-spin" />

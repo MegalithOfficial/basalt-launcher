@@ -29,7 +29,7 @@ function InstanceRow({
         installed || incompatible
           ? "cursor-not-allowed opacity-60"
           : selected
-            ? "bg-[var(--accent-glow)]"
+            ? "bg-(--accent-glow)"
             : "hover:bg-surface-2",
       )}
     >
@@ -65,7 +65,7 @@ function InstanceRow({
           </span>
         )
       )}
-      {selected && <Check className="size-4 shrink-0 text-[var(--accent)]" />}
+      {selected && <Check className="size-4 shrink-0 text-(--accent)" />}
     </button>
   );
 }
@@ -126,7 +126,7 @@ export function InstanceTargetPicker({
       <Modal open onClose={close} nested>
         <div className="flex items-start justify-between gap-3 border-b border-border-soft px-5 py-4">
           <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold text-content">
+            <h2 className="font-display text-[1rem] font-semibold text-content">
               Install to which instance?
             </h2>
             <div className="mt-0.5 truncate text-xs text-content-muted">{modalFor}</div>
@@ -177,7 +177,7 @@ export function InstanceTargetPicker({
         )}
       >
         {selected ? <Boxes className="size-3.5" /> : <Compass className="size-3.5" />}
-        <span className="max-w-[14rem] truncate">
+        <span className="max-w-56 truncate">
           {selected ? selected.name : "Browsing only"}
         </span>
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
@@ -194,7 +194,7 @@ export function InstanceTargetPicker({
               left: Math.max(8, rect.right - 288),
               maxHeight: Math.max(160, window.innerHeight - rect.bottom - 16),
             }}
-            className="z-[80] w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1.5 shadow-2xl shadow-black/50"
+            className="z-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1.5 shadow-2xl shadow-black/50"
           >
             <button
               onClick={() => {
@@ -203,7 +203,7 @@ export function InstanceTargetPicker({
               }}
               className={cn(
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-                selected ? "hover:bg-surface-2" : "bg-[var(--accent-glow)]",
+                selected ? "hover:bg-surface-2" : "bg-(--accent-glow)",
               )}
             >
               <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
@@ -215,7 +215,7 @@ export function InstanceTargetPicker({
                   Pick an instance when you install
                 </div>
               </div>
-              {!selected && <Check className="size-4 shrink-0 text-[var(--accent)]" />}
+              {!selected && <Check className="size-4 shrink-0 text-(--accent)" />}
             </button>
 
             <div className="my-1 h-px bg-border-soft" />

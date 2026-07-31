@@ -334,7 +334,7 @@ export function ProjectView() {
           >
             {t.label}
             {tab === t.id && (
-              <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--accent)] transition-colors duration-500" />
+              <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-(--accent) transition-colors duration-500" />
             )}
           </button>
         ))}
@@ -343,7 +343,7 @@ export function ProjectView() {
       {error && (
         <div className="mx-6 mt-3 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span className="break-words">{error}</span>
+          <span className="wrap-break-word">{error}</span>
         </div>
       )}
       {notice && (

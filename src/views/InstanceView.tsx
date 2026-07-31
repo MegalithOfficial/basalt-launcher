@@ -138,7 +138,7 @@ function Toggle({
       aria-label={on ? "Disable" : "Enable"}
       className={cn(
         "relative h-5 w-9 shrink-0 rounded-full transition-colors duration-300",
-        on ? "bg-[var(--accent)]" : "bg-surface-3",
+        on ? "bg-(--accent)" : "bg-surface-3",
         disabled && "cursor-not-allowed opacity-40",
       )}
     >
@@ -499,8 +499,8 @@ export function InstanceView() {
         ) : (
           <div className="absolute inset-0 bg-surface-2" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-base via-base/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-base via-base/40 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-r from-black/60 via-transparent to-transparent" />
 
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 px-6 pb-4">
           <div className="flex min-w-0 items-end gap-4">
@@ -585,7 +585,7 @@ export function InstanceView() {
                   )}
                 </span>
                 {tab === t.kind && (
-                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--accent)] transition-colors duration-500" />
+                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-(--accent) transition-colors duration-500" />
                 )}
               </button>
             );
@@ -633,7 +633,7 @@ export function InstanceView() {
             onClick={() => (tab === "worlds" ? setWorldImport(true) : void addContent())}
             disabled={busyWithTask}
             title={busyWithTask ? "Wait for the current download to finish" : undefined}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
           >
             {tab === "worlds" ? (
               <HardDriveUpload className="size-3.5" />
@@ -665,7 +665,7 @@ export function InstanceView() {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={`Filter ${tabMeta.label.toLowerCase()}`}
-                className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]"
+                className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
               />
             </div>
 
@@ -748,7 +748,7 @@ export function InstanceView() {
             </p>
             <button
               onClick={addContent}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+              className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
             >
               <Plus className="size-3.5" />
               Add content
@@ -811,7 +811,7 @@ export function InstanceView() {
                   className={cn(
                     "flex items-center gap-3 rounded-xl border px-4 py-2.5 transition-opacity",
                     item.update
-                      ? "border-warn/30 bg-warn/[0.06]"
+                      ? "border-warn/30 bg-warn/6"
                       : "border-border-soft bg-surface-2/70",
                     !item.enabled && "opacity-55",
                   )}
@@ -850,7 +850,7 @@ export function InstanceView() {
                         </span>
                       )}
                       {source?.origin === "pack" && (
-                        <span className="shrink-0 rounded bg-[var(--accent-glow)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-muted">
+                        <span className="shrink-0 rounded bg-(--accent-glow) px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-muted">
                           pack
                         </span>
                       )}

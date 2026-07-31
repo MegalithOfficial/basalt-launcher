@@ -218,7 +218,7 @@ export function VersionBrowser({
               <button
                 onClick={() => setCompatibleOnly((v) => !v)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg border px-3 py-[7px] text-xs font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.75 text-xs font-medium transition-colors",
                   compatibleOnly
                     ? "border-ok/40 bg-ok/10 text-ok"
                     : "border-border bg-surface-2 text-content-muted hover:text-content",
@@ -233,7 +233,7 @@ export function VersionBrowser({
             <FilterGroup label="Compatibility">
               <button
                 onClick={onChooseInstance}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-[7px] text-xs font-medium text-content-faint transition-colors hover:text-content"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.75 text-xs font-medium text-content-faint transition-colors hover:text-content"
               >
                 <Boxes className="size-3.5" />
                 Pick an instance to check
@@ -273,9 +273,9 @@ export function VersionBrowser({
                 className={cn(
                   "rounded-xl border transition-colors",
                   isInstalledRow
-                    ? "border-[var(--accent)] bg-[var(--accent-glow)]"
+                    ? "border-(--accent) bg-(--accent-glow)"
                     : hasInstance && !isPack && v.compatible
-                      ? "border-ok/35 bg-ok/[0.05]"
+                      ? "border-ok/35 bg-ok/5"
                       : "border-border-soft bg-surface-2/40",
                 )}
               >
@@ -299,7 +299,7 @@ export function VersionBrowser({
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium text-content">{v.name}</span>
                       {isInstalledRow && (
-                        <span className="shrink-0 rounded bg-[var(--accent)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
+                        <span className="shrink-0 rounded bg-(--accent) px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
                           Installed
                         </span>
                       )}
@@ -331,7 +331,7 @@ export function VersionBrowser({
                       {v.loaders.slice(0, 3).map((l) => (
                         <span
                           key={l}
-                          className="rounded bg-[var(--accent-glow)] px-1.5 py-0.5 text-[10px] font-medium capitalize text-content-muted"
+                          className="rounded bg-(--accent-glow) px-1.5 py-0.5 text-[10px] font-medium capitalize text-content-muted"
                         >
                           {l}
                         </span>
@@ -418,7 +418,7 @@ export function VersionBrowser({
                         {v.loaders.map((l) => (
                           <span
                             key={l}
-                            className="rounded bg-[var(--accent-glow)] px-1.5 py-0.5 text-[10px] font-medium capitalize text-content-muted"
+                            className="rounded bg-(--accent-glow) px-1.5 py-0.5 text-[10px] font-medium capitalize text-content-muted"
                           >
                             {l}
                           </span>

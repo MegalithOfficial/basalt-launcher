@@ -61,7 +61,7 @@ export function ProjectHero({
             className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
             draggable={false}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-base via-base/85 to-base/60" />
+          <div className="absolute inset-0 bg-linear-to-t from-base via-base/85 to-base/60" />
         </>
       ) : (
         <div
@@ -134,7 +134,7 @@ export function ProjectHero({
             <button
               onClick={onInstall}
               disabled={installing || loading}
-              className="inline-flex h-10 items-center gap-2 rounded-xl px-5 text-sm font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
+              className="inline-flex h-10 items-center gap-2 rounded-xl px-5 text-sm font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
             >
               {installing ? (
                 <Loader2 className="size-4 animate-spin" />

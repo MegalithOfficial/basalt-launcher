@@ -45,7 +45,7 @@ export function notifyTaskFinished(task: Task) {
       <div
         onClick={() => toast.dismiss(id)}
         className={cn(
-          "flex w-[22rem] cursor-pointer items-center gap-3 rounded-xl border bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2",
+          "flex w-88 cursor-pointer items-center gap-3 rounded-xl border bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2",
           success ? "border-ok/30" : "border-danger/40",
         )}
       >
@@ -83,7 +83,7 @@ export function notifyInstalled(items: InstalledItem[], into: string) {
       (id) => (
         <div
           onClick={() => toast.dismiss(id)}
-          className="flex w-[22rem] cursor-pointer items-center gap-3 rounded-xl border border-ok/30 bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
+          className="flex w-88 cursor-pointer items-center gap-3 rounded-xl border border-ok/30 bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
         >
           <span className="relative shrink-0">
             {item.icon_url ? (
@@ -121,7 +121,7 @@ export function notifyRemoved(title: string, description?: string) {
     (id) => (
       <div
         onClick={() => toast.dismiss(id)}
-        className="flex w-[22rem] cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
+        className="flex w-88 cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
       >
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-muted">
           <Trash2 className="size-4" />
@@ -144,7 +144,7 @@ export function notifySummary(message: string) {
     (id) => (
       <div
         onClick={() => toast.dismiss(id)}
-        className="flex w-[22rem] cursor-pointer items-center gap-3 rounded-xl border border-ok/30 bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
+        className="flex w-88 cursor-pointer items-center gap-3 rounded-xl border border-ok/30 bg-surface p-3 shadow-2xl transition-colors hover:bg-surface-2"
       >
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-ok/15 text-ok">
           <Check className="size-4" strokeWidth={3} />

@@ -60,7 +60,7 @@ export function ExportPackModal({
         title="Export as a modpack"
         subtitle={instance ? instance.name : undefined}
         icon={
-          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-[var(--accent)]">
+          <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-(--accent)">
             <Share className="size-4" />
           </div>
         }
@@ -104,7 +104,7 @@ export function ExportPackModal({
                   className={cn(
                     "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors",
                     format === entry.id
-                      ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.07]"
+                      ? "border-(--accent)/50 bg-(--accent)/[0.07]"
                       : "border-border-soft bg-surface-2/60 hover:border-border",
                   )}
                 >
@@ -112,7 +112,7 @@ export function ExportPackModal({
                     className={cn(
                       "mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border",
                       format === entry.id
-                        ? "border-[var(--accent)] bg-[var(--accent)] text-black"
+                        ? "border-(--accent) bg-(--accent) text-black"
                         : "border-border bg-surface-3",
                     )}
                   >
@@ -144,7 +144,7 @@ export function ExportPackModal({
         {error && (
           <div className="flex gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <span className="break-words">{error}</span>
+            <span className="wrap-break-word">{error}</span>
           </div>
         )}
       </div>
@@ -161,7 +161,7 @@ export function ExportPackModal({
           <button
             onClick={submit}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-45"
           >
             {busy && <Loader2 className="size-3.5 animate-spin" />}
             Choose a location

@@ -102,11 +102,11 @@ export function MemoryRange({
       style={{ left: `${percent(value)}%` }}
       className={cn(
         "group absolute top-1/2 z-10 grid size-5 -translate-x-1/2 -translate-y-1/2 cursor-grab place-items-center rounded-full border border-border bg-surface shadow-lg shadow-black/40 outline-none transition-transform",
-        "hover:scale-110 focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60",
+        "hover:scale-110 focus-visible:ring-2 focus-visible:ring-(--accent)/60",
         dragging === which && "scale-110 cursor-grabbing",
       )}
     >
-      <span className="size-2 rounded-full bg-[var(--accent)]" />
+      <span className="size-2 rounded-full bg-(--accent)" />
       <span
         className={cn(
           "pointer-events-none absolute -top-8 whitespace-nowrap rounded-md border border-border bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-content opacity-0 shadow-lg transition-opacity",

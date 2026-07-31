@@ -68,7 +68,7 @@ const AUTO_DETECT = "Auto-detect";
 const CUSTOM_PATH = "Custom path";
 
 const inputCls =
-  "rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-[var(--accent)]";
+  "rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)";
 
 const numberCls =
   "w-24 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
@@ -316,7 +316,7 @@ export function SettingsView() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-4 border-b border-border-soft px-8 py-3.5">
-        <h1 className="font-display text-base font-semibold tracking-tight text-content">
+        <h1 className="font-display text-[1rem] font-semibold tracking-tight text-content">
           Settings
         </h1>
         <span
@@ -354,7 +354,7 @@ export function SettingsView() {
                 <motion.span
                   layoutId="settings-tab-underline"
                   transition={{ type: "spring", stiffness: 500, damping: 40 }}
-                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--accent)]"
+                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-(--accent)"
                 />
               )}
             </button>
@@ -370,7 +370,7 @@ export function SettingsView() {
           />
           <div className="relative flex flex-wrap items-center justify-between gap-x-8 gap-y-6">
             <div className="flex min-w-0 items-center gap-6">
-              <div className="size-20 shrink-0 overflow-hidden rounded-2xl shadow-lg shadow-[var(--accent-glow)]">
+              <div className="size-20 shrink-0 overflow-hidden rounded-2xl shadow-lg shadow-(color:--accent-glow)">
                 <img
                   src="/logo.png"
                   alt=""
@@ -405,7 +405,7 @@ export function SettingsView() {
               {update?.update_available && update.latest ? (
                 <button
                   onClick={() => update.notes_url && openUrl(update.notes_url)}
-                  className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all active:scale-[0.98] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+                  className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all active:scale-[0.98] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
                 >
                   <ArrowUpCircle className="size-4" />
                   {update.latest} is available

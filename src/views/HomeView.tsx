@@ -47,7 +47,7 @@ function GridFallback() {
   return (
     <div className="absolute inset-0">
       <div className="absolute inset-0" style={gridStyle} />
-      <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-[var(--accent-glow)] blur-3xl transition-colors duration-500" />
+      <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-(--accent-glow) blur-3xl transition-colors duration-500" />
     </div>
   );
 }
@@ -193,7 +193,7 @@ export function HomeView() {
           <GridFallback />
         )}
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/85 via-black/35 to-transparent" />
 
         <div className="absolute right-5 top-5 flex items-center gap-2">
           {java && !java.ok && (
@@ -239,7 +239,7 @@ export function HomeView() {
                     {loaderLabel(selected).toUpperCase()}
                   </span>
                   {selected.pack_project_id && (
-                    <span className="rounded-md bg-[var(--accent-glow)] px-2 py-1 font-pixel text-[10px] tracking-wider text-white/80 backdrop-blur">
+                    <span className="rounded-md bg-(--accent-glow) px-2 py-1 font-pixel text-[10px] tracking-wider text-white/80 backdrop-blur">
                       MODPACK
                     </span>
                   )}
@@ -282,7 +282,7 @@ export function HomeView() {
             <button
               onClick={onAction}
               disabled={installing || starting}
-              className="relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 font-pixel text-sm tracking-wider text-black shadow-xl shadow-[var(--accent-glow)] transition-all duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] active:scale-[0.98] disabled:active:scale-100"
+              className="relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 font-pixel text-sm tracking-wider text-black shadow-xl shadow-(color:--accent-glow) transition-all duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] active:scale-[0.98] disabled:active:scale-100"
             >
               {installing && install.stage === "downloading" && (
                 <span
@@ -303,7 +303,7 @@ export function HomeView() {
       {launchError && (
         <div className="flex shrink-0 items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          <span className="break-words">{launchError}</span>
+          <span className="wrap-break-word">{launchError}</span>
         </div>
       )}
 

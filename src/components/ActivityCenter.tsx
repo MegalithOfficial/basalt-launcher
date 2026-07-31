@@ -50,7 +50,7 @@ function Ring({ fraction }: { fraction: number | null }) {
           fill="none"
           strokeWidth="2"
           strokeLinecap="round"
-          className="stroke-[var(--accent)] transition-[stroke-dashoffset] duration-300"
+          className="stroke-(--accent) transition-[stroke-dashoffset] duration-300"
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - Math.min(Math.max(fraction, 0), 1))}
         />
@@ -64,7 +64,7 @@ function StateIcon({ task }: { task: Task }) {
   if (task.state === "succeeded") return <Check className="size-3.5 text-ok" />;
   if (task.state === "failed") return <TriangleAlert className="size-3.5 text-danger" />;
   if (task.state === "cancelled") return <CircleSlash className="size-3.5 text-content-faint" />;
-  return <Loader2 className="size-3.5 animate-spin text-[var(--accent)]" />;
+  return <Loader2 className="size-3.5 animate-spin text-(--accent)" />;
 }
 
 function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void }) {
@@ -143,7 +143,7 @@ function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void })
             <div
               className={cn(
                 "h-full rounded-full",
-                task.retry_note ? "bg-warn" : "bg-[var(--accent)]",
+                task.retry_note ? "bg-warn" : "bg-(--accent)",
                 fraction == null
                   ? "w-1/3 animate-pulse"
                   : "transition-[width] duration-300",
@@ -193,7 +193,7 @@ export function ActivityCenter({ immersive }: { immersive: boolean }) {
           immersive
             ? "text-white/75 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:bg-white/15 hover:text-white"
             : "text-content-faint hover:bg-surface-3 hover:text-content",
-          active.length > 0 && "text-[var(--accent)]",
+          active.length > 0 && "text-(--accent)",
         )}
       >
         <span className="relative grid size-7 place-items-center">
@@ -202,7 +202,7 @@ export function ActivityCenter({ immersive }: { immersive: boolean }) {
         </span>
 
         {active.length > 0 && (
-          <span className="absolute right-1.5 top-1 grid min-w-3.5 place-items-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold leading-[14px] text-black">
+          <span className="absolute right-1.5 top-1 grid min-w-3.5 place-items-center rounded-full bg-(--accent) px-1 text-[9px] font-bold leading-3.5 text-black">
             {active.length}
           </span>
         )}
@@ -218,7 +218,7 @@ export function ActivityCenter({ immersive }: { immersive: boolean }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.14 }}
-            className="absolute right-0 top-full z-[60] mt-1 flex max-h-[70vh] w-96 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+            className="absolute right-0 top-full z-60 mt-1 flex max-h-[70vh] w-96 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-border-soft px-3 py-2">
               <span className="text-[13px] font-semibold text-content">Downloads</span>

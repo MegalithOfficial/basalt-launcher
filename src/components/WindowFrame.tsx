@@ -27,7 +27,7 @@ export function WindowFrame({ enabled }: { enabled: boolean }) {
   if (!enabled) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[100]">
+    <div className="pointer-events-none fixed inset-0 z-100">
       {GRIPS.map((grip) => (
         <div
           key={grip.direction}

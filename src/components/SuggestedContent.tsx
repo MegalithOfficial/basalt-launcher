@@ -66,7 +66,7 @@ function Row({
         onClick={onInstall}
         disabled={busy}
         className={cn(
-          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all",
+          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all",
           "[background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
           busy && "cursor-not-allowed opacity-60",
         )}

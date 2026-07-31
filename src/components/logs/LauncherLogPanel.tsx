@@ -101,17 +101,17 @@ function LogRow({ record, query }: { record: LogRecord; query: string }) {
         {record.level}
       </span>
       <span
-        className="w-36 shrink-0 self-start break-words text-content-faint"
+        className="w-36 shrink-0 self-start wrap-break-word text-content-faint"
         title={record.span ? `${record.target} · ${record.span}` : record.target}
       >
         <Mark text={target} ranges={findRanges(target, query)} />
       </span>
       <div className="min-w-0 flex-1">
-        <span className={cn("whitespace-pre-wrap break-words", LEVEL_TEXT[record.level])}>
+        <span className={cn("whitespace-pre-wrap wrap-break-word", LEVEL_TEXT[record.level])}>
           <Mark text={record.message} ranges={findRanges(record.message, query)} />
         </span>
         {fields.length > 0 && (
-          <span className="ml-2 break-words text-content-faint">
+          <span className="ml-2 wrap-break-word text-content-faint">
             {fields.map(([key, value]) => (
               <span key={key} className="mr-2">
                 <span className="text-content-faint/60">{key}=</span>
@@ -121,7 +121,7 @@ function LogRow({ record, query }: { record: LogRecord; query: string }) {
           </span>
         )}
         {record.span && (
-          <div className="break-words text-[11px] text-content-faint/60">{record.span}</div>
+          <div className="wrap-break-word text-[11px] text-content-faint/60">{record.span}</div>
         )}
       </div>
     </div>

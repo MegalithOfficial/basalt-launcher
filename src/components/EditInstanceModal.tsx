@@ -88,7 +88,7 @@ function loaderWarning(
 }
 
 const inputCls =
-  "rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors focus:border-[var(--accent)]";
+  "rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors focus:border-(--accent)";
 
 const chipCls =
   "inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content";
@@ -270,7 +270,7 @@ export function EditInstanceModal({
         ) : (
           <div className="h-full w-full bg-surface-2" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/85 to-surface/40" />
+        <div className="absolute inset-0 bg-linear-to-t from-surface via-surface/85 to-surface/40" />
 
         <div className="absolute inset-x-5 bottom-3 flex items-end gap-3">
           {logo ? (
@@ -341,7 +341,7 @@ export function EditInstanceModal({
               <motion.span
                 layoutId="instance-settings-underline"
                 transition={{ type: "spring", stiffness: 500, damping: 40 }}
-                className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--accent)]"
+                className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-(--accent)"
               />
             )}
           </button>
@@ -796,7 +796,7 @@ export function EditInstanceModal({
           <button
             onClick={save}
             disabled={busy || !name.trim()}
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy && <Loader2 className="size-4 animate-spin" />}
             Save

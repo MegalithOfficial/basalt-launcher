@@ -35,7 +35,7 @@ export function SignInModal() {
         <div className="px-5 py-6 text-center">
           <TriangleAlert className="mx-auto size-6 text-danger" />
           <div className="mt-2 font-display font-semibold text-content">Sign-in failed</div>
-          <p className="mt-1 break-words text-sm text-content-muted">{auth.message}</p>
+          <p className="mt-1 wrap-break-word text-sm text-content-muted">{auth.message}</p>
           <Button variant="ghost" className="mt-5" onClick={resetAuth}>
             Close
           </Button>
@@ -51,7 +51,7 @@ export function SignInModal() {
           <button
             onClick={copy}
             title="Copy the code"
-            className="group mt-4 flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-base px-5 py-4 transition-colors hover:border-[var(--accent)]"
+            className="group mt-4 flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-base px-5 py-4 transition-colors hover:border-(--accent)"
           >
             <span className="font-mono text-2xl font-bold tracking-[0.25em] text-content">
               {auth.userCode}

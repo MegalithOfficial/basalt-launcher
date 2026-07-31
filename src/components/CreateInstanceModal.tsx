@@ -245,7 +245,7 @@ export function CreateInstanceModal({
               <button
                 onClick={create}
                 disabled={createDisabled}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-b from-lava to-lava-deep px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-lava/20 transition-all hover:from-lava-bright hover:to-lava disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-linear-to-b from-lava to-lava-deep px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-lava/20 transition-all hover:from-lava-bright hover:to-lava disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy && <Loader2 className="size-4 animate-spin" />}
                 Create

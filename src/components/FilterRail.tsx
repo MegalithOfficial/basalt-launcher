@@ -55,7 +55,7 @@ function Section({
         <span className="flex items-center gap-1.5">
           {title}
           {!!count && (
-            <span className="rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-bold text-black">
+            <span className="rounded-full bg-(--accent) px-1.5 text-[10px] font-bold text-black">
               {count}
             </span>
           )}
@@ -82,14 +82,14 @@ function Check({
       className={cn(
         "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors",
         checked
-          ? "bg-[var(--accent-glow)] font-medium text-content"
+          ? "bg-(--accent-glow) font-medium text-content"
           : "text-content-muted hover:bg-surface-2 hover:text-content",
       )}
     >
       <span
         className={cn(
           "grid size-3.5 shrink-0 place-items-center rounded border transition-colors",
-          checked ? "border-[var(--accent)] bg-[var(--accent)]" : "border-border",
+          checked ? "border-(--accent) bg-(--accent)" : "border-border",
         )}
       >
         {checked && (
@@ -188,7 +188,7 @@ export function FilterRail({
               value={versionQuery}
               onChange={(e) => setVersionQuery(e.target.value)}
               placeholder="Filter"
-              className="w-full rounded-md border border-border bg-base py-1 pl-6 pr-2 text-[11px] text-content outline-none focus:border-[var(--accent)]"
+              className="w-full rounded-md border border-border bg-base py-1 pl-6 pr-2 text-[11px] text-content outline-none focus:border-(--accent)"
             />
           </div>
           {versions.map((version) => (
@@ -204,7 +204,7 @@ export function FilterRail({
           {!versionQuery && (taxonomy?.game_versions.length ?? 0) > VERSIONS_COLLAPSED && (
             <button
               onClick={() => setShowAllVersions((v) => !v)}
-              className="mt-0.5 px-2 py-1 text-left text-[11px] font-medium text-[var(--accent)] hover:underline"
+              className="mt-0.5 px-2 py-1 text-left text-[11px] font-medium text-(--accent) hover:underline"
             >
               {showAllVersions
                 ? "Show fewer"

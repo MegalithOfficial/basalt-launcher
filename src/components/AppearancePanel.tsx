@@ -109,7 +109,7 @@ function SkinTile({
       className={cn(
         "group relative flex min-w-0 flex-col items-center gap-2 rounded-xl border p-3 transition-colors",
         selected
-          ? "border-[var(--accent)]/50 bg-[var(--accent-glow)]/25"
+          ? "border-(--accent)/50 bg-(--accent-glow)/25"
           : "border-border-soft bg-surface-2/60 hover:border-border",
       )}
     >
@@ -139,7 +139,7 @@ function SkinTile({
               setEditing(false);
             }
           }}
-          className="w-full min-w-0 rounded border border-[var(--accent)] bg-base px-1 py-0.5 text-center text-xs text-content outline-none"
+          className="w-full min-w-0 rounded border border-(--accent) bg-base px-1 py-0.5 text-center text-xs text-content outline-none"
         />
       ) : (
         <button
@@ -153,7 +153,7 @@ function SkinTile({
       )}
 
       {worn ? (
-        <span className="rounded border border-[var(--accent)]/40 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-bright)]">
+        <span className="rounded border border-(--accent)/40 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--accent-bright)">
           Worn
         </span>
       ) : (
@@ -315,17 +315,17 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
       {error && (
         <div className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-danger" />
-          <span className="min-w-0 break-words text-content-muted">{error}</span>
+          <span className="min-w-0 wrap-break-word text-content-muted">{error}</span>
         </div>
       )}
 
       <div className="flex flex-wrap items-stretch gap-5">
-        <div className="relative flex w-[22rem] shrink-0 flex-col overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60">
+        <div className="relative flex w-88 shrink-0 flex-col overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 [background:radial-gradient(80%_60%_at_50%_0%,var(--accent-glow),transparent_70%)]"
           />
-          <div className="relative min-h-[26rem] flex-1">
+          <div className="relative min-h-104 flex-1">
             {loading ? (
               <CharacterShimmer />
             ) : (
@@ -347,7 +347,7 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
 
           <div className="relative flex flex-col gap-2 border-t border-border-soft p-3">
             {previewSkin ? (
-              <div className="flex items-center gap-2 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-glow)]/20 px-3 py-2">
+              <div className="flex items-center gap-2 rounded-lg border border-(--accent)/30 bg-(--accent-glow)/20 px-3 py-2">
                 <span className="min-w-0 flex-1 truncate text-xs text-content-muted">
                   Previewing {previewSkin.name}
                 </span>
@@ -425,7 +425,7 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
           </div>
         </div>
 
-        <div className="flex min-w-[22rem] flex-1 flex-col gap-6">
+        <div className="flex min-w-88 flex-1 flex-col gap-6">
           <section>
             <SectionLabel
               title="Skin library"
@@ -444,7 +444,7 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
                   onChange={(e) => setPlayer(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && void importPlayer()}
                   placeholder="Player name, UUID, texture link, NameMC link or a /give command"
-                  className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-[var(--accent)]"
+                  className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
                 />
               </div>
               <button
@@ -462,7 +462,7 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
             </div>
 
             {loading && skins.length === 0 ? (
-              <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(6.5rem,1fr))]">
+              <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))]">
                 <TileShimmers count={6} />
               </div>
             ) : skins.length === 0 ? (
@@ -471,7 +471,7 @@ Your current skin is saved here automatically. Upload a PNG or pull one in by
                 player name, then click a face to try it on.
               </div>
             ) : (
-              <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(6.5rem,1fr))]">
+              <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))]">
                 {skins.map((skin) => (
                   <SkinTile
                     key={skin.id}
@@ -494,9 +494,9 @@ Your current skin is saved here automatically. Upload a PNG or pull one in by
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div
                     key={i}
-                    className="flex w-[4.5rem] flex-col items-center gap-2 rounded-xl border border-border-soft bg-surface-2/60 p-2"
+                    className="flex w-18 flex-col items-center gap-2 rounded-xl border border-border-soft bg-surface-2/60 p-2"
                   >
-                    <Shimmer className="h-[3.5rem] w-[2.2rem] rounded" />
+                    <Shimmer className="h-14 w-[2.2rem] rounded" />
                     <Shimmer className="h-2.5 w-10" />
                   </div>
                 ))}
@@ -507,13 +507,13 @@ Your current skin is saved here automatically. Upload a PNG or pull one in by
                   onClick={() => void run(() => api.setCape(null))}
                   disabled={busy}
                   className={cn(
-                    "flex w-[4.5rem] flex-col items-center gap-2 rounded-xl border p-2 transition-colors disabled:opacity-50",
+                    "flex w-18 flex-col items-center gap-2 rounded-xl border p-2 transition-colors disabled:opacity-50",
                     !appearance.active_cape_id
-                      ? "border-[var(--accent)]/50 bg-[var(--accent-glow)]/25"
+                      ? "border-(--accent)/50 bg-(--accent-glow)/25"
                       : "border-border-soft bg-surface-2/60 hover:border-border",
                   )}
                 >
-                  <span className="grid h-[3.5rem] w-[2.2rem] place-items-center rounded bg-base/50 text-content-faint">
+                  <span className="grid h-14 w-[2.2rem] place-items-center rounded bg-base/50 text-content-faint">
                     <UserRoundX className="size-4" />
                   </span>
                   <span className="text-[10px] text-content-muted">None</span>
@@ -525,16 +525,16 @@ Your current skin is saved here automatically. Upload a PNG or pull one in by
                     disabled={busy}
                     title={cape.alias}
                     className={cn(
-                      "flex w-[4.5rem] flex-col items-center gap-2 rounded-xl border p-2 transition-colors disabled:opacity-50",
+                      "flex w-18 flex-col items-center gap-2 rounded-xl border p-2 transition-colors disabled:opacity-50",
                       cape.active
-                        ? "border-[var(--accent)]/50 bg-[var(--accent-glow)]/25"
+                        ? "border-(--accent)/50 bg-(--accent-glow)/25"
                         : "border-border-soft bg-surface-2/60 hover:border-border",
                     )}
                   >
                     <TextureCrop
                       url={cape.url}
                       crop={CAPE_FRONT}
-                      className="h-[3.5rem] w-[2.2rem] rounded"
+                      className="h-14 w-[2.2rem] rounded"
                     />
                     <span className="w-full truncate text-center text-[10px] text-content-muted">
                       {cape.alias}

@@ -25,7 +25,7 @@ function Chip({
     <span
       className={cn(
         "rounded-md px-2 py-0.5 text-[11px] font-medium",
-        tone === "accent" && "bg-[var(--accent-glow)] text-content",
+        tone === "accent" && "bg-(--accent-glow) text-content",
         tone === "ok" && "bg-ok/20 text-ok",
         tone === "default" && "bg-surface-3 text-content-muted",
       )}

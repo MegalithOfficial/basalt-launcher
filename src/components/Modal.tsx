@@ -33,7 +33,7 @@ export function ModalHeader({
     <div className="flex items-start gap-3 border-b border-border-soft px-5 py-4">
       {icon && <div className="mt-0.5 shrink-0">{icon}</div>}
       <div className="min-w-0 flex-1">
-        <h2 id={id} className="font-display text-base font-semibold text-content">
+        <h2 id={id} className="font-display text-[1rem] font-semibold text-content">
           {title}
         </h2>
         {subtitle && <div className="mt-0.5 text-xs text-content-muted">{subtitle}</div>}
@@ -117,7 +117,7 @@ export function Modal({
           className={cn(
             "fixed inset-0 grid place-items-center p-6 backdrop-blur-sm",
             backdropClassName ?? "bg-black/60",
-            nested ? "z-[70]" : "z-50",
+            nested ? "z-70" : "z-50",
           )}
         >
           <motion.div

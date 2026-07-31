@@ -95,7 +95,7 @@ export function PlayButton({
       }}
       className={cn(
         base,
-        "text-black shadow-md shadow-[var(--accent-glow)] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
+        "text-black shadow-md shadow-(color:--accent-glow) [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
       )}
     >
       <Play className={cn(glyph, "fill-black")} />

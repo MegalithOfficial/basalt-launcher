@@ -74,7 +74,7 @@ function ProgressStrip({ task }: { task: Task }) {
       <div
         className={cn(
           "h-full",
-          task.retry_note ? "bg-warn" : "bg-[var(--accent)]",
+          task.retry_note ? "bg-warn" : "bg-(--accent)",
           fraction == null ? "w-1/3 animate-pulse" : "transition-[width] duration-300",
         )}
         style={fraction == null ? undefined : { width: `${fraction * 100}%` }}
@@ -88,7 +88,7 @@ function StatusLine({ instance, task }: { instance: Instance; task?: Task }) {
     return task.retry_note ? (
       <span className="text-warn">Retrying</span>
     ) : (
-      <span className="capitalize text-[var(--accent)]">{task.stage}</span>
+      <span className="capitalize text-(--accent)">{task.stage}</span>
     );
   }
   const played = formatPlaytime(instance.playtime_secs);
@@ -189,7 +189,7 @@ export function InstancesView() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-4 border-b border-border-soft px-8 py-3.5">
         <div className="flex items-baseline gap-3">
-          <h1 className="font-display text-base font-semibold tracking-tight text-content">
+          <h1 className="font-display text-[1rem] font-semibold tracking-tight text-content">
             Instances
           </h1>
           {instances.length > 0 && (
@@ -249,7 +249,7 @@ export function InstancesView() {
       {launchError && (
         <div className="mx-8 mt-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          <span className="break-words">{launchError}</span>
+          <span className="wrap-break-word">{launchError}</span>
         </div>
       )}
 
@@ -335,12 +335,12 @@ export function InstancesView() {
                   key={it.id}
                   className="group flex flex-col overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 transition-colors hover:border-border"
                 >
-                  <div className="relative aspect-[16/10] w-full overflow-hidden">
+                  <div className="relative aspect-16/10 w-full overflow-hidden">
                     <Artwork
                       media={mediaMap[it.id] ?? null}
                       className="absolute inset-0 size-full transition-transform duration-500 group-hover:scale-105"
                     />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/90 via-black/45 to-transparent" />
 
                     <button
                       onClick={() => openInstance(it.id)}
@@ -358,7 +358,7 @@ export function InstancesView() {
                     )}
 
                     <div className="pointer-events-none absolute inset-x-3 bottom-3">
-                      <div className="truncate font-display text-base font-semibold text-white drop-shadow">
+                      <div className="truncate font-display text-[1rem] font-semibold text-white drop-shadow">
                         {it.name}
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -396,9 +396,9 @@ export function InstancesView() {
 
             <button
               onClick={() => setModalOpen(true)}
-              className="group flex min-h-[13rem] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border text-content-faint transition-colors hover:border-[var(--accent)]/50 hover:bg-surface-2/40 hover:text-content"
+              className="group flex min-h-52 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border text-content-faint transition-colors hover:border-(--accent)/50 hover:bg-surface-2/40 hover:text-content"
             >
-              <span className="grid size-11 place-items-center rounded-full border border-border-soft bg-surface-2 transition-colors group-hover:border-[var(--accent)]/40">
+              <span className="grid size-11 place-items-center rounded-full border border-border-soft bg-surface-2 transition-colors group-hover:border-(--accent)/40">
                 <Plus className="size-5" />
               </span>
               <span className="text-xs font-medium">New instance</span>

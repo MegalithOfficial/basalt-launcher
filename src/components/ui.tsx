@@ -72,7 +72,7 @@ export function Button({
       className={cn(
         "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" &&
-          "text-black shadow-lg shadow-[var(--accent-glow)] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
+          "text-black shadow-lg shadow-(color:--accent-glow) [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
         variant === "ghost" &&
           "border border-border bg-surface-2 text-content hover:bg-surface-3",
         className,
@@ -112,7 +112,7 @@ export function Toggle({
       <span
         className={cn(
           "absolute top-1/2 size-4 -translate-y-1/2 rounded-full transition-all",
-          checked ? "left-[1.5rem] bg-black" : "left-1 bg-content-faint",
+          checked ? "left-6 bg-black" : "left-1 bg-content-faint",
         )}
       />
     </button>
@@ -165,7 +165,7 @@ export function SettingRow({
           <div className="text-sm font-medium text-content">{label}</div>
           {action}
         </div>
-        {hint && <div className="mt-0.5 break-words text-xs text-content-faint">{hint}</div>}
+        {hint && <div className="mt-0.5 wrap-break-word text-xs text-content-faint">{hint}</div>}
         {children && <div className="mt-3 flex items-center gap-2">{children}</div>}
       </div>
     );
@@ -174,7 +174,7 @@ export function SettingRow({
     <div className="flex items-center justify-between gap-5 px-5 py-4">
       <div className="min-w-0">
         <div className="text-sm font-medium text-content">{label}</div>
-        {hint && <div className="mt-0.5 break-words text-xs text-content-faint">{hint}</div>}
+        {hint && <div className="mt-0.5 wrap-break-word text-xs text-content-faint">{hint}</div>}
       </div>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </div>
