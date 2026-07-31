@@ -8,12 +8,47 @@
   [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
 </div>
 
-![Basalt launcher](docs/hero.png)
+![Basalt play screen showing a Minecraft world banner](docs/hero.png)
 
 Basalt combines an artwork-led interface with the practical tools expected from a
 modern Minecraft launcher. It is designed to feel cohesive and visually considered
 without giving up control over instances, loaders, content, accounts, or launch
 settings.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/basalt-14-instances-grid.png" alt="Basalt instance library">
+      <br><sub><b>Instance library</b> — keep every setup separate and easy to find.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/basalt-15-discover-mods-search.png" alt="Discovering Minecraft mods in Basalt">
+      <br><sub><b>Content discovery</b> — search, filter, and install compatible content.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/basalt-05-onboarding-import-launchers.png" alt="Importing instances from other launchers">
+      <br><sub><b>Launcher imports</b> — bring instances over without modifying the originals.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/basalt-25-instance-mods-list.png" alt="Managing installed mods in an instance">
+      <br><sub><b>Per-instance content</b> — manage files, updates, and enabled state in one place.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/basalt-29-instance-worlds.png" alt="Managing Minecraft worlds in an instance">
+      <br><sub><b>World management</b> — view and manage worlds alongside their instance.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/basalt-40-accounts-skin-capes.png" alt="Managing Minecraft accounts, skins, and capes">
+      <br><sub><b>Accounts and appearance</b> — manage profiles, skins, and capes together.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Features
 
