@@ -53,7 +53,7 @@ pub fn default_timeout_secs() -> u64 {
 }
 
 pub fn default_max_retries() -> u32 {
-    4
+    10
 }
 
 impl Default for LauncherSettings {

@@ -4,15 +4,13 @@ use std::{
     sync::Arc,
 };
 
-use cap_std::{
-    ambient_authority,
-    fs::{Dir, Metadata, OpenOptions},
-};
-use tokio::io::AsyncWriteExt;
-
 use crate::{
     error::{Error, Result},
     paths::Paths,
+};
+use cap_std::{
+    ambient_authority,
+    fs::{Dir, Metadata, OpenOptions},
 };
 
 #[derive(Clone)]
@@ -330,26 +328,40 @@ impl FileManager {
         self.remove_dir_all_if_exists(path)
     }
 
-    pub async fn begin_staged_write(&self, destination: impl AsRef<Path>) -> Result<StagedFile> {
-        let destination = destination.as_ref().to_path_buf();
-        self.relative(&destination)?;
-        if let Some(parent) = destination.parent() {
+    pub async fn open_download_part(
+        &self,
+        path: impl AsRef<Path>,
+        append: bool,
+    ) -> Result<tokio::fs::File> {
+        let path = path.as_ref().to_path_buf();
+        self.relative(&path)?;
+        if let Some(parent) = path.parent() {
             self.ensure_dir_async(parent).await?;
         }
-        let temporary = temporary_path(&destination);
         let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
+        options.write(true).create(true);
+        if append {
+            options.append(true);
+        } else {
+            options.truncate(true);
+        }
         let file = self
             .root
-            .open_with(self.relative(&temporary)?, &options)?
+            .open_with(self.relative(&path)?, &options)?
             .into_std();
-        let file = tokio::fs::File::from_std(file);
-        Ok(StagedFile {
-            files: self.clone(),
-            destination,
-            temporary: Some(temporary),
-            file: Some(file),
-        })
+        Ok(tokio::fs::File::from_std(file))
+    }
+
+    pub async fn commit_download_part(
+        &self,
+        partial: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<()> {
+        let partial = partial.as_ref().to_path_buf();
+        let destination = destination.as_ref().to_path_buf();
+        self.relative(&partial)?;
+        self.relative(&destination)?;
+        self.commit_staged(partial, destination).await
     }
 
     async fn commit_staged(&self, temporary: PathBuf, destination: PathBuf) -> Result<()> {
@@ -423,67 +435,6 @@ impl FileManager {
     }
 }
 
-pub struct StagedFile {
-    files: FileManager,
-    destination: PathBuf,
-    temporary: Option<PathBuf>,
-    file: Option<tokio::fs::File>,
-}
-
-impl StagedFile {
-    pub fn writer(&mut self) -> &mut tokio::fs::File {
-        self.file
-            .as_mut()
-            .expect("staged file writer is unavailable after commit")
-    }
-
-    pub async fn commit(mut self) -> Result<()> {
-        let mut file = self
-            .file
-            .take()
-            .expect("staged file writer is unavailable after commit");
-        file.flush().await?;
-        file.sync_all().await?;
-        drop(file);
-
-        let temporary = self
-            .temporary
-            .as_ref()
-            .expect("staged file path is unavailable after commit")
-            .clone();
-        self.files
-            .commit_staged(temporary, self.destination.clone())
-            .await?;
-        self.temporary = None;
-        Ok(())
-    }
-}
-
-impl Drop for StagedFile {
-    fn drop(&mut self) {
-        drop(self.file.take());
-        if let Some(path) = self.temporary.take() {
-            let files = self.files.clone();
-            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-                runtime.spawn_blocking(move || cleanup_staged_file(&files, &path));
-            } else {
-                cleanup_staged_file(&files, &path);
-            }
-        }
-    }
-}
-
-fn cleanup_staged_file(files: &FileManager, path: &Path) {
-    for attempt in 0..5 {
-        if files.remove_file_if_exists(path).is_ok() {
-            return;
-        }
-        if attempt < 4 {
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-    }
-}
-
 fn temporary_path(path: &Path) -> PathBuf {
     let mut name = path
         .file_name()
@@ -495,8 +446,6 @@ fn temporary_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use tokio::io::AsyncWriteExt;
-
     use super::FileManager;
     use crate::paths::Paths;
 
@@ -560,30 +509,6 @@ mod tests {
                 std::fs::metadata(&destination).unwrap().ino()
             );
         }
-        std::fs::remove_dir_all(root).ok();
-    }
-
-    #[tokio::test]
-    async fn abandoned_staged_write_preserves_destination_and_removes_partial() {
-        let root =
-            std::env::temp_dir().join(format!("basalt-staged-test-{}", uuid::Uuid::new_v4()));
-        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
-        let path = root.join("value");
-        files.write_atomic(&path, b"original").unwrap();
-
-        let mut staged = files.begin_staged_write(&path).await.unwrap();
-        let temporary = staged.temporary.as_ref().unwrap().clone();
-        staged.writer().write_all(b"replacement").await.unwrap();
-        drop(staged);
-
-        assert_eq!(files.read(&path).unwrap(), b"original");
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            while files.exists(&temporary).unwrap() {
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .unwrap();
         std::fs::remove_dir_all(root).ok();
     }
 

@@ -13,7 +13,7 @@ use crate::error::{Error, Result};
 
 const REQUESTS_PER_MINUTE: usize = 250;
 const MAX_CONCURRENT_REQUESTS: usize = 8;
-const MAX_ATTEMPTS: u32 = 4;
+const MAX_ATTEMPTS: u32 = 10;
 const BASE_BACKOFF_MS: u64 = 400;
 const MAX_BACKOFF: Duration = Duration::from_secs(20);
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(5 * 60);
@@ -107,7 +107,7 @@ impl NetworkManager {
         self.client.read().unwrap().clone()
     }
 
-    fn attempts(&self) -> u32 {
+    pub(crate) fn attempts(&self) -> u32 {
         self.max_attempts.load(std::sync::atomic::Ordering::Relaxed)
     }
 

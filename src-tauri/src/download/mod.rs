@@ -1,6 +1,9 @@
 use std::{
-    path::PathBuf,
+    collections::HashMap,
+    io::Read,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicU64, AtomicUsize, Ordering},
+    sync::{Arc, Mutex, OnceLock, Weak},
     time::Duration,
 };
 
@@ -8,6 +11,7 @@ use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use sha1_smol::Sha1;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -79,35 +83,68 @@ pub async fn copy_verified(
 }
 
 async fn already_valid(files: &FileManager, spec: &DownloadSpec) -> bool {
-    let bytes = match files.read_async(&spec.dest).await {
-        Ok(bytes) => bytes,
-        Err(_) => return false,
-    };
-    if spec.size.is_some_and(|size| bytes.len() as u64 != size) {
-        return false;
-    }
-    if let Some(expected) = &spec.sha1 {
-        return &sha1_hex(&bytes) == expected;
-    }
-    true
+    files.is_file(&spec.dest).unwrap_or(false)
+        && verify_partial(files, &spec.dest, spec).await.is_ok()
 }
 
-const DOWNLOAD_ATTEMPTS: u32 = 4;
 const RETRY_BASE: Duration = Duration::from_millis(300);
 const RETRY_CEILING: Duration = Duration::from_secs(8);
+const PART_SUFFIX: &str = ".basalt-part";
+
+static DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Weak<AsyncMutex<()>>>>> = OnceLock::new();
+
+fn partial_path(destination: &Path) -> PathBuf {
+    let mut name = destination
+        .file_name()
+        .map(|name| name.to_os_string())
+        .unwrap_or_default();
+    name.push(PART_SUFFIX);
+    destination.with_file_name(name)
+}
+
+async fn destination_lock(destination: &Path) -> OwnedMutexGuard<()> {
+    let lock = {
+        let mut locks = DOWNLOAD_LOCKS
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .unwrap();
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        match locks.get(destination).and_then(Weak::upgrade) {
+            Some(lock) => lock,
+            None => {
+                let lock = Arc::new(AsyncMutex::new(()));
+                locks.insert(destination.to_path_buf(), Arc::downgrade(&lock));
+                lock
+            }
+        }
+    };
+    lock.lock_owned().await
+}
+
+fn retryable_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_EARLY
+}
 
 pub fn is_retryable(error: &Error) -> bool {
     match error {
         Error::Cancelled => false,
         Error::Checksum { .. } | Error::SizeMismatch { .. } => true,
+        Error::HttpStatus(status) => retryable_status(*status),
         Error::Http(e) => {
             if let Some(status) = e.status() {
-                return status.is_server_error()
-                    || status == reqwest::StatusCode::TOO_MANY_REQUESTS
-                    || status == reqwest::StatusCode::REQUEST_TIMEOUT;
+                return retryable_status(status);
             }
             e.is_timeout() || e.is_connect() || e.is_body() || e.is_decode() || e.is_request()
         }
+        Error::Io(error) => matches!(
+            error.kind(),
+            std::io::ErrorKind::Interrupted
+                | std::io::ErrorKind::TimedOut
+                | std::io::ErrorKind::WouldBlock
+        ),
         _ => false,
     }
 }
@@ -118,13 +155,14 @@ pub fn retry_delay(attempt: u32) -> Duration {
 }
 
 pub type RetryHook<'a> = Option<&'a (dyn Fn(u32, u32, &str) + Send + Sync)>;
+type ByteHook<'a> = Option<&'a (dyn Fn(u64) + Send + Sync)>;
 
 pub async fn download_one(
     client: &NetworkManager,
     files: &FileManager,
     spec: &DownloadSpec,
 ) -> Result<bool> {
-    download_one_reporting(client, files, spec, None).await
+    download_one_reporting(client, files, spec, None, None).await
 }
 
 pub async fn download_one_reporting(
@@ -132,21 +170,42 @@ pub async fn download_one_reporting(
     files: &FileManager,
     spec: &DownloadSpec,
     on_retry: RetryHook<'_>,
+    on_bytes: ByteHook<'_>,
 ) -> Result<bool> {
+    let _guard = destination_lock(&spec.dest).await;
+    let attempts = client.attempts();
     let mut attempt = 0;
     loop {
-        match download_once(client, files, spec).await {
+        match download_once(client, files, spec, on_bytes).await {
             Ok(created) => return Ok(created),
             Err(e) => {
                 attempt += 1;
-                if attempt >= DOWNLOAD_ATTEMPTS || !is_retryable(&e) {
+                if matches!(e, Error::Checksum { .. })
+                    || matches!(e, Error::SizeMismatch { expected, actual, .. } if actual > expected)
+                {
+                    let _ = files.remove_file_if_exists(partial_path(&spec.dest));
+                    if let Some(hook) = on_bytes {
+                        hook(0);
+                    }
+                }
+                if attempt >= attempts || !is_retryable(&e) {
                     return Err(match attempt {
                         1 => e,
                         n => Error::other(format!("{e} (after {n} attempts)")),
                     });
                 }
                 if let Some(hook) = on_retry {
-                    hook(attempt, DOWNLOAD_ATTEMPTS, &short_reason(&e));
+                    let saved = partial_len(files, &partial_path(&spec.dest));
+                    let reason = if saved > 0 {
+                        format!(
+                            "{}; resuming from {}",
+                            short_reason(&e),
+                            readable_bytes(saved)
+                        )
+                    } else {
+                        short_reason(&e)
+                    };
+                    hook(attempt, attempts, &reason);
                 }
                 tokio::time::sleep(retry_delay(attempt)).await;
             }
@@ -165,37 +224,211 @@ fn short_reason(error: &Error) -> String {
             Some(status) => format!("server said {status}"),
             None => "network error".to_string(),
         },
+        Error::HttpStatus(status) => format!("server said {status}"),
         other => other.to_string(),
     }
+}
+
+fn readable_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.0} KiB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+fn partial_len(files: &FileManager, path: &Path) -> u64 {
+    files
+        .metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ContentRange {
+    start: u64,
+    end: u64,
+    total: Option<u64>,
+}
+
+fn parse_content_range(value: &str) -> Option<ContentRange> {
+    let value = value.trim().strip_prefix("bytes ")?;
+    let (range, total) = value.split_once('/')?;
+    let (start, end) = range.split_once('-')?;
+    let start = start.parse().ok()?;
+    let end = end.parse().ok()?;
+    if end < start {
+        return None;
+    }
+    let total = (total != "*").then(|| total.parse().ok()).flatten();
+    Some(ContentRange { start, end, total })
+}
+
+fn response_range(response: &crate::network::ManagedResponse) -> Option<ContentRange> {
+    response
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)?
+        .to_str()
+        .ok()
+        .and_then(parse_content_range)
+}
+
+async fn verify_partial(files: &FileManager, path: &Path, spec: &DownloadSpec) -> Result<u64> {
+    let files = files.clone();
+    let path = path.to_path_buf();
+    let expected_size = spec.size;
+    let expected_sha1 = spec.sha1.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut file = files.open(&path)?;
+        let mut hasher = Sha1::new();
+        let mut actual_size = 0_u64;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let read = file.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            actual_size += read as u64;
+            hasher.update(&buffer[..read]);
+        }
+        if let Some(expected) = expected_size {
+            if actual_size != expected {
+                return Err(Error::SizeMismatch {
+                    path: path.display().to_string(),
+                    expected,
+                    actual: actual_size,
+                });
+            }
+        }
+        if let Some(expected) = expected_sha1 {
+            let actual = hasher.digest().to_string();
+            if actual != expected {
+                return Err(Error::Checksum {
+                    path: path.display().to_string(),
+                    expected,
+                    actual,
+                });
+            }
+        }
+        Ok(actual_size)
+    })
+    .await
+    .map_err(|error| Error::other(format!("download verification task failed: {error}")))?
 }
 
 async fn download_once(
     client: &NetworkManager,
     files: &FileManager,
     spec: &DownloadSpec,
+    on_bytes: ByteHook<'_>,
 ) -> Result<bool> {
     if already_valid(files, spec).await {
+        if let Some(hook) = on_bytes {
+            hook(spec.size.unwrap_or_else(|| {
+                files
+                    .metadata(&spec.dest)
+                    .map(|metadata| metadata.len())
+                    .unwrap_or(0)
+            }));
+        }
         tracing::trace!(dest = %spec.dest.display(), "already on disk, skipped");
         return Ok(false);
     }
-    let resp = client
-        .send_download_once(client.get(&spec.url))
-        .await?
-        .error_for_status()?;
-    if let (Some(expected), Some(actual)) = (spec.size, resp.content_length()) {
+
+    let partial = partial_path(&spec.dest);
+    let mut offset = partial_len(files, &partial);
+    if spec.size.is_some_and(|expected| offset > expected) {
+        files.remove_file_if_exists(&partial)?;
+        offset = 0;
+    }
+    if spec.size == Some(offset) && offset > 0 {
+        match verify_partial(files, &partial, spec).await {
+            Ok(_) => {
+                files.remove_file_if_exists(&spec.dest)?;
+                files.commit_download_part(&partial, &spec.dest).await?;
+                if let Some(hook) = on_bytes {
+                    hook(offset);
+                }
+                return Ok(true);
+            }
+            Err(Error::Checksum { .. }) => {
+                files.remove_file_if_exists(&partial)?;
+                offset = 0;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    if let Some(hook) = on_bytes {
+        hook(offset);
+    }
+    let response = loop {
+        let mut request = client
+            .get(&spec.url)
+            .header(reqwest::header::ACCEPT_ENCODING, "identity");
+        if offset > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
+        }
+        let response = client.send_download_once(request).await?;
+        if offset == 0 {
+            let response = response.error_for_status()?;
+            if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+                let valid = response_range(&response).is_some_and(|range| {
+                    range.start == 0
+                        && spec
+                            .size
+                            .is_none_or(|expected| range.total == Some(expected))
+                });
+                if !valid {
+                    return Err(Error::other(
+                        "server returned an invalid partial download response",
+                    ));
+                }
+            }
+            break response;
+        }
+        if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+            let valid = response_range(&response).is_some_and(|range| {
+                range.start == offset
+                    && spec
+                        .size
+                        .is_none_or(|expected| range.total == Some(expected))
+            });
+            if valid {
+                break response;
+            }
+        } else if response.status().is_success() {
+            files.remove_file_if_exists(&partial)?;
+            offset = 0;
+            if let Some(hook) = on_bytes {
+                hook(0);
+            }
+            break response;
+        } else if response.status() != reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+            break response.error_for_status()?;
+        }
+        files.remove_file_if_exists(&partial)?;
+        offset = 0;
+        if let Some(hook) = on_bytes {
+            hook(0);
+        }
+    };
+
+    let expected_response = spec.size.map(|expected| expected.saturating_sub(offset));
+    if let (Some(expected), Some(actual)) = (expected_response, response.content_length()) {
         if actual != expected {
             return Err(Error::SizeMismatch {
                 path: spec.dest.display().to_string(),
-                expected,
-                actual,
+                expected: spec.size.unwrap_or(expected),
+                actual: offset + actual,
             });
         }
     }
-    let mut stream = resp.bytes_stream();
-
-    let mut staged = files.begin_staged_write(&spec.dest).await?;
-    let mut hasher = Sha1::new();
-    let mut downloaded = 0_u64;
+    let mut stream = response.bytes_stream();
+    let mut writer = files.open_download_part(&partial, offset > 0).await?;
+    let mut downloaded = offset;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
@@ -209,40 +442,40 @@ async fn download_once(
                 });
             }
         }
-        hasher.update(&chunk);
-        staged.writer().write_all(&chunk).await?;
-    }
-
-    if let Some(expected) = spec.size {
-        if downloaded != expected {
-            return Err(Error::SizeMismatch {
-                path: spec.dest.display().to_string(),
-                expected,
-                actual: downloaded,
-            });
+        writer.write_all(&chunk).await?;
+        if let Some(hook) = on_bytes {
+            hook(downloaded);
         }
     }
+    writer.flush().await?;
+    writer.sync_all().await?;
+    drop(writer);
 
-    if let Some(expected) = &spec.sha1 {
-        let actual = hasher.digest().to_string();
-        if &actual != expected {
-            tracing::warn!(
-                url = %spec.url,
-                expected = %expected,
-                actual = %actual,
-                "checksum mismatch, discarding download"
-            );
-            return Err(Error::Checksum {
-                path: spec.dest.display().to_string(),
-                expected: expected.clone(),
-                actual,
-            });
-        }
-    }
-
-    staged.commit().await?;
+    verify_partial(files, &partial, spec).await?;
+    files.remove_file_if_exists(&spec.dest)?;
+    files.commit_download_part(&partial, &spec.dest).await?;
     tracing::trace!(url = %spec.url, dest = %spec.dest.display(), "downloaded");
     Ok(true)
+}
+
+fn deduplicate_specs(specs: Vec<DownloadSpec>) -> Result<Vec<DownloadSpec>> {
+    let mut unique: HashMap<PathBuf, DownloadSpec> = HashMap::with_capacity(specs.len());
+    for spec in specs {
+        if let Some(existing) = unique.get(&spec.dest) {
+            if existing.url != spec.url || existing.sha1 != spec.sha1 || existing.size != spec.size
+            {
+                return Err(Error::other(format!(
+                    "conflicting downloads target {}",
+                    spec.dest.display()
+                )));
+            }
+            continue;
+        }
+        unique.insert(spec.dest.clone(), spec);
+    }
+    let mut specs: Vec<_> = unique.into_values().collect();
+    specs.sort_by(|left, right| left.dest.cmp(&right.dest));
+    Ok(specs)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -260,6 +493,7 @@ where
     F: Fn(DownloadProgress) + Send + Sync,
 {
     let started = std::time::Instant::now();
+    let specs = deduplicate_specs(specs)?;
     let total = specs.len();
     let total_bytes: u64 = specs.iter().filter_map(|s| s.size).sum();
     tracing::debug!(total, total_bytes, concurrency, "download batch started");
@@ -281,13 +515,32 @@ where
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
+        let reported = AtomicU64::new(0);
+        let report_bytes = |bytes: u64| {
+            if spec.size.is_none() {
+                return;
+            }
+            let previous = reported.swap(bytes, Ordering::Relaxed);
+            let aggregate = if bytes >= previous {
+                done_bytes.fetch_add(bytes - previous, Ordering::Relaxed) + bytes - previous
+            } else {
+                done_bytes.fetch_sub(previous - bytes, Ordering::Relaxed) - (previous - bytes)
+            };
+            on_progress(DownloadProgress {
+                completed: completed.load(Ordering::Relaxed),
+                total,
+                downloaded_bytes: aggregate,
+                total_bytes,
+                current: name.clone(),
+            });
+        };
         let created = match cancel {
             Some(token) => tokio::select! {
                 biased;
                 _ = token.cancelled() => return Err(Error::Cancelled),
-                result = download_one_reporting(client, files, &spec, on_retry) => result,
+                result = download_one_reporting(client, files, &spec, on_retry, Some(&report_bytes)) => result,
             },
-            None => download_one_reporting(client, files, &spec, on_retry).await,
+            None => download_one_reporting(client, files, &spec, on_retry, Some(&report_bytes)).await,
         }
         .inspect_err(|e| tracing::warn!(url = %spec.url, error = %e, "download failed"))?;
         if created {
@@ -296,8 +549,13 @@ where
             }
         }
         let c = completed.fetch_add(1, Ordering::Relaxed) + 1;
-        let b = done_bytes.fetch_add(spec.size.unwrap_or(0), Ordering::Relaxed)
-            + spec.size.unwrap_or(0);
+        let expected = spec.size.unwrap_or(0);
+        let previous = reported.swap(expected, Ordering::Relaxed);
+        let b = if expected >= previous {
+            done_bytes.fetch_add(expected - previous, Ordering::Relaxed) + expected - previous
+        } else {
+            done_bytes.fetch_sub(previous - expected, Ordering::Relaxed) - (previous - expected)
+        };
         on_progress(DownloadProgress {
             completed: c,
             total,
@@ -338,6 +596,12 @@ mod tests {
             root: root.to_path_buf(),
         })
         .unwrap()
+    }
+
+    fn read_request(socket: &mut std::net::TcpStream) -> String {
+        let mut request = [0_u8; 2048];
+        let read = std::io::Read::read(socket, &mut request).unwrap();
+        String::from_utf8_lossy(&request[..read]).into_owned()
     }
 
     #[tokio::test]
@@ -404,7 +668,10 @@ mod tests {
         )
         .await;
 
-        assert!(matches!(result, Err(Error::Cancelled)));
+        assert!(
+            matches!(result, Err(Error::Cancelled)),
+            "expected pre-cancelled batch to stop, got {result:?}"
+        );
         assert!(written.lock().unwrap().is_empty());
         assert!(!dir.join("never.jar").exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -454,18 +721,32 @@ mod tests {
             size: None,
         };
         let files = files(std::env::temp_dir().as_path());
-        let result = download_one(&network(), &files, &spec).await;
+        let network = network();
+        network
+            .reconfigure(&crate::config::LauncherSettings {
+                max_retries: 2,
+                ..Default::default()
+            })
+            .unwrap();
+        let attempts = network.attempts();
+        let result = download_one(&network, &files, &spec).await;
         let message = result.unwrap_err().to_string();
 
         assert!(
-            message.contains(&format!("after {DOWNLOAD_ATTEMPTS} attempts")),
+            message.contains(&format!("after {attempts} attempts")),
             "error should report the retries, got: {message}"
         );
         assert!(
-            started.elapsed() >= Duration::from_millis(4000),
+            started.elapsed() >= Duration::from_millis(500),
             "should have backed off between attempts, took {:?}",
             started.elapsed()
         );
+    }
+
+    #[test]
+    fn downloads_default_to_ten_attempts() {
+        assert_eq!(network().attempts(), 10);
+        assert_eq!(crate::config::default_max_retries(), 10);
     }
 
     #[tokio::test]
@@ -509,55 +790,210 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelling_an_active_download_removes_its_partial_file() {
-        use std::io::Write;
-
+    async fn cancelling_an_active_download_preserves_its_partial_file() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
-            socket
-                .write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\npartial",
-                )
-                .unwrap();
-            socket.flush().unwrap();
+            read_request(&mut socket);
+            std::io::Write::write_all(
+                &mut socket,
+                b"HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+            std::io::Write::write_all(&mut socket, &vec![b'x'; 128 * 1024]).unwrap();
+            std::io::Write::flush(&mut socket).unwrap();
             std::thread::sleep(Duration::from_secs(2));
         });
 
         let dir =
             std::env::temp_dir().join(format!("basalt-active-cancel-{}", uuid::Uuid::new_v4()));
         let token = CancellationToken::new();
-        let cancel = token.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            cancel.cancel();
-        });
+        let cancel_on_progress = token.clone();
+        let destination = dir.join("file.jar");
 
         let result = download_many_cancellable(
             &network(),
             &files(&dir),
             vec![DownloadSpec {
                 url: format!("http://{address}/file"),
-                dest: dir.join("file.jar"),
+                dest: destination.clone(),
                 sha1: None,
-                size: None,
+                size: Some(1_000_000),
             }],
             1,
-            |_| {},
+            move |progress| {
+                if progress.downloaded_bytes > 0 {
+                    cancel_on_progress.cancel();
+                }
+            },
             Some(token),
             None,
             None,
         )
         .await;
 
-        assert!(matches!(result, Err(Error::Cancelled)));
-        assert!(std::fs::read_dir(&dir).unwrap().all(|entry| !entry
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .contains(".part")));
+        assert!(
+            matches!(result, Err(Error::Cancelled)),
+            "expected cancellation after receiving the first chunk, got {result:?}"
+        );
+        let saved = std::fs::read(partial_path(&destination)).unwrap();
+        assert!(!saved.is_empty());
+        assert!(saved.iter().all(|byte| *byte == b'x'));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn interrupted_transfer_resumes_from_the_saved_byte() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut first, _) = listener.accept().unwrap();
+            let first_request = read_request(&mut first);
+            assert!(!first_request.to_ascii_lowercase().contains("range:"));
+            std::io::Write::write_all(
+                &mut first,
+                b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nabc",
+            )
+            .unwrap();
+            drop(first);
+
+            let (mut second, _) = listener.accept().unwrap();
+            let second_request = read_request(&mut second);
+            assert!(second_request
+                .to_ascii_lowercase()
+                .contains("range: bytes=3-"));
+            std::io::Write::write_all(
+                &mut second,
+                b"HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 3-7/8\r\nConnection: close\r\n\r\ndefgh",
+            )
+            .unwrap();
+        });
+
+        let dir = std::env::temp_dir().join(format!("basalt-resume-{}", uuid::Uuid::new_v4()));
+        let destination = dir.join("file.jar");
+        let spec = DownloadSpec {
+            url: format!("http://{address}/file"),
+            dest: destination.clone(),
+            sha1: Some(sha1_hex(b"abcdefgh")),
+            size: Some(8),
+        };
+
+        assert!(download_one(&network(), &files(&dir), &spec).await.unwrap());
+        server.join().unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"abcdefgh");
+        assert!(!partial_path(&destination).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn persisted_partial_is_resumed_by_a_later_download() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            assert!(read_request(&mut socket)
+                .to_ascii_lowercase()
+                .contains("range: bytes=3-"));
+            std::io::Write::write_all(
+                &mut socket,
+                b"HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 3-7/8\r\nConnection: close\r\n\r\ndefgh",
+            )
+            .unwrap();
+        });
+
+        let dir =
+            std::env::temp_dir().join(format!("basalt-persisted-resume-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let destination = dir.join("file.jar");
+        std::fs::write(partial_path(&destination), b"abc").unwrap();
+        let spec = DownloadSpec {
+            url: format!("http://{address}/file"),
+            dest: destination.clone(),
+            sha1: Some(sha1_hex(b"abcdefgh")),
+            size: Some(8),
+        };
+
+        assert!(download_one(&network(), &files(&dir), &spec).await.unwrap());
+        server.join().unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"abcdefgh");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_server_ignoring_range_restarts_without_duplicating_bytes() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            assert!(read_request(&mut socket)
+                .to_ascii_lowercase()
+                .contains("range: bytes=3-"));
+            std::io::Write::write_all(
+                &mut socket,
+                b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nabcdefgh",
+            )
+            .unwrap();
+        });
+
+        let dir = std::env::temp_dir().join(format!("basalt-no-range-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let destination = dir.join("file.jar");
+        std::fs::write(partial_path(&destination), b"abc").unwrap();
+        let spec = DownloadSpec {
+            url: format!("http://{address}/file"),
+            dest: destination.clone(),
+            sha1: Some(sha1_hex(b"abcdefgh")),
+            size: Some(8),
+        };
+
+        assert!(download_one(&network(), &files(&dir), &spec).await.unwrap());
+        server.join().unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"abcdefgh");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn duplicate_destinations_are_collapsed_or_rejected() {
+        let destination = PathBuf::from("same.jar");
+        let spec = DownloadSpec {
+            url: "https://example.invalid/file".into(),
+            dest: destination.clone(),
+            sha1: Some("hash".into()),
+            size: Some(3),
+        };
+        assert_eq!(
+            deduplicate_specs(vec![spec.clone(), spec.clone()])
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let mut conflict = spec.clone();
+        conflict.url = "https://example.invalid/other".into();
+        assert!(deduplicate_specs(vec![spec, conflict]).is_err());
+    }
+
+    #[test]
+    fn content_ranges_are_strictly_parsed() {
+        assert_eq!(
+            parse_content_range("bytes 3-7/8"),
+            Some(ContentRange {
+                start: 3,
+                end: 7,
+                total: Some(8),
+            })
+        );
+        assert_eq!(
+            parse_content_range("bytes 3-7/*"),
+            Some(ContentRange {
+                start: 3,
+                end: 7,
+                total: None,
+            })
+        );
+        assert_eq!(parse_content_range("bytes 7-3/8"), None);
+        assert_eq!(parse_content_range("items 3-7/8"), None);
     }
 
     #[tokio::test]
