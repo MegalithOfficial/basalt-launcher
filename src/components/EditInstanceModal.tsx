@@ -44,6 +44,38 @@ function serializeEnv(entries: EnvVar[]): string {
     .join("\n");
 }
 
+interface Draft {
+  name: string;
+  minMem: string;
+  maxMem: string;
+  javaPath: string;
+  javaCustom: boolean;
+  loader: string;
+  loaderVersion: string | null;
+  gameVersion: string;
+  jvmArgs: string;
+  jvmArgsMode: string;
+  envVars: EnvVar[];
+  envVarsMode: string;
+}
+
+function draftFrom(instance: Instance): Draft {
+  return {
+    name: instance.name,
+    minMem: instance.min_memory_mb?.toString() ?? "",
+    maxMem: instance.max_memory_mb?.toString() ?? "",
+    javaPath: instance.java_path ?? "",
+    javaCustom: false,
+    loader: instance.loader ?? VANILLA,
+    loaderVersion: instance.loader_version ?? null,
+    gameVersion: instance.version_id,
+    jvmArgs: instance.jvm_args ?? "",
+    jvmArgsMode: instance.jvm_args_mode ?? "append",
+    envVars: parseEnv(instance.env_vars),
+    envVarsMode: instance.env_vars_mode ?? "append",
+  };
+}
+
 type Tab = "general" | "appearance" | "installation" | "java";
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -109,44 +141,32 @@ export function EditInstanceModal({
   const deleteInstance = useStore((s) => s.deleteInstance);
 
   const [tab, setTab] = useState<Tab>("general");
-  const [name, setName] = useState("");
-  const [minMem, setMinMem] = useState("");
-  const [maxMem, setMaxMem] = useState("");
-  const [javaPath, setJavaPath] = useState("");
-  const [loader, setLoader] = useState<string>(VANILLA);
-  const [loaderVersion, setLoaderVersion] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draftOf, setDraftOf] = useState<string | null>(null);
   const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
   const [loaderLoading, setLoaderLoading] = useState(false);
-  const [gameVersion, setGameVersion] = useState("");
   const [gameVersions, setGameVersions] = useState<string[]>([]);
   const [javas, setJavas] = useState<JavaInfo[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
-  const [javaCustom, setJavaCustom] = useState(false);
-  const [jvmArgs, setJvmArgs] = useState("");
-  const [jvmArgsMode, setJvmArgsMode] = useState("append");
-  const [envVars, setEnvVars] = useState<EnvVar[]>([]);
-  const [envVarsMode, setEnvVarsMode] = useState("append");
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!instance) return;
-    setTab("general");
-    setName(instance.name);
-    setMinMem(instance.min_memory_mb?.toString() ?? "");
-    setMaxMem(instance.max_memory_mb?.toString() ?? "");
-    setJavaPath(instance.java_path ?? "");
-    setJavaCustom(false);
-    setJvmArgs(instance.jvm_args ?? "");
-    setJvmArgsMode(instance.jvm_args_mode ?? "append");
-    setEnvVars(parseEnv(instance.env_vars));
-    setEnvVarsMode(instance.env_vars_mode ?? "append");
-    setLoader(instance.loader ?? VANILLA);
-    setLoaderVersion(instance.loader_version ?? null);
-    setGameVersion(instance.version_id);
-    setError(null);
-  }, [instance?.id]);
+  const openFor = instance?.id ?? null;
+  if (draftOf !== openFor) {
+    setDraftOf(openFor);
+    if (instance) {
+      setDraft(draftFrom(instance));
+      setTab("general");
+      setError(null);
+    }
+  }
+
+  const set = (patch: Partial<Draft>) =>
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+
+  const loader = draft?.loader ?? VANILLA;
+  const gameVersion = draft?.gameVersion ?? "";
 
   useEffect(() => {
     if (!instance) return;
@@ -181,8 +201,10 @@ export function EditInstanceModal({
       .then((list) => {
         if (!live) return;
         setLoaderVersions(list);
-        setLoaderVersion((current) =>
-          current && list.includes(current) ? current : (list[0] ?? null),
+        setDraft((current) =>
+          current && current.loaderVersion && list.includes(current.loaderVersion)
+            ? current
+            : current && { ...current, loaderVersion: list[0] ?? null },
         );
       })
       .catch(() => live && setLoaderVersions([]))
@@ -192,7 +214,8 @@ export function EditInstanceModal({
     };
   }, [loader, gameVersion, instance?.id]);
 
-  if (!instance) return null;
+  if (!instance || !draft) return null;
+  const { name, minMem, maxMem, javaPath, javaCustom, loaderVersion, jvmArgs, jvmArgsMode, envVars, envVarsMode } = draft;
   const media = mediaMap[instance.id] ?? null;
   const logo = logoSrc(instance.logo);
 
@@ -355,7 +378,7 @@ export function EditInstanceModal({
               <SettingRow label="Name" hint="Shown across the launcher">
                 <input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => set({ name: e.target.value })}
                   className={cn(inputCls, "w-64")}
                 />
               </SettingRow>
@@ -460,7 +483,7 @@ export function EditInstanceModal({
                   <Select
                     value={gameVersion || null}
                     options={gameVersions.length > 0 ? gameVersions : [instance.version_id]}
-                    onChange={setGameVersion}
+                    onChange={(value) => set({ gameVersion: value })}
                     placeholder="Pick a version"
                   />
                 </div>
@@ -476,8 +499,8 @@ export function EditInstanceModal({
                     options={["Vanilla", ...LOADERS.map((l) => l.label)]}
                     onChange={(label) => {
                       const picked = LOADERS.find((l) => l.label === label);
-                      setLoader(picked?.id ?? VANILLA);
-                      if (!picked) setLoaderVersion(null);
+                      set({ loader: picked?.id ?? VANILLA });
+                      if (!picked) set({ loaderVersion: null });
                     }}
                   />
                 </div>
@@ -501,7 +524,7 @@ export function EditInstanceModal({
                     <Select
                       value={loaderVersion}
                       options={loaderVersions.slice(0, 100)}
-                      onChange={setLoaderVersion}
+                      onChange={(value) => set({ loaderVersion: value })}
                       placeholder="Pick a version"
                     />
                   )}
@@ -541,7 +564,7 @@ export function EditInstanceModal({
                       <input
                         type="number"
                         value={minMem}
-                        onChange={(e) => setMinMem(e.target.value)}
+                        onChange={(e) => set({ minMem: e.target.value })}
                         placeholder="default"
                         className={cn(inputCls, "w-24 text-right tabular-nums")}
                       />
@@ -555,7 +578,7 @@ export function EditInstanceModal({
                       <input
                         type="number"
                         value={maxMem}
-                        onChange={(e) => setMaxMem(e.target.value)}
+                        onChange={(e) => set({ maxMem: e.target.value })}
                         placeholder="default"
                         className={cn(inputCls, "w-24 text-right tabular-nums")}
                       />
@@ -571,8 +594,8 @@ export function EditInstanceModal({
                     ceiling={memoryCeiling}
                     available={stats?.available_memory_mb}
                     onChange={(low, high) => {
-                      setMinMem(String(low));
-                      setMaxMem(String(high));
+                      set({ minMem: String(low), maxMem: String(high) });
+                      
                     }}
                   />
                 </div>
@@ -594,8 +617,8 @@ export function EditInstanceModal({
                   {!usingDefaults && (
                     <button
                       onClick={() => {
-                        setMinMem("");
-                        setMaxMem("");
+                        set({ minMem: "", maxMem: "" });
+                        
                       }}
                       className="shrink-0 font-medium text-content-muted transition-colors hover:text-content"
                     >
@@ -626,20 +649,18 @@ export function EditInstanceModal({
                     ]}
                     onChange={(choice) => {
                       if (choice === JAVA_AUTO) {
-                        setJavaCustom(false);
-                        setJavaPath("");
+                        set({ javaCustom: false, javaPath: "" });
                         return;
                       }
                       if (choice === JAVA_CUSTOM) {
-                        setJavaCustom(true);
+                        set({ javaCustom: true });
                         return;
                       }
                       const picked = javas.find(
                         (j) => `Java ${j.major} · ${j.path}` === choice,
                       );
                       if (picked) {
-                        setJavaCustom(false);
-                        setJavaPath(picked.path);
+                        set({ javaCustom: false, javaPath: picked.path });
                       }
                     }}
                   />
@@ -649,7 +670,7 @@ export function EditInstanceModal({
                 <SettingRow label="Custom path" hint="path to a java executable" stacked>
                   <input
                     value={javaPath}
-                    onChange={(e) => setJavaPath(e.target.value)}
+                    onChange={(e) => set({ javaPath: e.target.value })}
                     placeholder="/path/to/bin/java"
                     className={cn(inputCls, "w-full")}
                   />
@@ -673,7 +694,7 @@ export function EditInstanceModal({
                       value={jvmArgsMode === "replace" ? REPLACE : APPEND}
                       options={MODES}
                       onChange={(choice) =>
-                        setJvmArgsMode(choice === REPLACE ? "replace" : "append")
+                        set({ jvmArgsMode: choice === REPLACE ? "replace" : "append" })
                       }
                     />
                   </div>
@@ -681,7 +702,7 @@ export function EditInstanceModal({
               >
                 <textarea
                   value={jvmArgs}
-                  onChange={(e) => setJvmArgs(e.target.value)}
+                  onChange={(e) => set({ jvmArgs: e.target.value })}
                   rows={2}
                   spellCheck={false}
                   placeholder="-XX:+UseG1GC -Dsome.flag=true"
@@ -708,7 +729,7 @@ export function EditInstanceModal({
                     value={envVarsMode === "replace" ? REPLACE : APPEND}
                     options={MODES}
                     onChange={(choice) =>
-                      setEnvVarsMode(choice === REPLACE ? "replace" : "append")
+                      set({ envVarsMode: choice === REPLACE ? "replace" : "append" })
                     }
                   />
                 </div>
@@ -723,11 +744,11 @@ export function EditInstanceModal({
                     <input
                       value={entry.key}
                       onChange={(e) =>
-                        setEnvVars((current) =>
-                          current.map((v, i) =>
+                        set({
+                          envVars: envVars.map((v, i) =>
                             i === index ? { ...v, key: e.target.value } : v,
                           ),
-                        )
+                        })
                       }
                       placeholder="MESA_GL_VERSION_OVERRIDE"
                       spellCheck={false}
@@ -737,11 +758,11 @@ export function EditInstanceModal({
                     <input
                       value={entry.value}
                       onChange={(e) =>
-                        setEnvVars((current) =>
-                          current.map((v, i) =>
+                        set({
+                          envVars: envVars.map((v, i) =>
                             i === index ? { ...v, value: e.target.value } : v,
                           ),
-                        )
+                        })
                       }
                       placeholder="4.5"
                       spellCheck={false}
@@ -749,7 +770,7 @@ export function EditInstanceModal({
                     />
                     <button
                       onClick={() =>
-                        setEnvVars((current) => current.filter((_, i) => i !== index))
+                        set({ envVars: envVars.filter((_, i) => i !== index) })
                       }
                       title={`Remove ${entry.key || "variable"}`}
                       className="grid size-8 shrink-0 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
@@ -759,7 +780,7 @@ export function EditInstanceModal({
                   </div>
                 ))}
                 <button
-                  onClick={() => setEnvVars((current) => [...current, { key: "", value: "" }])}
+                  onClick={() => set({ envVars: [...envVars, { key: "", value: "" }] })}
                   className={cn(chipCls, "mt-1 self-start")}
                 >
                   <Plus className="size-3.5" />

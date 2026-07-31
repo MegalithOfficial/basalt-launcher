@@ -71,6 +71,18 @@ const NO_UPDATES: ContentUpdate[] = [];
 const EMPTY_ITEMS: ContentItem[] = [];
 const ALL_KINDS = ["mods", "resourcepacks", "shaderpacks", "schematics"];
 
+type Dialog =
+  | { kind: "edit" }
+  | { kind: "export" }
+  | { kind: "worldImport" }
+  | { kind: "remove"; item: ContentItem; plan: RemovalPlan; orphans: string[] }
+  | {
+      kind: "install";
+      provider: SearchProvider;
+      project: ProjectSummary;
+      plan: InstallPlan;
+    };
+
 type ContentView = "all" | "enabled" | "disabled" | "updates" | "unlinked";
 type ContentSort = "name" | "recent" | "size" | "updates" | "disabled";
 
@@ -174,13 +186,11 @@ export function InstanceView() {
   const activeProjects = useActiveProjectIds();
 
   const [tab, setTab] = useState<InstanceTab>("mods");
-  const [worldImport, setWorldImport] = useState(false);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
   const [worldRefresh, setWorldRefresh] = useState(0);
   const [worldsLoading, setWorldsLoading] = useState(false);
   const [itemsByTab, setItemsByTab] = useState<Record<string, ContentItem[]>>({});
   const [loadingTab, setLoadingTab] = useState<string | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [hasSchematicMod, setHasSchematicMod] = useState(false);
   const [filter, setFilter] = useState("");
@@ -190,17 +200,11 @@ export function InstanceView() {
   );
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<{
-    item: ContentItem;
-    plan: RemovalPlan;
-  } | null>(null);
-  const [dropOrphans, setDropOrphans] = useState<string[]>([]);
-  const [suggestPlan, setSuggestPlan] = useState<{
-    provider: SearchProvider;
-    project: ProjectSummary;
-    plan: InstallPlan;
-  } | null>(null);
   const [suggestBusy, setSuggestBusy] = useState<string | null>(null);
+
+  const close = () => setDialog(null);
+  const removal = dialog?.kind === "remove" ? dialog : null;
+  const suggestion = dialog?.kind === "install" ? dialog : null;
 
   const refresh = useCallback(
     async (reconcile = false) => {
@@ -364,13 +368,17 @@ export function InstanceView() {
       await remove(item, []);
       return;
     }
-    setDropOrphans(plan.orphans.map((o) => o.file_name));
-    setConfirmDelete({ item, plan });
+    setDialog({
+      kind: "remove",
+      item,
+      plan,
+      orphans: plan.orphans.map((o) => o.file_name),
+    });
   };
 
   const remove = async (item: ContentItem, alsoRemove: string[]) => {
     if (tab === "worlds") return;
-    setConfirmDelete(null);
+    close();
     await api.deleteInstanceContent(instance.id, tab, item.file_name);
     let extra = 0;
     for (const fileName of alsoRemove) {
@@ -415,7 +423,7 @@ export function InstanceView() {
           resolved.conflicts.length === 0 &&
           !replaces;
         if (!trivial) {
-          setSuggestPlan({ provider, project, plan: resolved });
+          setDialog({ kind: "install", provider, project, plan: resolved });
           return;
         }
       }
@@ -428,11 +436,11 @@ export function InstanceView() {
         loader: tab === "mods" ? instance.loader : null,
         withDependencies,
       });
-      setSuggestPlan(null);
+      close();
       setFilter("");
       await refresh();
     } catch (e) {
-      setSuggestPlan(null);
+      close();
       log.warn("content", `could not install ${project.title}: ${String(e)}`);
     } finally {
       setSuggestBusy(null);
@@ -533,7 +541,7 @@ export function InstanceView() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
-              onClick={() => setExportOpen(true)}
+              onClick={() => setDialog({ kind: "export" })}
               aria-label="Export as pack"
               title="Export as pack"
               className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
@@ -541,7 +549,7 @@ export function InstanceView() {
               <Share className="size-4" />
             </button>
             <button
-              onClick={() => setEditOpen(true)}
+              onClick={() => setDialog({ kind: "edit" })}
               aria-label="Edit instance"
               title="Instance settings"
               className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
@@ -630,7 +638,9 @@ export function InstanceView() {
             />
           </button>
           <button
-            onClick={() => (tab === "worlds" ? setWorldImport(true) : void addContent())}
+            onClick={() =>
+              tab === "worlds" ? setDialog({ kind: "worldImport" }) : void addContent()
+            }
             disabled={busyWithTask}
             title={busyWithTask ? "Wait for the current download to finish" : undefined}
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
@@ -650,8 +660,8 @@ export function InstanceView() {
           <WorldsPanel
             instance={instance}
             running={gameRunning}
-            importOpen={worldImport}
-            onImportOpenChange={setWorldImport}
+            importOpen={dialog?.kind === "worldImport"}
+            onImportOpenChange={(open) => setDialog(open ? { kind: "worldImport" } : null)}
             refreshToken={worldRefresh}
             onLoadingChange={setWorldsLoading}
           />
@@ -920,25 +930,25 @@ export function InstanceView() {
       </div>
 
       <ConfirmDialog
-        open={!!confirmDelete}
+        open={!!removal}
         nested
-        tone={confirmDelete && confirmDelete.plan.dependents.length > 0 ? "danger" : "warn"}
+        tone={removal && removal.plan.dependents.length > 0 ? "danger" : "warn"}
         title={
-          confirmDelete
-            ? `Remove ${confirmDelete.item.source?.title ?? confirmDelete.item.file_name}?`
+          removal
+            ? `Remove ${removal.item.source?.title ?? removal.item.file_name}?`
             : ""
         }
         description={
-          confirmDelete ? (
-            confirmDelete.plan.dependents.length > 0 ? (
+          removal ? (
+            removal.plan.dependents.length > 0 ? (
               <>
                 <span className="font-medium text-danger">
-                  {confirmDelete.plan.dependents.join(", ")}
+                  {removal.plan.dependents.join(", ")}
                 </span>{" "}
-                {confirmDelete.plan.dependents.length === 1 ? "requires" : "require"} this file.
+                {removal.plan.dependents.length === 1 ? "requires" : "require"} this file.
                 Removing it will likely break the game.
               </>
-            ) : confirmDelete.plan.from_pack ? (
+            ) : removal.plan.from_pack ? (
               "This file came from a modpack. Removing it may break the pack."
             ) : (
               "This file brought other mods in with it."
@@ -947,36 +957,37 @@ export function InstanceView() {
         }
         cancelLabel="Keep it"
         confirmLabel={
-          dropOrphans.length > 0
-            ? `Remove ${dropOrphans.length + 1} files`
-            : confirmDelete && confirmDelete.plan.dependents.length > 0
+          removal && removal.orphans.length > 0
+            ? `Remove ${removal.orphans.length + 1} files`
+            : removal && removal.plan.dependents.length > 0
               ? "Remove anyway"
               : "Remove"
         }
         onConfirm={async () => {
-          if (confirmDelete) await remove(confirmDelete.item, dropOrphans);
+          if (removal) await remove(removal.item, removal.orphans);
         }}
-        onCancel={() => setConfirmDelete(null)}
+        onCancel={close}
       >
-        {confirmDelete && confirmDelete.plan.orphans.length > 0 ? (
+        {removal && removal.plan.orphans.length > 0 ? (
           <>
             <div className="text-xs font-medium text-content">
-              {confirmDelete.plan.orphans.length === 1
+              {removal.plan.orphans.length === 1
                 ? "It installed one dependency that nothing else needs"
-                : `It installed ${confirmDelete.plan.orphans.length} dependencies that nothing else needs`}
+                : `It installed ${removal.plan.orphans.length} dependencies that nothing else needs`}
             </div>
             <div className="mt-2.5 flex flex-col gap-1">
-              {confirmDelete.plan.orphans.map((orphan) => {
-                const checked = dropOrphans.includes(orphan.file_name);
+              {removal.plan.orphans.map((orphan) => {
+                const checked = removal.orphans.includes(orphan.file_name);
                 return (
                   <button
                     key={orphan.file_name}
                     onClick={() =>
-                      setDropOrphans((current) =>
-                        checked
-                          ? current.filter((f) => f !== orphan.file_name)
-                          : [...current, orphan.file_name],
-                      )
+                      setDialog({
+                        ...removal,
+                        orphans: checked
+                          ? removal.orphans.filter((f) => f !== orphan.file_name)
+                          : [...removal.orphans, orphan.file_name],
+                      })
                     }
                     className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2"
                   >
@@ -1014,37 +1025,37 @@ export function InstanceView() {
       </ConfirmDialog>
 
       <InstallPlanPrompt
-        plan={suggestPlan?.plan ?? null}
-        busy={suggestBusy !== null && suggestPlan !== null}
+        plan={suggestion?.plan ?? null}
+        busy={suggestBusy !== null && suggestion !== null}
         progress={null}
         onConfirm={() =>
-          suggestPlan &&
+          suggestion &&
           void installSuggestion(
-            suggestPlan.provider,
-            suggestPlan.project,
+            suggestion.provider,
+            suggestion.project,
             true,
-            suggestPlan.plan,
+            suggestion.plan,
           )
         }
         onSkipDependencies={() =>
-          suggestPlan &&
+          suggestion &&
           void installSuggestion(
-            suggestPlan.provider,
-            suggestPlan.project,
+            suggestion.provider,
+            suggestion.project,
             false,
-            suggestPlan.plan,
+            suggestion.plan,
           )
         }
-        onCancel={() => setSuggestPlan(null)}
+        onCancel={close}
       />
 
       <ExportPackModal
-        instance={exportOpen ? instance : null}
-        onClose={() => setExportOpen(false)}
+        instance={dialog?.kind === "export" ? instance : null}
+        onClose={close}
       />
       <EditInstanceModal
-        instance={editOpen ? instance : null}
-        onClose={() => setEditOpen(false)}
+        instance={dialog?.kind === "edit" ? instance : null}
+        onClose={close}
       />
     </div>
   );
