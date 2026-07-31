@@ -70,7 +70,7 @@ rustPlatform.buildRustPackage {
   doCheck = false;
 
   postInstall = ''
-    install -Dm644 ../src-tauri/icons/128x128.png \
+    install -Dm644 src-tauri/icons/128x128.png \
       "$out/share/icons/hicolor/128x128/apps/basalt-launcher.png"
   '';
 
