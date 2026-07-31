@@ -57,12 +57,14 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
     >
       {immersive && (
         <div
-          data-tauri-drag-region
           className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/85 via-black/45 to-transparent"
         />
       )}
 
-      <div className="relative flex min-w-0 flex-1 items-center">
+      <div
+        data-tauri-drag-region
+        className="relative flex min-w-0 flex-1 items-center"
+      >
         {canGoBack && (
           <button
             onClick={goBack}
@@ -93,7 +95,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
         BASALT
       </div>
 
-      <div className="relative flex shrink-0 items-center">
+      <div data-tauri-drag-region className="relative flex shrink-0 items-center">
         <RunningPill immersive={immersive} />
         <ActivityCenter immersive={immersive} />
         <Control label="Minimize" immersive={immersive} onClick={() => win.minimize()}>

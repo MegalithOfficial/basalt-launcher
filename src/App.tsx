@@ -8,6 +8,7 @@ import { Onboarding } from "./components/onboarding/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { TitleBar } from "./components/TitleBar";
+import { WindowFrame } from "./components/WindowFrame";
 import { Toaster } from "sonner";
 import { AccountsView } from "./views/AccountsView";
 import { HomeView } from "./views/HomeView";
@@ -68,6 +69,7 @@ function App() {
       )}
       style={accentVars(onboarding ? null : accent)}
     >
+      <WindowFrame enabled={!maximized} />
       <Toaster
         theme="dark"
         position="bottom-left"

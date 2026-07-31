@@ -53,15 +53,23 @@ export function Breadcrumbs({ immersive }: { immersive?: boolean }) {
   const crumbs = [...stack, view];
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5 pl-1 pr-2">
+    <nav
+      aria-label="Breadcrumb"
+      data-tauri-drag-region
+      className="flex min-w-0 items-center gap-0.5 pl-1 pr-2"
+    >
       {crumbs.map((entry, index) => {
         const last = index === crumbs.length - 1;
         return (
-          <div key={`${entry}-${index}`} className="flex min-w-0 items-center gap-0.5">
+          <div
+            key={`${entry}-${index}`}
+            data-tauri-drag-region
+            className="flex min-w-0 items-center gap-0.5"
+          >
             {index > 0 && (
               <ChevronRight
                 className={cn(
-                  "size-3 shrink-0",
+                  "pointer-events-none size-3 shrink-0",
                   immersive ? "text-white/40" : "text-content-faint/60",
                 )}
               />
