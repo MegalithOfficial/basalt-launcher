@@ -11,7 +11,7 @@ use std::{
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::{
     field::{Field, Visit},
     span::Attributes,
@@ -35,6 +35,7 @@ use crate::{
 };
 
 const RING_CAPACITY: usize = 5000;
+const EVENT_CHANNEL_CAPACITY: usize = 1024;
 const LOG_FILE_RETENTION: usize = 7;
 const FILE_PREFIX: &str = "basalt";
 const FILE_SUFFIX: &str = "log";
@@ -163,7 +164,7 @@ thread_local! {
 
 struct CaptureLayer {
     buffer: Arc<LogBuffer>,
-    tx: UnboundedSender<LogRecord>,
+    tx: Sender<LogRecord>,
 }
 
 impl<S> Layer<S> for CaptureLayer
@@ -219,7 +220,7 @@ where
             fields: visitor.fields,
         };
 
-        let _ = self.tx.send(self.buffer.push(record));
+        let _ = self.tx.try_send(self.buffer.push(record));
     }
 }
 
@@ -315,7 +316,7 @@ fn install_panic_hook() {
     }));
 }
 
-fn spawn_bridge(app: AppHandle, mut rx: tokio::sync::mpsc::UnboundedReceiver<LogRecord>) {
+fn spawn_bridge(app: AppHandle, mut rx: Receiver<LogRecord>) {
     tauri::async_runtime::spawn(async move {
         let mut batch: Vec<LogRecord> = Vec::with_capacity(64);
         while let Some(first) = rx.recv().await {
@@ -359,7 +360,7 @@ pub fn init(app: &AppHandle, files: &FileManager, level: &str) -> Result<LogStat
     let _ = RELOAD.set(handle);
 
     let buffer = Arc::new(LogBuffer::new());
-    let (tx, rx) = unbounded_channel();
+    let (tx, rx) = channel(EVENT_CHANNEL_CAPACITY);
 
     let file_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)

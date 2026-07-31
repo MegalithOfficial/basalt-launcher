@@ -17,6 +17,7 @@ use crate::{
 };
 
 const MAX_LOG_LINES: usize = 6000;
+const LOG_EVENT_BATCH_LINES: usize = 256;
 const RECOVERY_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 const LOG_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
 const RUN_MARKER_PREFIX: &str = "-Dbasalt.running_id=";
@@ -141,28 +142,37 @@ fn kill_recovered_process(pid: u32, process_started_at: u64, running_id: &str) -
     })
 }
 
-fn push_log_line(
+fn push_log_lines(
     app: AppHandle,
     running_id: &str,
     stream: &'static str,
-    line: String,
+    mut lines: Vec<String>,
     logs: &Arc<Mutex<Vec<LogLine>>>,
 ) {
+    if lines.is_empty() {
+        return;
+    }
+    if lines.len() > MAX_LOG_LINES {
+        lines.drain(0..lines.len() - MAX_LOG_LINES);
+    }
+
     {
         let mut buffer = logs.lock().unwrap();
-        buffer.push(LogLine {
+        buffer.extend(lines.iter().cloned().map(|line| LogLine {
             stream: stream.to_string(),
-            line: line.clone(),
-        });
+            line,
+        }));
         if buffer.len() > MAX_LOG_LINES {
             let overflow = buffer.len() - MAX_LOG_LINES;
             buffer.drain(0..overflow);
         }
     }
-    let _ = app.emit(
-        "process:log",
-        json!({ "running_id": running_id, "stream": stream, "line": line }),
-    );
+    for batch in lines.chunks(LOG_EVENT_BATCH_LINES) {
+        let _ = app.emit(
+            "process:log",
+            json!({ "running_id": running_id, "stream": stream, "lines": batch }),
+        );
+    }
 }
 
 fn spawn_log_tailer(
@@ -186,30 +196,26 @@ fn spawn_log_tailer(
                 pending.extend_from_slice(&bytes[offset..]);
                 offset = bytes.len();
 
+                let mut lines = Vec::new();
                 while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
                     let mut line = pending.drain(..=newline).collect::<Vec<_>>();
                     line.pop();
                     if line.last() == Some(&b'\r') {
                         line.pop();
                     }
-                    push_log_line(
-                        app.clone(),
-                        &running_id,
-                        stream,
-                        String::from_utf8_lossy(&line).into_owned(),
-                        &logs,
-                    );
+                    lines.push(String::from_utf8_lossy(&line).into_owned());
                 }
+                push_log_lines(app.clone(), &running_id, stream, lines, &logs);
             }
 
             let running = status.lock().unwrap().state == "running";
             if !running {
                 if !pending.is_empty() {
-                    push_log_line(
+                    push_log_lines(
                         app.clone(),
                         &running_id,
                         stream,
-                        String::from_utf8_lossy(&pending).into_owned(),
+                        vec![String::from_utf8_lossy(&pending).into_owned()],
                         &logs,
                     );
                 }

@@ -303,7 +303,7 @@ export const api = {
     query: string,
     minLevel: string | null = null,
   ) =>
-    call<LogSearch>("search_instance_log", { instanceId, name, query, minLevel, limit: null }),
+    call<LogSearch>("search_instance_log", { instanceId, name, query, minLevel, limit: 1500 }),
   deleteInstanceLog: (instanceId: string, name: string) =>
     call<void>("delete_instance_log", { instanceId, name }),
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),

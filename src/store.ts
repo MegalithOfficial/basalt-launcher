@@ -37,6 +37,8 @@ import type {
 } from "./lib/types";
 
 const MAX_LOG_RECORDS = 5000;
+const MAX_GAME_LOG_LINES = 6000;
+const PROCESS_LOG_FLUSH_MS = 80;
 
 export interface DiscoverBrowse {
   provider: SearchProvider;
@@ -75,7 +77,7 @@ interface AuthPayload {
 interface LogPayload {
   running_id: string;
   stream: string;
-  line: string;
+  lines: string[];
 }
 
 function pruneSupersededSessions(
@@ -245,6 +247,35 @@ let initializing = false;
 let batching = false;
 let installsInFlight = 0;
 let unlisteners: Array<() => void> = [];
+let processLogTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingProcessLogs = new Map<string, LogLine[]>();
+
+function flushProcessLogs() {
+  processLogTimer = null;
+  if (pendingProcessLogs.size === 0) return;
+
+  const batches = new Map(pendingProcessLogs);
+  pendingProcessLogs.clear();
+  useStore.setState((state) => {
+    const logs = { ...state.logs };
+    for (const [runningId, incoming] of batches) {
+      const previous = logs[runningId] ?? [];
+      const keepPrevious = Math.max(0, MAX_GAME_LOG_LINES - incoming.length);
+      logs[runningId] = [...previous.slice(-keepPrevious), ...incoming.slice(-MAX_GAME_LOG_LINES)];
+    }
+    return { logs };
+  });
+}
+
+function enqueueProcessLog(payload: LogPayload) {
+  const pending = pendingProcessLogs.get(payload.running_id) ?? [];
+  pending.push(...payload.lines.map((line) => ({ stream: payload.stream, line })));
+  if (pending.length > MAX_GAME_LOG_LINES) {
+    pending.splice(0, pending.length - MAX_GAME_LOG_LINES);
+  }
+  pendingProcessLogs.set(payload.running_id, pending);
+  processLogTimer ??= setTimeout(flushProcessLogs, PROCESS_LOG_FLUSH_MS);
+}
 
 export const useStore = create<AppStore>((set) => ({
   view: "home",
@@ -504,13 +535,7 @@ export const useStore = create<AppStore>((set) => ({
         });
       }));
       track(await listen<LogPayload>("process:log", (e) => {
-        const p = e.payload;
-        set((s) => {
-          const prev = s.logs[p.running_id] ?? [];
-          const next = [...prev, { stream: p.stream, line: p.line }];
-          if (next.length > 6000) next.splice(0, next.length - 6000);
-          return { logs: { ...s.logs, [p.running_id]: next } };
-        });
+        enqueueProcessLog(e.payload);
       }));
       track(await listen<LogRecord[]>("log:record", (e) => {
         set((s) => {
@@ -754,6 +779,7 @@ export const useStore = create<AppStore>((set) => ({
 
   closeRunning: async (runningId) => {
     await api.closeRunning(runningId);
+    pendingProcessLogs.delete(runningId);
     set((s) => {
       const running = { ...s.running };
       const logs = { ...s.logs };
@@ -958,6 +984,9 @@ if (import.meta.env.DEV) {
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    if (processLogTimer) clearTimeout(processLogTimer);
+    processLogTimer = null;
+    pendingProcessLogs.clear();
     unlisteners.forEach((fn) => fn());
     unlisteners = [];
     listenersBound = false;
