@@ -124,20 +124,39 @@ function StatTile({
 
 function SystemCard({
   stats,
+  appInfo,
+  update,
+  checking,
+  checkFailed,
   onRefresh,
   refreshing,
 }: {
   stats: SystemStats | null;
+  appInfo: AppInfo | null;
+  update: UpdateInfo | null;
+  checking: boolean;
+  checkFailed: boolean;
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const updateNote = checking
+    ? "checking for updates"
+    : checkFailed
+      ? "could not reach GitHub"
+      : update?.update_available && update.latest
+        ? `${update.latest} available`
+        : update
+          ? "up to date"
+          : "updates not checked yet";
+
   return (
     <section className="mt-6">
       <div className="mb-2 flex items-end justify-between gap-4 px-1">
         <div>
-          <h2 className="font-display text-sm font-semibold text-content">This system</h2>
+          <h2 className="font-display text-sm font-semibold text-content">This install</h2>
           <p className="mt-0.5 text-xs text-content-muted">
-            What Basalt sees. Useful when deciding how much memory to hand the game.
+            What Basalt is and what it sees. Useful when deciding how much memory to hand the
+            game, and worth quoting in a bug report.
           </p>
         </div>
         <button
@@ -150,7 +169,20 @@ function SystemCard({
           Refresh
         </button>
       </div>
-      <div className="grid gap-px overflow-hidden rounded-2xl border border-border-soft bg-border-soft sm:grid-cols-2 xl:grid-cols-4">
+      <div className="overflow-hidden rounded-2xl border border-border-soft">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 bg-surface-2 px-5 py-3">
+          <span className="font-display text-sm font-semibold text-content">
+            Basalt {appInfo?.version ?? "\u2026"}
+          </span>
+          <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
+            {appInfo?.build_channel === "release" ? "Release" : "Development"}
+          </span>
+          <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
+            {appInfo?.arch ?? "\u2026"}
+          </span>
+          <span className="ml-auto text-[11px] text-content-faint">{updateNote}</span>
+        </div>
+        <div className="grid gap-px border-t border-border-soft bg-border-soft sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Memory"
           value={`${formatGb(stats?.total_memory_mb)} installed`}
@@ -179,6 +211,7 @@ function SystemCard({
               : "where instances live"
           }
         />
+        </div>
       </div>
     </section>
   );
@@ -432,29 +465,38 @@ export function SettingsView() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => void checkUpdates()}
                   disabled={checking}
-                  className={cn(actionCls, checking && "cursor-not-allowed opacity-50")}
+                  className={cn(
+                    "inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-2 px-3.5 text-xs font-medium text-content transition-colors hover:bg-surface-3",
+                    checking && "cursor-not-allowed opacity-50",
+                  )}
                 >
                   <RefreshCw className={cn("size-3.5", checking && "animate-spin")} />
                   Check for updates
                 </button>
-                <button
-                  onClick={() => links && openUrl(links.repository)}
-                  className={actionCls}
-                >
-                  <GithubMark className="size-3.5" />
-                  GitHub
-                </button>
-                <button
-                  onClick={() => links && openUrl(links.issues)}
-                  className={actionCls}
-                >
-                  <Bug className="size-3.5" />
-                  Report an issue
-                </button>
+
+                <div className="flex h-9 items-center overflow-hidden rounded-lg border border-border bg-surface-2">
+                  <button
+                    onClick={() => links && openUrl(links.repository)}
+                    aria-label="Open the repository"
+                    title="Open the repository"
+                    className="grid h-full w-10 place-items-center text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                  >
+                    <GithubMark className="size-4" />
+                  </button>
+                  <span className="h-5 w-px bg-border" />
+                  <button
+                    onClick={() => links && openUrl(links.issues)}
+                    aria-label="Report an issue"
+                    title="Report an issue"
+                    className="grid h-full w-10 place-items-center text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                  >
+                    <Bug className="size-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -467,7 +509,7 @@ export function SettingsView() {
           >
             <Row
               label="Import instances"
-              hint="Copies from ATLauncher or Prism, leaving them untouched"
+              hint="Copies from ATLauncher, Prism or the Modrinth App, leaving them untouched"
               stacked
             >
               <button onClick={() => setMigrateOpen(true)} className={actionCls}>
@@ -490,9 +532,18 @@ export function SettingsView() {
           </Section>
 
           <Section
-            title="Reset"
-            description="Puts Basalt back to how it was the day you installed it."
+            title="Storage"
+            description="Where instances, assets and logs are kept, and how to clear them."
           >
+            <Row label="Data directory" hint={appInfo?.data_dir ?? "resolving"} stacked>
+              <button
+                onClick={() => appInfo && openPath(appInfo.data_dir)}
+                className={actionCls}
+              >
+                <FolderOpen className="size-3.5" />
+                Open folder
+              </button>
+            </Row>
             <Row
               label="Reset everything"
               hint="Removes every instance with its worlds, the accounts, the skins and all settings, then restarts into setup"
@@ -507,24 +558,14 @@ export function SettingsView() {
               </button>
             </Row>
           </Section>
-          <Section
-            title="Storage"
-            description="Where instances, assets and logs are kept on disk."
-          >
-            <Row label="Data directory" hint={appInfo?.data_dir ?? "resolving"} stacked>
-              <button
-                onClick={() => appInfo && openPath(appInfo.data_dir)}
-                className={actionCls}
-              >
-                <FolderOpen className="size-3.5" />
-                Open folder
-              </button>
-            </Row>
-          </Section>
           </div>
 
           <SystemCard
             stats={stats}
+            appInfo={appInfo}
+            update={update}
+            checking={checking}
+            checkFailed={checkFailed}
             onRefresh={() => void refreshUsage()}
             refreshing={refreshingUsage}
           />

@@ -258,8 +258,8 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
             </div>
             <div className="text-sm font-medium text-content-muted">No other launcher found</div>
             <p className="max-w-sm text-xs text-content-faint">
-              ATLauncher and Prism Launcher are detected in their default data folders.
-              Nothing was found there.
+              ATLauncher, Prism Launcher and the Modrinth App are detected in their default
+              data folders. Nothing was found there.
             </p>
           </div>
         )}

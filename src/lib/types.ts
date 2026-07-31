@@ -465,6 +465,7 @@ export interface AppInfo {
   data_dir: string;
   default_jvm_args: string;
   jvm_placeholders: string[];
+  arch: string;
 }
 
 export interface JavaStatus {

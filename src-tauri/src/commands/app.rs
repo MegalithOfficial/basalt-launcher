@@ -25,6 +25,7 @@ pub struct AppInfo {
     pub data_dir: String,
     pub default_jvm_args: String,
     pub jvm_placeholders: Vec<String>,
+    pub arch: String,
 }
 
 #[tauri::command]
@@ -39,6 +40,7 @@ pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
             .iter()
             .map(|p| p.to_string())
             .collect(),
+        arch: std::env::consts::ARCH.to_string(),
     })
 }
 
