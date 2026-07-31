@@ -21,6 +21,7 @@ import { ExportPackModal } from "../components/ExportPackModal";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SuggestedContent } from "../components/SuggestedContent";
+import { DeferredImage } from "../components/DeferredImage";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
@@ -231,11 +232,20 @@ export function InstanceView() {
     setItemsByTab({});
     setLoadingTab("*");
     api
-      .listInstanceContentBundle(id, ALL_KINDS, true)
+      .listInstanceContentBundle(id, ALL_KINDS, false)
       .then((bundle) => {
         if (!live) return;
         setItemsByTab(bundle);
         for (const kind of ALL_KINDS) void refreshContentSources(id, kind);
+        void (async () => {
+          for (const kind of ALL_KINDS) {
+            try {
+              const reconciled = await api.listInstanceContent(id, kind, true);
+              if (!live) return;
+              setItemsByTab((current) => ({ ...current, [kind]: reconciled }));
+            } catch {}
+          }
+        })();
       })
       .catch(() => {
         if (!live) return;
@@ -827,11 +837,15 @@ export function InstanceView() {
                   )}
                 >
                   {source?.icon_url ? (
-                    <img
+                    <DeferredImage
                       src={source.icon_url}
-                      loading="lazy"
+                      alt=""
                       className="size-9 shrink-0 rounded-lg bg-surface-3 object-cover"
-                      draggable={false}
+                      fallback={
+                        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+                          <FileBox className="size-4" />
+                        </div>
+                      }
                     />
                   ) : (
                     <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
