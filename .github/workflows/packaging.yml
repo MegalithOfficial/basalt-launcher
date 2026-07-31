@@ -30,16 +30,23 @@ jobs:
 
       - name: Validate generated PKGBUILD and SRCINFO
         run: |
-          package_dir="$RUNNER_TEMP/aur-package"
           sha256="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-          node .github/scripts/update-aur-package.mjs 1.2.3 "$sha256" "$package_dir"
-          bash -n "$package_dir/PKGBUILD"
-          docker run --rm -v "$package_dir:/pkg" archlinux:base-devel bash -lc '
-            useradd --create-home builder
-            chown -R builder:builder /pkg
-            su builder -c "cd /pkg && makepkg --printsrcinfo" > /pkg/.SRCINFO.actual
-          '
-          diff -u "$package_dir/.SRCINFO" "$package_dir/.SRCINFO.actual"
+          for channel in stable dev; do
+            package_dir="$RUNNER_TEMP/aur-package-$channel"
+            extra_args=()
+            if [ "$channel" = "dev" ]; then
+              extra_args=(42.2)
+            fi
+            node .github/scripts/update-aur-package.mjs \
+              "$channel" 1.2.3 "$sha256" "$package_dir" "${extra_args[@]}"
+            bash -n "$package_dir/PKGBUILD"
+            docker run --rm -v "$package_dir:/pkg" archlinux:base-devel bash -lc '
+              useradd --create-home builder
+              chown -R builder:builder /pkg
+              su builder -c "cd /pkg && makepkg --printsrcinfo" > /pkg/.SRCINFO.actual
+            '
+            diff -u "$package_dir/.SRCINFO" "$package_dir/.SRCINFO.actual"
+          done
 
   nix:
     name: Nix source build

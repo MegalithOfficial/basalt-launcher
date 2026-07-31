@@ -6,10 +6,13 @@ disabled in `src-tauri/tauri.linux.conf.json`.
 ## Arch User Repository
 
 Stable releases publish `basalt-launcher-bin` from the release Debian package.
-The workflow regenerates both `PKGBUILD` and `.SRCINFO` from the release version
-and the Debian package SHA-256 before pushing them to the AUR repository.
+Development prereleases publish separately as `basalt-launcher-dev-bin`, so
+installing development builds never changes the stable package. The two packages
+conflict because they install the same application files.
 
-Development prereleases do not update AUR.
+For both channels, the workflow regenerates `PKGBUILD` and `.SRCINFO` from the
+release version and Debian package SHA-256 before pushing to the corresponding
+AUR repository.
 
 ## Nix and NixOS
 

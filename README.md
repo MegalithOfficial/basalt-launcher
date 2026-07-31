@@ -46,7 +46,8 @@ artwork may appear soft on large windows.
 ## Install
 
 Release builds are available as AppImage and Debian packages. Arch users can
-install `basalt-launcher-bin` from the AUR after the first stable release.
+install `basalt-launcher-bin` from the AUR for stable releases, or
+`basalt-launcher-dev-bin` for the latest development prerelease.
 
 Nix and NixOS users can build and run Basalt directly from source:
 

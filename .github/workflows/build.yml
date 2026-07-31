@@ -204,7 +204,7 @@ jobs:
 
   publish-aur:
     name: Publish AUR
-    if: inputs.upload_release && inputs.build_type == 'release'
+    if: inputs.upload_release
     needs:
       - prepare
       - publish
@@ -216,22 +216,44 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Resolve AUR channel
+        id: aur
+        env:
+          BUILD_TYPE: ${{ inputs.build_type }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if [ "$BUILD_TYPE" = "dev" ]; then
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+            echo "package=basalt-launcher-dev-bin" >> "$GITHUB_OUTPUT"
+            echo "release_tag=v${VERSION}-dev.${RUN_NUMBER}.${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+            echo "dev_build=${RUN_NUMBER}.${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+            echo "package_version=${VERSION}.dev.${RUN_NUMBER}.${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+            echo "package=basalt-launcher-bin" >> "$GITHUB_OUTPUT"
+            echo "release_tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "dev_build=" >> "$GITHUB_OUTPUT"
+            echo "package_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Require AUR publishing key
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
         run: |
           if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
-            echo "Add AUR_SSH_PRIVATE_KEY to the aur GitHub Environment before publishing a stable release."
+            echo "Add AUR_SSH_PRIVATE_KEY to the aur GitHub Environment before publishing a release."
             exit 1
           fi
 
-      - name: Download stable Debian package
+      - name: Download Debian package
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ steps.aur.outputs.release_tag }}
         run: |
           mkdir -p "$RUNNER_TEMP/debian"
-          gh release download "v${VERSION}" \
+          gh release download "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern '*.deb' \
             --dir "$RUNNER_TEMP/debian"
@@ -252,20 +274,24 @@ jobs:
 
       - name: Update AUR package metadata
         env:
+          AUR_CHANNEL: ${{ steps.aur.outputs.channel }}
+          AUR_PACKAGE: ${{ steps.aur.outputs.package }}
+          DEV_BUILD: ${{ steps.aur.outputs.dev_build }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          git clone ssh://aur@aur.archlinux.org/basalt-launcher-bin.git "$RUNNER_TEMP/aur"
+          git clone "ssh://aur@aur.archlinux.org/${AUR_PACKAGE}.git" "$RUNNER_TEMP/aur"
           mapfile -t debs < <(find "$RUNNER_TEMP/debian" -maxdepth 1 -type f -name '*.deb')
           if [ "${#debs[@]}" -ne 1 ]; then
             echo "Expected exactly one Debian package, found ${#debs[@]}."
             exit 1
           fi
           sha256="$(sha256sum "${debs[0]}" | cut -d ' ' -f 1)"
-          node .github/scripts/update-aur-package.mjs "$VERSION" "$sha256" "$RUNNER_TEMP/aur"
+          node .github/scripts/update-aur-package.mjs \
+            "$AUR_CHANNEL" "$VERSION" "$sha256" "$RUNNER_TEMP/aur" "$DEV_BUILD"
 
       - name: Publish AUR package
         env:
-          VERSION: ${{ needs.prepare.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.aur.outputs.package_version }}
         run: |
           cd "$RUNNER_TEMP/aur"
           git config user.name "github-actions[bot]"
@@ -275,5 +301,5 @@ jobs:
             echo "AUR metadata is already current."
             exit 0
           fi
-          git commit -m "Update to ${VERSION}"
+          git commit -m "Update to ${PACKAGE_VERSION}"
           git push origin master
