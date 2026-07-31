@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   Boxes,
+  CircleStop,
   Compass,
   Download,
+  FolderOpen,
   Pin,
   PinOff,
   Play,
   Settings,
   SquareChartGantt,
+  Trash2,
   UserCircle2,
 } from "lucide-react";
 
@@ -17,7 +21,9 @@ import { cn } from "../lib/cn";
 import { logoSrc, mediaSrc } from "../lib/media";
 import type { Instance, VersionMedia, View } from "../lib/types";
 import { PlayerHead } from "./Avatar";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ContextMenu, useContextMenu, type MenuItem } from "./ContextMenu";
+import { EditInstanceModal } from "./EditInstanceModal";
 import { useStore } from "../store";
 
 const MAX_TILES = 5;
@@ -183,6 +189,8 @@ export function Sidebar() {
   const installInstance = useStore((s) => s.installInstance);
   const launchInstance = useStore((s) => s.launchInstance);
   const openDiscover = useStore((s) => s.openDiscover);
+  const killInstance = useStore((s) => s.killInstance);
+  const deleteInstance = useStore((s) => s.deleteInstance);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const dockRef = useRef<HTMLDivElement>(null);
@@ -201,6 +209,8 @@ export function Sidebar() {
     return () => observer.disconnect();
   }, []);
   const [pins, setPins] = useState<string[]>(readPins);
+  const [editing, setEditing] = useState<Instance | null>(null);
+  const [removing, setRemoving] = useState<Instance | null>(null);
 
   const anyRunning = Object.values(running).some((r) => r.state === "running");
   const liveRuns = Object.values(running).filter((r) => r.state === "running");
@@ -261,9 +271,29 @@ export function Sidebar() {
             },
           },
       ...(run
-        ? [{ label: "Live logs", icon: SquareChartGantt, onSelect: () => openConsole(run.running_id) }]
+        ? [
+            {
+              label: "Stop",
+              icon: CircleStop,
+              onSelect: () => {
+                killInstance(run.running_id).catch((e) =>
+                  toast.error(`Could not stop ${instance.name}`, { description: String(e) }),
+                );
+              },
+            },
+            {
+              label: "Live logs",
+              icon: SquareChartGantt,
+              onSelect: () => openConsole(run.running_id),
+            },
+          ]
         : []),
-      { label: "Open instance", icon: Boxes, onSelect: () => openInstance(instance.id) },
+      {
+        label: "Open instance",
+        icon: Boxes,
+        separated: true,
+        onSelect: () => openInstance(instance.id),
+      },
       {
         label: instance.loader ? "Find mods" : "Find mods (requires loader)",
         icon: Compass,
@@ -271,10 +301,27 @@ export function Sidebar() {
         onSelect: () => openDiscover("mods", instance.id),
       },
       {
+        label: "Open folder",
+        icon: FolderOpen,
+        onSelect: () => void openPath(instance.dir),
+      },
+      {
+        label: "Settings",
+        icon: Settings,
+        separated: true,
+        onSelect: () => setEditing(instance),
+      },
+      {
         label: pinned ? "Unpin from sidebar" : "Pin to sidebar",
         icon: pinned ? PinOff : Pin,
-        separated: true,
         onSelect: () => togglePin(instance.id),
+      },
+      {
+        label: "Delete instance",
+        icon: Trash2,
+        danger: true,
+        separated: true,
+        onSelect: () => setRemoving(instance),
       },
     ];
   };
@@ -366,6 +413,21 @@ export function Sidebar() {
       </div>
 
       <ContextMenu menu={menu} onClose={closeMenu} />
+
+      <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
+
+      <ConfirmDialog
+        open={!!removing}
+        title={removing ? `Delete ${removing.name}?` : ""}
+        description="The whole instance folder is removed from disk, including its worlds, mods, configs and screenshots. This cannot be undone."
+        confirmLabel="Delete instance"
+        requireText={removing?.name}
+        onConfirm={async () => {
+          if (removing) await deleteInstance(removing.id);
+          setRemoving(null);
+        }}
+        onCancel={() => setRemoving(null)}
+      />
     </aside>
   );
 }
