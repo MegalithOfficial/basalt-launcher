@@ -18,7 +18,7 @@ test("renders matching stable AUR metadata from a release", async () => {
   assert.equal(pkgbuild, renderPkgbuild("stable", "1.2.3", SHA256));
   assert.equal(srcinfo, renderSrcinfo("stable", "1.2.3", SHA256));
   assert.match(pkgbuild, /^pkgname=basalt-launcher-bin$/m);
-  assert.match(pkgbuild, /releases\/download\/v1\.2\.3\/Basalt%20Launcher_1\.2\.3_amd64\.deb/);
+  assert.match(pkgbuild, /releases\/download\/v1\.2\.3\/Basalt\.Launcher_1\.2\.3_amd64\.deb/);
   assert.match(srcinfo, new RegExp(`sha256sums_x86_64 = ${SHA256}`));
 });
 
@@ -32,7 +32,7 @@ test("renders matching development AUR metadata from a prerelease", async () => 
   assert.equal(srcinfo, renderSrcinfo("dev", "1.2.3", SHA256, "42.2"));
   assert.match(pkgbuild, /^pkgname=basalt-launcher-dev-bin$/m);
   assert.match(pkgbuild, /^pkgver=1\.2\.3\.dev\.42\.2$/m);
-  assert.match(pkgbuild, /releases\/download\/v1\.2\.3-dev\.42\.2\/Basalt%20Launcher_1\.2\.3_amd64\.deb/);
+  assert.match(pkgbuild, /releases\/download\/v1\.2\.3-dev\.42\.2\/Basalt\.Launcher_1\.2\.3_amd64\.deb/);
   assert.match(srcinfo, /conflicts = basalt-launcher-bin/);
 });
 

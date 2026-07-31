@@ -49,7 +49,7 @@ function packageMetadata(channel, version, sha256, devBuild = "") {
 }
 
 function sourceUrl(version, releaseTag) {
-  return `${HOMEPAGE}/releases/download/${releaseTag}/Basalt%20Launcher_${version}_amd64.deb`;
+  return `${HOMEPAGE}/releases/download/${releaseTag}/Basalt.Launcher_${version}_amd64.deb`;
 }
 
 export function renderPkgbuild(channel, version, sha256, devBuild = "") {
