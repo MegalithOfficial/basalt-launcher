@@ -32,7 +32,7 @@ pub struct AppInfo {
 #[tracing::instrument(skip_all, err)]
 pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
     Ok(AppInfo {
-        version: crate::build_info::VERSION.to_string(),
+        version: crate::build_info::display_version(),
         build_channel: crate::build_info::CHANNEL.to_string(),
         data_dir: state.paths.root.display().to_string(),
         default_jvm_args: crate::config::DEFAULT_JVM_ARGS.to_string(),
