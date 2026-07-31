@@ -156,6 +156,27 @@ export function DiscoverView() {
     if (browse.scope !== scope) resetBrowse({ provider, scope });
   }, [scope, browse.scope, provider, resetBrowse]);
 
+  const seedKey = `${scope}:${targetId ?? ""}`;
+
+  useEffect(() => {
+    if (browse.seededFor === seedKey) return;
+    if (isPack) {
+      setBrowse({ seededFor: seedKey });
+      return;
+    }
+    setBrowse({
+      seededFor: seedKey,
+      offset: 0,
+      filters: target
+        ? {
+            ...emptyFilters,
+            gameVersions: [target.version_id],
+            loaders: usesLoaders && target.loader ? [target.loader] : [],
+          }
+        : emptyFilters,
+    });
+  }, [seedKey, browse.seededFor, target, isPack, usesLoaders]);
+
   const lastParams = useRef(JSON.stringify({ query, sort, filters }));
 
   useEffect(() => {

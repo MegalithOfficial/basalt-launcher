@@ -48,6 +48,7 @@ export interface DiscoverBrowse {
   page: SearchPage | null;
   signature: string | null;
   scope: string | null;
+  seededFor: string | null;
 }
 
 const emptyBrowse: DiscoverBrowse = {
@@ -61,6 +62,7 @@ const emptyBrowse: DiscoverBrowse = {
   page: null,
   signature: null,
   scope: null,
+  seededFor: null,
 };
 
 interface AuthPayload {
