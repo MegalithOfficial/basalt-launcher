@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowUpCircle,
@@ -185,6 +185,7 @@ export function InstanceView() {
   );
   const updates = storedUpdates ?? NO_UPDATES;
   const activeProjects = useActiveProjectIds();
+  const busyWithTask = !!useInstanceTask(instance?.id);
 
   const [tab, setTab] = useState<InstanceTab>("mods");
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -202,6 +203,7 @@ export function InstanceView() {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
   const [suggestBusy, setSuggestBusy] = useState<string | null>(null);
+  const installingInstance = useRef<string | null>(null);
 
   const close = () => setDialog(null);
   const removal = dialog?.kind === "remove" ? dialog : null;
@@ -267,6 +269,30 @@ export function InstanceView() {
     if (instance) void refreshUpdates(instance.id);
   }, [instance?.id, refreshUpdates]);
 
+  useEffect(() => {
+    if (!instance) return;
+    if (busyWithTask) {
+      installingInstance.current = instance.id;
+      return;
+    }
+    if (installingInstance.current !== instance.id) return;
+    installingInstance.current = null;
+
+    let live = true;
+    api
+      .listInstanceContentBundle(instance.id, ALL_KINDS, false)
+      .then((bundle) => {
+        if (!live) return;
+        setItemsByTab(bundle);
+        for (const kind of ALL_KINDS) void refreshContentSources(instance.id, kind);
+        void refreshUpdates(instance.id);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [busyWithTask, instance?.id, refreshContentSources, refreshUpdates]);
+
   const modItems = itemsByTab.mods;
 
   useEffect(() => {
@@ -317,8 +343,9 @@ export function InstanceView() {
   const tabUpdates =
     tab === "worlds" ? NO_UPDATES : updates.filter((u) => u.kind === tab);
   const items = itemsByTab[tab] ?? EMPTY_ITEMS;
-  const loading = loadingTab !== null && itemsByTab[tab] === undefined;
-  const busyWithTask = !!useInstanceTask(instance?.id);
+  const loading =
+    (loadingTab !== null && itemsByTab[tab] === undefined) ||
+    (busyWithTask && items.length === 0);
   const query = filter.trim().toLowerCase();
   const matching = query
     ? items.filter(
@@ -768,7 +795,8 @@ export function InstanceView() {
             </p>
             <button
               onClick={addContent}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+              disabled={busyWithTask}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               <Plus className="size-3.5" />
               Add content

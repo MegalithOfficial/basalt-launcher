@@ -903,8 +903,25 @@ export const useStore = create<AppStore>((set) => ({
     notifyRemoved(name ? `Deleted ${name}` : "Instance deleted", "Its files are gone from disk");
     set((s) => {
       const instances = s.instances.filter((i) => i.id !== id);
+      const deletingOpenInstance = s.detailInstanceId === id;
+      const media = { ...s.media };
+      const updates = { ...s.updates };
+      delete media[id];
+      delete updates[id];
+      const contentSources = Object.fromEntries(
+        Object.entries(s.contentSources).filter(([key]) => !key.startsWith(`${id}:`)),
+      );
       return {
         instances,
+        view: deletingOpenInstance && s.view === "instance" ? "instances" : s.view,
+        viewStack: deletingOpenInstance
+          ? s.viewStack.filter((view) => view !== "instance")
+          : s.viewStack,
+        detailInstanceId: deletingOpenInstance ? null : s.detailInstanceId,
+        discoverTargetId: s.discoverTargetId === id ? null : s.discoverTargetId,
+        media,
+        updates,
+        contentSources,
         installedIds: s.installedIds.filter((x) => x !== id),
         selectedInstanceId:
           s.selectedInstanceId === id ? (instances[0]?.id ?? null) : s.selectedInstanceId,
