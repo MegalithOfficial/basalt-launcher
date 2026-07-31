@@ -637,7 +637,7 @@ export function SettingsView() {
             >
               <div className="overflow-x-auto p-4">
                 {preview ? (
-                  <code className="block font-mono text-[11px] leading-relaxed">
+                  <code className="selectable block font-mono text-[11px] leading-relaxed">
                     <span className="block whitespace-pre-wrap text-content">
                       {preview.java} \
                     </span>

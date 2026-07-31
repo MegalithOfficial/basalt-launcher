@@ -152,7 +152,7 @@ export function LauncherLogPanel({
   return (
     <div
       ref={scrollRef}
-      className="min-h-0 flex-1 overflow-y-auto bg-base font-mono text-xs leading-relaxed"
+      className="selectable min-h-0 flex-1 overflow-y-auto bg-base font-mono text-xs leading-relaxed"
     >
       {visible.length === 0 ? (
         <div className="py-16 text-center text-content-faint">
