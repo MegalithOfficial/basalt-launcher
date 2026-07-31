@@ -142,12 +142,20 @@ impl NetworkManager {
         self.execute_once(request.build()?).await
     }
 
+    pub async fn send_download_once(&self, request: RequestBuilder) -> Result<ManagedResponse> {
+        let response = self.client().execute(request.build()?).await?;
+        Ok(ManagedResponse {
+            response,
+            _lease: None,
+        })
+    }
+
     async fn execute_once(&self, request: Request) -> Result<ManagedResponse> {
         let lease = self.limiter.acquire().await;
         let response = self.client().execute(request).await?;
         Ok(ManagedResponse {
             response,
-            _lease: lease,
+            _lease: Some(lease),
         })
     }
 
@@ -268,7 +276,7 @@ impl RateLimiter {
 
 pub struct ManagedResponse {
     response: Response,
-    _lease: Lease,
+    _lease: Option<Lease>,
 }
 
 impl ManagedResponse {
@@ -425,7 +433,7 @@ mod tests {
 
     use super::{
         backoff, method_is_retryable, parse_retry_after, NetworkManager, RateLimiter, MAX_BACKOFF,
-        MAX_RETRY_AFTER,
+        MAX_CONCURRENT_REQUESTS, MAX_RETRY_AFTER, REQUESTS_PER_MINUTE,
     };
 
     #[test]
@@ -548,5 +556,40 @@ mod tests {
                 .await
                 .is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn downloads_do_not_wait_for_api_limits() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = socket.read(&mut request);
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .unwrap();
+        });
+
+        let network = NetworkManager::with_client(reqwest::Client::new());
+        let mut api_leases = Vec::new();
+        for _ in 0..MAX_CONCURRENT_REQUESTS {
+            api_leases.push(network.limiter.acquire().await);
+        }
+        for _ in MAX_CONCURRENT_REQUESTS..REQUESTS_PER_MINUTE {
+            network.limiter.reserve().unwrap();
+        }
+        assert!(network.limiter.reserve().is_err());
+
+        let response = tokio::time::timeout(
+            Duration::from_secs(1),
+            network.send_download_once(network.get(format!("http://{address}/asset"))),
+        )
+        .await
+        .expect("download waited for API limits")
+        .unwrap();
+        assert_eq!(response.bytes().await.unwrap(), b"ok");
     }
 }

@@ -140,7 +140,7 @@ async fn download_once(
         return Ok(false);
     }
     let resp = client
-        .send_once(client.get(&spec.url))
+        .send_download_once(client.get(&spec.url))
         .await?
         .error_for_status()?;
     if let (Some(expected), Some(actual)) = (spec.size, resp.content_length()) {
