@@ -42,7 +42,7 @@ manifest = manifest.slice(0, packageStart) + nextPackageSection + manifest.slice
 writeFileSync(manifestPath, manifest);
 
 let lock = readFileSync(lockPath, "utf8");
-const lockEntry = /(\[\[package\]\]\nname = "basalt-launcher"\nversion = ")[^"]+(")/;
+const lockEntry = /(\[\[package\]\]\r?\nname = "basalt-launcher"\r?\nversion = ")[^"]+(")/;
 if (!lockEntry.test(lock)) {
   throw new Error("Cargo.lock has no basalt-launcher package entry");
 }
