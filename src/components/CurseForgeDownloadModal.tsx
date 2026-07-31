@@ -28,6 +28,8 @@ interface InstallRequest {
   provider: SearchProvider;
   projectId: string;
   versionId: string;
+  title: string;
+  iconUrl: string | null;
   downloads: ManualDownload[];
 }
 
@@ -363,26 +365,64 @@ export function useModpackInstaller({
   onError: (error: string) => void;
 }) {
   const installModpack = useStore((state) => state.installModpack);
+  const beginOptimisticTask = useStore((state) => state.beginOptimisticTask);
+  const endOptimisticTask = useStore((state) => state.endOptimisticTask);
   const [request, setRequest] = useState<InstallRequest | null>(null);
+  const [installingVersionId, setInstallingVersionId] = useState<string | null>(null);
+
+  const startInstall = useCallback(
+    async (
+      provider: SearchProvider,
+      projectId: string,
+      versionId: string,
+      title: string,
+      iconUrl: string | null,
+      sources: ManualDownloadSource[] = [],
+    ) => {
+      setInstallingVersionId(versionId);
+      const taskId = beginOptimisticTask("modpack_install", title, {
+        subtitle: "Preparing the pack",
+        iconUrl,
+        projectId,
+      });
+      try {
+        return await installModpack(provider, projectId, versionId, sources);
+      } finally {
+        endOptimisticTask(taskId);
+        setInstallingVersionId(null);
+      }
+    },
+    [beginOptimisticTask, endOptimisticTask, installModpack],
+  );
 
   const install = async (
     provider: SearchProvider,
     projectId: string,
     versionId: string,
+    title = "Modpack",
+    iconUrl: string | null = null,
   ): Promise<Instance | null> => {
     if (provider !== "curseforge") {
-      return installModpack(provider, projectId, versionId);
+      return startInstall(provider, projectId, versionId, title, iconUrl);
     }
     const plan = await api.planModpackInstall(provider, projectId, versionId);
     if (plan.manual_downloads.length > 0) {
-      setRequest({ provider, projectId, versionId, downloads: plan.manual_downloads });
+      setRequest({
+        provider,
+        projectId,
+        versionId,
+        title,
+        iconUrl,
+        downloads: plan.manual_downloads,
+      });
       return null;
     }
-    return installModpack(provider, projectId, versionId);
+    return startInstall(provider, projectId, versionId, title, iconUrl);
   };
 
   return {
     install,
+    installingVersionId,
     modal: request ? (
       <ManualDownloadDialog
         request={request}
@@ -396,12 +436,14 @@ export function useModpackInstaller({
           const active = request;
           setRequest(null);
           toast.info("Browser downloads verified", {
-            description: "Pack installation will start shortly.",
+            description: "Installing the pack.",
           });
-          void installModpack(
+          void startInstall(
             active.provider,
             active.projectId,
             active.versionId,
+            active.title,
+            active.iconUrl,
             sources,
           )
             .then(onInstalled)

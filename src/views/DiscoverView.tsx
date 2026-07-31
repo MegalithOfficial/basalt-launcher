@@ -292,7 +292,13 @@ export function DiscoverView() {
           setError("This pack has no installable versions.");
           return;
         }
-        const created = await modpackInstaller.install(provider, project.id, preferred.id);
+        const created = await modpackInstaller.install(
+          provider,
+          project.id,
+          preferred.id,
+          project.title,
+          project.icon_url,
+        );
         if (created) setNotice(`Created instance ${created.name}`);
       } catch (e) {
         setError(String(e));

@@ -70,6 +70,7 @@ function StateIcon({ task }: { task: Task }) {
 function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void }) {
   const fraction = taskFraction(task);
   const active = task.state === "running";
+  const cancellable = active && !task.id.startsWith("optimistic:");
 
   return (
     <div className="flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-surface-2">
@@ -90,7 +91,7 @@ function Row({ task, onCancel }: { task: Task; onCancel: (id: string) => void })
           <span className="truncate text-[13px] font-medium text-content">{task.title}</span>
           <span className="ml-auto flex shrink-0 items-center gap-1">
             <StateIcon task={task} />
-            {active && (
+            {cancellable && (
               <button
                 onClick={() => onCancel(task.id)}
                 aria-label={`Cancel ${task.title}`}

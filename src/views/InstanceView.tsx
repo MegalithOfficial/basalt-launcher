@@ -176,6 +176,8 @@ export function InstanceView() {
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const refreshUpdates = useStore((s) => s.refreshUpdates);
   const applyUpdate = useStore((s) => s.applyUpdate);
+  const beginOptimisticTask = useStore((s) => s.beginOptimisticTask);
+  const endOptimisticTask = useStore((s) => s.endOptimisticTask);
   const beginToastBatch = useStore((s) => s.beginToastBatch);
   const endToastBatch = useStore((s) => s.endToastBatch);
   const storedUpdates = useStore((s) => (detailId ? s.updates[detailId] : undefined));
@@ -504,16 +506,32 @@ export function InstanceView() {
       update.file_name,
     );
     let sources = undefined;
+    let optimisticTask: string | null = null;
     if (requirement) {
       const downloaded = await browserDownloads.collect([requirement]);
       if (!downloaded) return false;
       sources = downloaded;
+      const item = items.find((item) => item.file_name === update.file_name);
+      optimisticTask = beginOptimisticTask(
+        "content_update",
+        item?.source?.title ?? update.latest_name,
+        {
+          subtitle: `Updating ${instance.name}`,
+          iconUrl: item?.source?.icon_url ?? null,
+          instanceId: instance.id,
+          projectId: item?.source?.project_id ?? null,
+        },
+      );
       toast.info("Browser download verified", {
-        description: "The update will start shortly.",
+        description: "Installing the update.",
       });
     }
-    await applyUpdate(instance.id, update.kind, update.file_name, sources);
-    return true;
+    try {
+      await applyUpdate(instance.id, update.kind, update.file_name, sources);
+      return true;
+    } finally {
+      if (optimisticTask) endOptimisticTask(optimisticTask);
+    }
   };
 
   const updateAll = async () => {

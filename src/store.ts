@@ -232,6 +232,17 @@ interface AppStore {
   refreshUpdates: (instanceId: string, force?: boolean) => Promise<void>;
   clearFinishedTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
+  beginOptimisticTask: (
+    kind: Task["kind"],
+    title: string,
+    context?: {
+      subtitle?: string | null;
+      iconUrl?: string | null;
+      instanceId?: string | null;
+      projectId?: string | null;
+    },
+  ) => string;
+  endOptimisticTask: (taskId: string) => void;
   dismissInterrupted: () => void;
   beginToastBatch: () => void;
   endToastBatch: (summary: string | null) => void;
@@ -428,6 +439,47 @@ export const useStore = create<AppStore>((set) => ({
     await api.cancelTask(taskId);
   },
 
+  beginOptimisticTask: (kind, title, context = {}) => {
+    const id = `optimistic:${crypto.randomUUID()}`;
+    const task: Task = {
+      id,
+      kind,
+      title,
+      subtitle: context.subtitle ?? null,
+      icon_url: context.iconUrl ?? null,
+      instance_id: context.instanceId ?? null,
+      project_id: context.projectId ?? null,
+      state: "running",
+      stage: "starting",
+      completed: 0,
+      total: 0,
+      downloaded_bytes: 0,
+      total_bytes: 0,
+      error: null,
+      retries: 0,
+      retry_note: null,
+      started_at: Math.floor(Date.now() / 1000),
+      finished_at: null,
+    };
+    set((state) => ({
+      tasks: { ...state.tasks, [id]: task },
+      taskOrder: [...state.taskOrder, id],
+    }));
+    return id;
+  },
+
+  endOptimisticTask: (taskId) => {
+    set((state) => {
+      if (!(taskId in state.tasks)) return {};
+      const tasks = { ...state.tasks };
+      delete tasks[taskId];
+      return {
+        tasks,
+        taskOrder: state.taskOrder.filter((id) => id !== taskId),
+      };
+    });
+  },
+
   dismissInterrupted: () => set({ interrupted: [] }),
 
   beginToastBatch: () => {
@@ -442,9 +494,15 @@ export const useStore = create<AppStore>((set) => ({
   clearFinishedTasks: async () => {
     await api.clearFinishedTasks();
     const remaining = await api.listTasks();
-    set({
-      tasks: Object.fromEntries(remaining.map((t) => [t.id, t])),
-      taskOrder: remaining.map((t) => t.id),
+    set((state) => {
+      const optimistic = Object.values(state.tasks).filter((task) =>
+        task.id.startsWith("optimistic:"),
+      );
+      const tasks = [...optimistic, ...remaining];
+      return {
+        tasks: Object.fromEntries(tasks.map((task) => [task.id, task])),
+        taskOrder: tasks.map((task) => task.id),
+      };
     });
   },
 
@@ -523,15 +581,27 @@ export const useStore = create<AppStore>((set) => ({
           void useStore.getState().refreshInstances();
         }
         set((s) => {
+          const superseded = Object.values(s.tasks)
+            .filter((candidate) => candidate.id.startsWith("optimistic:"))
+            .filter(
+              (candidate) =>
+                (!!task.project_id && candidate.project_id === task.project_id) ||
+                (!!task.instance_id &&
+                  candidate.instance_id === task.instance_id &&
+                  candidate.kind === task.kind),
+            )
+            .map((candidate) => candidate.id);
+          const tasks = { ...s.tasks };
+          for (const id of superseded) delete tasks[id];
+          const taskOrder = s.taskOrder.filter((id) => !superseded.includes(id));
+          if (!taskOrder.includes(task.id)) taskOrder.push(task.id);
           const marksInstalled =
             task.state === "succeeded" &&
             (task.kind === "game_install" || task.kind === "modpack_install") &&
             !!task.instance_id;
           return {
-            tasks: { ...s.tasks, [task.id]: task },
-            taskOrder: s.taskOrder.includes(task.id)
-              ? s.taskOrder
-              : [...s.taskOrder, task.id],
+            tasks: { ...tasks, [task.id]: task },
+            taskOrder,
             installedIds:
               marksInstalled && !s.installedIds.includes(task.instance_id!)
                 ? [...s.installedIds, task.instance_id!]

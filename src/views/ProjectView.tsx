@@ -168,7 +168,13 @@ export function ProjectView() {
         }
         vid = preferred.id;
       }
-      const created = await modpackInstaller.install(projectRef.provider, projectRef.id, vid);
+      const created = await modpackInstaller.install(
+        projectRef.provider,
+        projectRef.id,
+        vid,
+        details?.title ?? projectRef.title ?? "Modpack",
+        details?.icon_url ?? null,
+      );
       if (created) setNotice(`Created instance ${created.name}`);
     } catch (e) {
       setError(String(e));
@@ -395,7 +401,7 @@ export function ProjectView() {
                 instanceLoader={loader}
                 hasInstance={!!instance}
                 installedVersionId={installedEntry?.version_id ?? null}
-                installingKey={installing}
+                installingKey={installing ?? modpackInstaller.installingVersionId}
                 installedKeys={installed}
                 resolvedProjects={resolvedProjects}
                 changelogs={changelogs}
