@@ -106,7 +106,15 @@ pub async fn export_instance(
     let instance = instance.clone();
     let stamp = chrono::Utc::now().format("%Y.%m.%d").to_string();
     tokio::task::spawn_blocking(move || {
-        write_pack(&files, &instance, &root, &sources, format, &destination, &stamp)
+        write_pack(
+            &files,
+            &instance,
+            &root,
+            &sources,
+            format,
+            &destination,
+            &stamp,
+        )
     })
     .await
     .map_err(|error| Error::other(format!("export task failed: {error}")))?

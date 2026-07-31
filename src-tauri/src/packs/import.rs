@@ -233,9 +233,11 @@ fn preview(archive: &Archive) -> PackPreview {
 pub async fn inspect_pack(state: &AppState, path: &Path) -> Result<PackPreview> {
     let files = state.files.clone();
     let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || read_archive(&files, &path).map(|archive| preview(&archive)))
-        .await
-        .map_err(|error| Error::other(format!("pack inspection failed: {error}")))?
+    tokio::task::spawn_blocking(move || {
+        read_archive(&files, &path).map(|archive| preview(&archive))
+    })
+    .await
+    .map_err(|error| Error::other(format!("pack inspection failed: {error}")))?
 }
 
 fn directory_for(class_id: Option<u32>, file_name: &str) -> &'static str {
