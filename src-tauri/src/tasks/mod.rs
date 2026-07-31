@@ -16,6 +16,7 @@ const MAX_FINISHED: usize = 50;
 #[serde(rename_all = "snake_case")]
 pub enum TaskKind {
     GameInstall,
+    JavaInstall,
     LoaderInstall,
     ModpackInstall,
     ContentInstall,
@@ -28,6 +29,7 @@ impl TaskKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::GameInstall => "game_install",
+            Self::JavaInstall => "java_install",
             Self::LoaderInstall => "loader_install",
             Self::ModpackInstall => "modpack_install",
             Self::ContentInstall => "content_install",
@@ -40,6 +42,7 @@ impl TaskKind {
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "game_install" | "GameInstall" => Some(Self::GameInstall),
+            "java_install" | "JavaInstall" => Some(Self::JavaInstall),
             "loader_install" | "LoaderInstall" => Some(Self::LoaderInstall),
             "modpack_install" | "ModpackInstall" => Some(Self::ModpackInstall),
             "content_install" | "ContentInstall" => Some(Self::ContentInstall),

@@ -71,6 +71,8 @@ export const api = {
   getSettings: () => call<LauncherSettings>("get_settings"),
   getAppInfo: () => call<AppInfo>("get_app_info"),
   listJavas: () => call<JavaInfo[]>("list_javas"),
+  installJavaRuntime: (major: number, instanceId: string | null = null) =>
+    call<JavaInfo>("install_java_runtime", { major, instanceId }),
   updateSettings: (settings: LauncherSettings) =>
     call<void>("update_settings", { settings }),
   listInstances: () => call<Instance[]>("list_instances"),

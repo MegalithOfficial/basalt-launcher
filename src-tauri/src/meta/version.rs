@@ -223,6 +223,7 @@ impl Artifact {
             url: self.url.clone(),
             dest: paths.libraries().join(path),
             sha1: Some(self.sha1.clone()),
+            sha256: None,
             size: Some(self.size),
         })
     }
@@ -249,6 +250,7 @@ impl Library {
             url: format!("{base}{path}"),
             dest: paths.libraries().join(&path),
             sha1: self.sha1.clone(),
+            sha256: None,
             size: self.size,
         })
     }
@@ -358,6 +360,7 @@ impl VersionJson {
             url: client.url.clone(),
             dest: paths.version_jar(self.client_jar_id()),
             sha1: Some(client.sha1.clone()),
+            sha256: None,
             size: Some(client.size),
         })
     }
@@ -391,6 +394,7 @@ impl AssetIndex {
                     ),
                     dest: paths.assets_objects().join(sub).join(&obj.hash),
                     sha1: Some(obj.hash.clone()),
+                    sha256: None,
                     size: Some(obj.size),
                 }
             })

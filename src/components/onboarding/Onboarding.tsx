@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowRight,
   Boxes,
@@ -113,11 +114,20 @@ export function Onboarding() {
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [javaMajors, setJavaMajors] = useState<number[]>([17, 21]);
+  const [installingJava, setInstallingJava] = useState(false);
+  const [javaError, setJavaError] = useState<string | null>(null);
 
   useEffect(() => {
     api.detectLaunchers().then(setSources).catch(() => setSources([]));
     api.listJavas().then(setJavas).catch(() => setJavas([]));
     api.getSystemStats().then(setStats).catch(() => setStats(null));
+  }, []);
+
+  useEffect(() => {
+    const refreshJava = () => api.listJavas().then(setJavas).catch(() => {});
+    window.addEventListener("focus", refreshJava);
+    return () => window.removeEventListener("focus", refreshJava);
   }, []);
 
   useEffect(() => {
@@ -136,6 +146,22 @@ export function Onboarding() {
 
   const step = steps[Math.min(at, steps.length - 1)];
   const account = accounts.find((a) => a.active) ?? accounts[0];
+
+  const downloadJava = async () => {
+    if (installingJava || javaMajors.length === 0) return;
+    setInstallingJava(true);
+    setJavaError(null);
+    try {
+      for (const major of [...javaMajors].sort((a, b) => a - b)) {
+        await api.installJavaRuntime(major);
+      }
+      setJavas(await api.listJavas());
+    } catch (error) {
+      setJavaError(String(error));
+    } finally {
+      setInstallingJava(false);
+    }
+  };
 
   const finish = useCallback(async () => {
     if (!settings) return;
@@ -276,12 +302,82 @@ export function Onboarding() {
                 )}
 
                 {step === "java" && (
-                  <div className="flex gap-2.5 rounded-2xl border border-warn/25 bg-warn/[0.07] px-4 py-3.5 text-xs text-warn">
-                    <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                    <span className="leading-relaxed">
-                      No Java runtime was found on this system. Basalt downloads one for you when
-                      an instance needs it, so you can carry on and sort it later in Settings.
-                    </span>
+                  <div className="space-y-3">
+                    <div className="flex gap-2.5 rounded-2xl border border-warn/25 bg-warn/[0.07] px-4 py-3.5 text-xs text-warn">
+                      <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                      <span className="leading-relaxed">
+                        No Java runtime was found. Basalt can keep managed Eclipse Temurin
+                        runtimes inside its own data folder, without changing system Java.
+                      </span>
+                    </div>
+
+                    <div className="rounded-2xl border border-border-soft bg-surface-2/60 p-4">
+                      <div className="mb-3 flex items-start gap-3">
+                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-3 text-(--accent)">
+                          <HardDriveDownload className="size-5" />
+                        </span>
+                        <div>
+                          <div className="text-sm font-medium text-content">
+                            Download runtimes for me
+                          </div>
+                          <div className="mt-0.5 text-xs text-content-faint">
+                            Java 17 and 21 cover most current Minecraft versions. Pick others if
+                            you play older or newer releases.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {[8, 16, 17, 21, 25].map((major) => {
+                          const selected = javaMajors.includes(major);
+                          return (
+                            <button
+                              key={major}
+                              onClick={() =>
+                                setJavaMajors((current) =>
+                                  selected
+                                    ? current.filter((value) => value !== major)
+                                    : [...current, major],
+                                )
+                              }
+                              disabled={installingJava}
+                              className={cn(
+                                "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60",
+                                selected
+                                  ? "border-(--accent)/50 bg-(--accent-glow) text-(--accent-bright)"
+                                  : "border-border bg-surface text-content-muted hover:text-content",
+                              )}
+                            >
+                              Java {major}
+                            </button>
+                          );
+                        })}
+                        <button
+                          onClick={() => void downloadJava()}
+                          disabled={installingJava || javaMajors.length === 0}
+                          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-(--accent) px-3 py-1.5 text-xs font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                        >
+                          {installingJava ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <HardDriveDownload className="size-3.5" />
+                          )}
+                          {installingJava ? "Downloading" : "Download selected"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 px-1 text-xs">
+                      <span className={javaError ? "text-danger" : "text-content-faint"}>
+                        {javaError ?? "You can also install Java yourself and continue setup."}
+                      </span>
+                      <button
+                        onClick={() => void openUrl("https://adoptium.net/temurin/releases/")}
+                        className="shrink-0 font-medium text-content-muted transition-colors hover:text-content"
+                      >
+                        Install manually
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -359,6 +455,7 @@ export function Onboarding() {
           {at > 0 && (
             <button
               onClick={() => setAt((v) => Math.max(0, v - 1))}
+              disabled={installingJava}
               className="rounded-lg px-3 py-2 text-sm font-medium text-content-muted transition-colors hover:text-content"
             >
               Back
@@ -373,7 +470,7 @@ export function Onboarding() {
               }
               setAt((v) => v + 1);
             }}
-            disabled={finishing}
+            disabled={finishing || installingJava}
             className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:opacity-60"
           >
             {finishing && <Loader2 className="size-4 animate-spin" />}

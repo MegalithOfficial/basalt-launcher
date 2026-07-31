@@ -109,6 +109,7 @@ async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<Ass
             url: asset_index.url.clone(),
             dest: path.clone(),
             sha1: Some(asset_index.sha1.clone()),
+            sha256: None,
             size: Some(asset_index.size),
         },
     )

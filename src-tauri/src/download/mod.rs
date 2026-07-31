@@ -10,6 +10,7 @@ use std::{
 use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use sha1_smol::Sha1;
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio_util::sync::CancellationToken;
@@ -25,6 +26,7 @@ pub struct DownloadSpec {
     pub url: String,
     pub dest: PathBuf,
     pub sha1: Option<String>,
+    pub sha256: Option<String>,
     pub size: Option<u64>,
 }
 
@@ -280,9 +282,11 @@ async fn verify_partial(files: &FileManager, path: &Path, spec: &DownloadSpec) -
     let path = path.to_path_buf();
     let expected_size = spec.size;
     let expected_sha1 = spec.sha1.clone();
+    let expected_sha256 = spec.sha256.clone();
     tokio::task::spawn_blocking(move || {
         let mut file = files.open(&path)?;
-        let mut hasher = Sha1::new();
+        let mut sha1 = expected_sha1.as_ref().map(|_| Sha1::new());
+        let mut sha256 = expected_sha256.as_ref().map(|_| Sha256::new());
         let mut actual_size = 0_u64;
         let mut buffer = [0_u8; 64 * 1024];
         loop {
@@ -291,7 +295,12 @@ async fn verify_partial(files: &FileManager, path: &Path, spec: &DownloadSpec) -
                 break;
             }
             actual_size += read as u64;
-            hasher.update(&buffer[..read]);
+            if let Some(hasher) = &mut sha1 {
+                hasher.update(&buffer[..read]);
+            }
+            if let Some(hasher) = &mut sha256 {
+                hasher.update(&buffer[..read]);
+            }
         }
         if let Some(expected) = expected_size {
             if actual_size != expected {
@@ -303,8 +312,26 @@ async fn verify_partial(files: &FileManager, path: &Path, spec: &DownloadSpec) -
             }
         }
         if let Some(expected) = expected_sha1 {
-            let actual = hasher.digest().to_string();
+            let actual = sha1
+                .expect("SHA-1 hasher exists when expected")
+                .digest()
+                .to_string();
             if actual != expected {
+                return Err(Error::Checksum {
+                    path: path.display().to_string(),
+                    expected,
+                    actual,
+                });
+            }
+        }
+        if let Some(expected) = expected_sha256 {
+            let actual = format!(
+                "{:x}",
+                sha256
+                    .expect("SHA-256 hasher exists when expected")
+                    .finalize()
+            );
+            if !actual.eq_ignore_ascii_case(&expected) {
                 return Err(Error::Checksum {
                     path: path.display().to_string(),
                     expected,
@@ -462,7 +489,10 @@ fn deduplicate_specs(specs: Vec<DownloadSpec>) -> Result<Vec<DownloadSpec>> {
     let mut unique: HashMap<PathBuf, DownloadSpec> = HashMap::with_capacity(specs.len());
     for spec in specs {
         if let Some(existing) = unique.get(&spec.dest) {
-            if existing.url != spec.url || existing.sha1 != spec.sha1 || existing.size != spec.size
+            if existing.url != spec.url
+                || existing.sha1 != spec.sha1
+                || existing.sha256 != spec.sha256
+                || existing.size != spec.size
             {
                 return Err(Error::other(format!(
                     "conflicting downloads target {}",
@@ -651,6 +681,7 @@ mod tests {
             url: "http://127.0.0.1:1/never".into(),
             dest: dir.join("never.jar"),
             sha1: None,
+            sha256: None,
             size: None,
         }];
 
@@ -718,6 +749,7 @@ mod tests {
             url: "http://127.0.0.1:1/gone".into(),
             dest: std::env::temp_dir().join("basalt-retry-probe.jar"),
             sha1: None,
+            sha256: None,
             size: None,
         };
         let files = files(std::env::temp_dir().as_path());
@@ -760,6 +792,7 @@ mod tests {
                 url: "http://10.255.255.1/hang".into(),
                 dest: dir.join(format!("f{i}.jar")),
                 sha1: None,
+                sha256: None,
                 size: None,
             })
             .collect();
@@ -819,6 +852,7 @@ mod tests {
                 url: format!("http://{address}/file"),
                 dest: destination.clone(),
                 sha1: None,
+                sha256: None,
                 size: Some(1_000_000),
             }],
             1,
@@ -876,6 +910,7 @@ mod tests {
             url: format!("http://{address}/file"),
             dest: destination.clone(),
             sha1: Some(sha1_hex(b"abcdefgh")),
+            sha256: None,
             size: Some(8),
         };
 
@@ -911,6 +946,7 @@ mod tests {
             url: format!("http://{address}/file"),
             dest: destination.clone(),
             sha1: Some(sha1_hex(b"abcdefgh")),
+            sha256: None,
             size: Some(8),
         };
 
@@ -944,6 +980,7 @@ mod tests {
             url: format!("http://{address}/file"),
             dest: destination.clone(),
             sha1: Some(sha1_hex(b"abcdefgh")),
+            sha256: None,
             size: Some(8),
         };
 
@@ -960,6 +997,7 @@ mod tests {
             url: "https://example.invalid/file".into(),
             dest: destination.clone(),
             sha1: Some("hash".into()),
+            sha256: None,
             size: Some(3),
         };
         assert_eq!(
@@ -1007,6 +1045,7 @@ mod tests {
             url: "http://127.0.0.1:1/unused".into(),
             dest: dest.clone(),
             sha1: Some(sha1_hex(b"abc")),
+            sha256: None,
             size: None,
         };
         let network = network();
@@ -1039,5 +1078,32 @@ mod tests {
     fn sha1_matches_known_vector() {
         assert_eq!(sha1_hex(b"abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
         assert_eq!(sha1_hex(b""), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    }
+
+    #[tokio::test]
+    async fn verifies_sha256_downloads() {
+        let dir = std::env::temp_dir().join(format!("basalt-sha256-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let destination = dir.join("runtime.zip");
+        std::fs::write(&destination, b"abc").unwrap();
+        let mut spec = DownloadSpec {
+            url: "https://example.invalid/runtime.zip".into(),
+            dest: destination.clone(),
+            sha1: None,
+            sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+            size: Some(3),
+        };
+        let files = files(&dir);
+
+        assert_eq!(
+            verify_partial(&files, &destination, &spec).await.unwrap(),
+            3
+        );
+        spec.sha256 = Some("wrong".into());
+        assert!(matches!(
+            verify_partial(&files, &destination, &spec).await,
+            Err(Error::Checksum { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

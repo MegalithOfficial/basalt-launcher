@@ -46,9 +46,11 @@ uuid = { version = "1", features = ["v3", "v4", "serde"] }
 
 zip = "2"
 flate2 = "1"
+tar = "0.4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 base64 = "0.22"
 sha1_smol = "1"
+sha2 = "0.10"
 
 thiserror = "2"
 tracing = "0.1"

@@ -166,6 +166,7 @@ async fn run_installer(
             url: installer_url.to_string(),
             dest: installer_path.clone(),
             sha1: None,
+            sha256: None,
             size: None,
         },
     )

@@ -327,6 +327,7 @@ export interface PackExport {
 
 export type TaskKind =
   | "game_install"
+  | "java_install"
   | "loader_install"
   | "modpack_install"
   | "content_install"

@@ -298,6 +298,10 @@ export function SettingsView() {
   );
   const [draft, setDraft] = useState<LauncherSettings | null>(settings);
   const [javas, setJavas] = useState<JavaInfo[]>([]);
+  const [javaMajor, setJavaMajor] = useState(21);
+  const [installingJava, setInstallingJava] = useState(false);
+  const [javaInstallError, setJavaInstallError] = useState<string | null>(null);
+  const [installedJava, setInstalledJava] = useState<JavaInfo | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [saved, setSaved] = useState(false);
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -318,6 +322,16 @@ export function SettingsView() {
     api.getAppInfo().then(setAppInfo).catch(() => {});
     api.getAboutLinks().then(setLinks).catch(() => {});
     api.getSystemStats().then(setStats).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const refreshJavas = () =>
+      api
+        .listJavas()
+        .then((list) => setJavas(list ?? []))
+        .catch(() => {});
+    window.addEventListener("focus", refreshJavas);
+    return () => window.removeEventListener("focus", refreshJavas);
   }, []);
 
   useEffect(() => {
@@ -368,6 +382,22 @@ export function SettingsView() {
       ? javaLabel(detectedMatch)
       : CUSTOM_PATH;
   const javaOptions = [AUTO_DETECT, ...javas.map(javaLabel), CUSTOM_PATH];
+
+  const installJava = async () => {
+    if (installingJava) return;
+    setInstallingJava(true);
+    setJavaInstallError(null);
+    setInstalledJava(null);
+    try {
+      const installed = await api.installJavaRuntime(javaMajor);
+      setJavas(await api.listJavas());
+      setInstalledJava(installed);
+    } catch (error) {
+      setJavaInstallError(String(error));
+    } finally {
+      setInstallingJava(false);
+    }
+  };
 
   const checkUpdates = async () => {
     setChecking(true);
@@ -684,6 +714,72 @@ export function SettingsView() {
                 />
               </Row>
             )}
+            <Row
+              label="Managed runtimes"
+              hint="Download Eclipse Temurin into Basalt without changing system Java"
+              stacked
+            >
+              <div className="w-full space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {[8, 16, 17, 21, 25].map((major) => (
+                    <button
+                      key={major}
+                      onClick={() => {
+                        setJavaMajor(major);
+                        setJavaInstallError(null);
+                        setInstalledJava(null);
+                      }}
+                      disabled={installingJava}
+                      className={cn(
+                        "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60",
+                        javaMajor === major
+                          ? "border-(--accent)/50 bg-(--accent-glow) text-(--accent-bright)"
+                          : "border-border bg-surface-2 text-content-muted hover:text-content",
+                      )}
+                    >
+                      Java {major}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => void installJava()}
+                    disabled={installingJava}
+                    className={cn(actionCls, "ml-auto")}
+                  >
+                    {installingJava ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <HardDriveDownload className="size-3.5" />
+                    )}
+                    {installingJava ? "Downloading" : `Download Java ${javaMajor}`}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-[11px]">
+                  <span
+                    className={cn(
+                      javaInstallError
+                        ? "text-danger"
+                        : installedJava
+                          ? "text-ok"
+                          : "text-content-faint",
+                    )}
+                  >
+                    {javaInstallError ??
+                      (installedJava
+                        ? `Java ${installedJava.major} is ready and available above.`
+                        : "Downloads are verified and can resume after an interruption.")}
+                  </span>
+                  <button
+                    onClick={() =>
+                      void openUrl(`https://adoptium.net/temurin/releases/?version=${javaMajor}`)
+                    }
+                    disabled={installingJava}
+                    className="shrink-0 font-medium text-content-muted transition-colors hover:text-content disabled:opacity-60"
+                  >
+                    Install manually
+                  </button>
+                </div>
+              </div>
+            </Row>
             <Row
               label="Java parameters"
               hint="the full JVM command line. Placeholders are filled in at launch."

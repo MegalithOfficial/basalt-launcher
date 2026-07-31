@@ -51,6 +51,39 @@ pub async fn list_javas(state: State<'_, AppState>) -> Result<Vec<java::JavaInfo
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub async fn install_java_runtime(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    major: u32,
+    instance_id: Option<String>,
+) -> Result<java::JavaInfo> {
+    if !(8..=99).contains(&major) {
+        return Err(Error::other("Java major version must be between 8 and 99."));
+    }
+    let platform = format!("{} · {}", std::env::consts::OS, std::env::consts::ARCH);
+    let task = state.tasks.start(
+        &app,
+        crate::tasks::TaskKind::JavaInstall,
+        crate::tasks::TaskSpec {
+            title: format!("Java {major}"),
+            subtitle: Some(format!("Eclipse Temurin · {platform}")),
+            ..Default::default()
+        },
+    );
+    let result = async {
+        let info = java::managed::install(&state.network, &state.files, major, &task).await?;
+        if let Some(instance_id) = instance_id.as_deref() {
+            state.db.set_instance_java_path(instance_id, &info.path)?;
+        }
+        Ok(info)
+    }
+    .await;
+    task.finish(&result);
+    result
+}
+
+#[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Result<()> {
     if logging::normalize_level(&settings.log_level) != logging::current_level() {

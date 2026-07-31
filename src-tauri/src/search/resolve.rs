@@ -406,6 +406,7 @@ pub async fn apply(
             url: f.url.clone(),
             dest: dir.join(&f.file_name),
             sha1: f.sha1.clone(),
+            sha256: None,
             size: f.size,
         })
         .collect();

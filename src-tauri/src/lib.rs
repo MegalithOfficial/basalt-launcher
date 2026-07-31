@@ -109,6 +109,7 @@ pub fn run() {
             commands::app::update_settings,
             commands::app::get_app_info,
             commands::app::list_javas,
+            commands::app::install_java_runtime,
             commands::instances::list_instances,
             commands::instances::create_instance,
             commands::instances::update_instance,

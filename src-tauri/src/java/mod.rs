@@ -4,6 +4,8 @@ use serde::Serialize;
 
 use crate::files::FileManager;
 
+pub mod managed;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct JavaInfo {
     pub path: String,
@@ -108,6 +110,7 @@ fn install_roots() -> Vec<PathBuf> {
 
 async fn candidates(files: &FileManager, explicit: Option<&str>) -> Vec<JavaInfo> {
     let mut paths: Vec<String> = Vec::new();
+    let managed_root = files.paths().runtimes();
     if let Some(path) = explicit {
         paths.push(path.to_string());
     }
@@ -129,6 +132,11 @@ async fn candidates(files: &FileManager, explicit: Option<&str>) -> Vec<JavaInfo
                 .to_string(),
         );
     }
+    paths.extend(
+        runtime_binaries_in(files, &managed_root)
+            .into_iter()
+            .map(|path| path.display().to_string()),
+    );
     for root in install_roots() {
         paths.extend(
             runtime_binaries_in(files, &root)

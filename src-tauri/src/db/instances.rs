@@ -155,6 +155,20 @@ impl Db {
         Ok(())
     }
 
+    pub fn set_instance_java_path(&self, instance_id: &str, java_path: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE instances SET java_path = ?2 WHERE id = ?1",
+            params![instance_id, java_path],
+        )?;
+        if changed == 0 {
+            return Err(crate::error::Error::NotFound(format!(
+                "instance {instance_id}"
+            )));
+        }
+        Ok(())
+    }
+
     pub fn imported_sources(&self, source: &str) -> Result<Vec<String>> {
         let conn = self.0.lock().unwrap();
         let mut statement = conn.prepare(

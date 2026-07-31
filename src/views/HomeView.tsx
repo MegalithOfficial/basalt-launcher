@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ChevronDown,
   Download,
@@ -101,7 +102,9 @@ export function HomeView() {
   const [packPath, setPackPath] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [java, setJava] = useState<JavaStatus | null>(null);
+  const [installingJava, setInstallingJava] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const javaRequest = useRef(0);
 
   const selected = instances.find((i) => i.id === selectedId) ?? instances[0];
   const hasInstance = !!selected;
@@ -114,21 +117,49 @@ export function HomeView() {
     instances.forEach((i) => loadMedia(i.id));
   }, [instances, loadMedia]);
 
-  useEffect(() => {
+  const refreshJava = useCallback(async () => {
+    const request = ++javaRequest.current;
     if (!selected) {
       setJava(null);
       return;
     }
-    let live = true;
     setJava(null);
-    api
-      .getJavaStatus(selected.id)
-      .then((s) => live && setJava(s))
-      .catch(() => live && setJava(null));
-    return () => {
-      live = false;
-    };
+    try {
+      const status = await api.getJavaStatus(selected.id);
+      if (request === javaRequest.current) setJava(status);
+    } catch {
+      if (request === javaRequest.current) setJava(null);
+    }
   }, [selected?.id]);
+
+  useEffect(() => {
+    void refreshJava();
+  }, [refreshJava]);
+
+  useEffect(() => {
+    const onFocus = () => void refreshJava();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshJava]);
+
+  const downloadJava = async () => {
+    if (!java || !selected || installingJava) return;
+    setInstallingJava(true);
+    setLaunchError(null);
+    try {
+      const installed = await api.installJavaRuntime(java.required_major, selected.id);
+      useStore.setState((state) => ({
+        instances: state.instances.map((instance) =>
+          instance.id === selected.id ? { ...instance, java_path: installed.path } : instance,
+        ),
+      }));
+      setJava({ required_major: java.required_major, found: installed, ok: true });
+    } catch (error) {
+      setLaunchError(String(error));
+    } finally {
+      setInstallingJava(false);
+    }
+  };
 
   const percent = install ? Math.round((taskFraction(install) ?? 0) * 100) : 0;
 
@@ -144,7 +175,7 @@ export function HomeView() {
   const onAction = async () => {
     setLaunchError(null);
     if (!hasInstance) return setModalOpen(true);
-    if (installing || starting) return;
+    if (installing || installingJava || starting) return;
     if (activeRun) return openConsole(activeRun.running_id);
     if (!installed) return installInstance(selected.id);
     if (!account) return setView("accounts");
@@ -197,10 +228,34 @@ export function HomeView() {
 
         <div className="absolute right-5 top-5 flex items-center gap-2">
           {java && !java.ok && (
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-black/60 px-3 py-1.5 text-xs font-medium text-warn backdrop-blur">
-              <TriangleAlert className="size-3.5" />
-              Java {java.required_major} needed
-              {java.found ? ` · found ${java.found.major}` : " · none found"}
+            <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-warn/40 bg-black/75 p-2 pl-3 text-xs font-medium text-warn shadow-xl backdrop-blur">
+              <TriangleAlert className="size-4 shrink-0" />
+              <span className="mr-1">
+                Java {java.required_major} needed
+                {java.found ? ` · found ${java.found.major}` : " · none found"}
+              </span>
+              <button
+                onClick={() => void downloadJava()}
+                disabled={installingJava}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-warn px-2.5 py-1.5 font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {installingJava ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                {installingJava ? "Downloading" : "Download Java"}
+              </button>
+              <button
+                onClick={() =>
+                  void openUrl(
+                    `https://adoptium.net/temurin/releases/?version=${java.required_major}`,
+                  )
+                }
+                className="rounded-lg border border-white/15 px-2.5 py-1.5 text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                Install manually
+              </button>
             </div>
           )}
           {hasInstance && (
@@ -281,7 +336,7 @@ export function HomeView() {
             )}
             <button
               onClick={onAction}
-              disabled={installing || starting}
+              disabled={installing || installingJava || starting}
               className="relative flex h-14 shrink-0 items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 font-pixel text-sm tracking-wider text-black shadow-xl shadow-(color:--accent-glow) transition-all duration-500 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] active:scale-[0.98] disabled:active:scale-100"
             >
               {installing && install.stage === "downloading" && (

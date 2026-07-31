@@ -430,6 +430,7 @@ async fn prepare_pack(
                 url,
                 dest: archive_path.clone(),
                 sha1: archive.sha1.clone(),
+                sha256: None,
                 size: archive.size,
             },
         )
@@ -800,6 +801,7 @@ pub(crate) async fn install_pack_body(
                 url: url.clone(),
                 dest: destination,
                 sha1: file.hashes.sha1.clone(),
+                sha256: None,
                 size: file.file_size,
             });
         } else {
