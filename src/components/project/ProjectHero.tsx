@@ -27,6 +27,7 @@ export function ProjectHero({
   loading,
   isPack,
   installedLabel,
+  installedNote,
   installing,
   instances,
   target,
@@ -40,6 +41,7 @@ export function ProjectHero({
   loading: boolean;
   isPack: boolean;
   installedLabel: string | null;
+  installedNote?: string | null;
   installing: boolean;
   instances: Instance[];
   target: Instance | null;
@@ -141,7 +143,17 @@ export function ProjectHero({
               ) : (
                 <Download className="size-4" />
               )}
-              {isPack ? "Install pack" : "Install"}
+              {isPack ? (installedNote ? "Install again" : "Install pack") : "Install"}
+            </button>
+          )}
+
+          {!installedLabel && installedNote && (
+            <button
+              onClick={onOpenInstalled}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <Check className="size-3 text-ok" />
+              {installedNote}
             </button>
           )}
 

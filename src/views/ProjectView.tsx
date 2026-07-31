@@ -314,12 +314,9 @@ export function ProjectView() {
         provider={projectRef.provider}
         loading={loading}
         isPack={isPack}
-        installedLabel={
-          installedEntry
-            ? isPack
-              ? `Installed as ${packInstance?.name}`
-              : "Installed"
-            : null
+        installedLabel={installedEntry && !isPack ? "Installed" : null}
+        installedNote={
+          isPack && packInstance && !busyProject ? `Installed as ${packInstance.name}` : null
         }
         installing={busyProject}
         instances={instances}

@@ -622,7 +622,7 @@ export function DiscoverView() {
                     planning === project.id ||
                     installingPack === project.id ||
                     activeProjects.has(project.id);
-                  const done = !busy && (isPack ? !!packInstance : !!installedFile);
+                  const done = !busy && !isPack && !!installedFile;
                   const liveTask = activeTasks.get(project.id);
 
                   return {
