@@ -64,7 +64,7 @@ rustPlatform.buildRustPackage {
   BASALT_BUILD_CHANNEL = buildChannel;
 
   preBuild = ''
-    npm --prefix .. run build:frontend
+    npm run build:frontend
   '';
 
   doCheck = false;
