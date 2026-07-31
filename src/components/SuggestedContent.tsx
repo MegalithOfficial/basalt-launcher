@@ -28,7 +28,7 @@ function Row({
 }) {
   const { project, provider } = suggestion;
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border-soft bg-surface-2/50 px-3 py-2.5 transition-colors hover:border-border">
+    <div className="flex items-center gap-3 rounded-xl border border-border-soft bg-surface-2/50 px-3.5 py-3 transition-colors hover:border-border">
       {project.icon_url ? (
         <img
           src={project.icon_url}
@@ -148,8 +148,8 @@ export function SuggestedContent({
   if (!searchable) return null;
 
   return (
-    <div className="w-full text-left">
-      <div className="mb-2 flex items-center gap-2 text-xs text-content-muted">
+    <div className="w-full border-t border-border-soft pt-6 text-left">
+      <div className="mb-3.5 flex items-center gap-2 text-xs text-content-muted">
         {searching ? (
           <>
             <Loader2 className="size-3.5 animate-spin" />
@@ -169,7 +169,7 @@ export function SuggestedContent({
       </div>
 
       {!searching && shown.length > 0 && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2 pb-8">
           {shown.map((suggestion) => (
             <Row
               key={`${suggestion.provider}:${suggestion.project.id}`}

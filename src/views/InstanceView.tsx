@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  SearchX,
   Share,
   Trash2,
 } from "lucide-react";
@@ -755,16 +756,35 @@ export function InstanceView() {
           </div>
         ) : shownItems.length === 0 ? (
           <>
-            <div
-              className={cn(
-                "text-sm text-content-faint",
-                query ? "py-6" : "py-16 text-center",
-              )}
-            >
-              {query
-                ? `Nothing installed matches “${filter}”.`
-                : `No ${listView === "unlinked" ? "unlinked" : listView} ${tabMeta.label.toLowerCase()}.`}
-            </div>
+            {query ? (
+              <div className="flex items-center gap-3.5 pb-7 pt-9">
+                <div className="grid size-11 shrink-0 place-items-center rounded-xl border border-border-soft bg-surface-2 text-content-faint">
+                  <SearchX className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-content">
+                    Nothing installed matches “{filter}”
+                  </div>
+                  <div className="mt-0.5 text-xs text-content-faint">
+                    {items.length === 0
+                      ? `This instance has no ${tabMeta.label.toLowerCase()} yet.`
+                      : `Searched ${items.length} installed ${
+                          items.length === 1 ? "file" : "files"
+                        }${listView === "all" ? "" : ` in ${listView}`}.`}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setFilter("")}
+                  className="shrink-0 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+                >
+                  Clear search
+                </button>
+              </div>
+            ) : (
+              <div className="py-16 text-center text-sm text-content-faint">
+                {`No ${listView === "unlinked" ? "unlinked" : listView} ${tabMeta.label.toLowerCase()}.`}
+              </div>
+            )}
             {query && (
               <SuggestedContent
                 instance={instance}
