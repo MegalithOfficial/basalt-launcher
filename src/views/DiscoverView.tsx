@@ -37,6 +37,7 @@ import {
   type FilterState,
 } from "../components/FilterRail";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
+import { useModpackInstaller } from "../components/CurseForgeDownloadModal";
 import { InstanceTargetPicker } from "../components/InstanceTargetPicker";
 import { Select } from "../components/Select";
 import {
@@ -88,7 +89,6 @@ export function DiscoverView() {
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
   const installContent = useStore((s) => s.installContent);
-  const installModpack = useStore((s) => s.installModpack);
   const contentProgress = useInstanceTask(targetId);
   const activeProjects = useActiveProjectIds();
   const activeTasks = useActiveTasksByProject();
@@ -125,6 +125,10 @@ export function DiscoverView() {
   const [planning, setPlanning] = useState<string | null>(null);
   const [installingPack, setInstallingPack] = useState<string | null>(null);
   const [needsTarget, setNeedsTarget] = useState<ProjectSummary | null>(null);
+  const modpackInstaller = useModpackInstaller({
+    onInstalled: (created) => setNotice(`Created instance ${created.name}`),
+    onError: setError,
+  });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const requestRef = useRef(0);
@@ -288,8 +292,8 @@ export function DiscoverView() {
           setError("This pack has no installable versions.");
           return;
         }
-        const created = await installModpack(provider, project.id, preferred.id);
-        setNotice(`Created instance ${created.name}`);
+        const created = await modpackInstaller.install(provider, project.id, preferred.id);
+        if (created) setNotice(`Created instance ${created.name}`);
       } catch (e) {
         setError(String(e));
       } finally {
@@ -729,6 +733,7 @@ export function DiscoverView() {
           }}
         />
       )}
+      {modpackInstaller.modal}
     </div>
   );
 }

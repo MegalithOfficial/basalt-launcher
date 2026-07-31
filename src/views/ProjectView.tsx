@@ -12,6 +12,7 @@ import type {
   ProjectVersion,
 } from "../lib/types";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
+import { useModpackInstaller } from "../components/CurseForgeDownloadModal";
 import { InstanceTargetPicker } from "../components/InstanceTargetPicker";
 import { Markdown } from "../components/project/Markdown";
 import { ProjectGallery } from "../components/project/ProjectGallery";
@@ -42,7 +43,6 @@ export function ProjectView() {
   const activeProjects = useActiveProjectIds();
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
-  const installModpackAction = useStore((s) => s.installModpack);
   const packInstance = useStore((s) =>
     s.searchKind === "modpacks" && s.projectRef
       ? (s.instances.find((i) => i.pack_project_id === s.projectRef?.id) ?? null)
@@ -73,6 +73,10 @@ export function ProjectView() {
 
   const isPack = kind === "modpacks";
   const loader = kind === "mods" ? (instance?.loader ?? null) : null;
+  const modpackInstaller = useModpackInstaller({
+    onInstalled: (created) => setNotice(`Created instance ${created.name}`),
+    onError: setError,
+  });
 
   useEffect(() => {
     if (instance && storeKind) void refreshContentSources(instance.id, storeKind);
@@ -164,8 +168,8 @@ export function ProjectView() {
         }
         vid = preferred.id;
       }
-      const created = await installModpackAction(projectRef.provider, projectRef.id, vid);
-      setNotice(`Created instance ${created.name}`);
+      const created = await modpackInstaller.install(projectRef.provider, projectRef.id, vid);
+      if (created) setNotice(`Created instance ${created.name}`);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -440,6 +444,7 @@ export function ProjectView() {
           }}
         />
       )}
+      {modpackInstaller.modal}
     </div>
   );
 }

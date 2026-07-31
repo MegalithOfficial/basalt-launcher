@@ -595,6 +595,28 @@ pub async fn files(state: &AppState, file_ids: &[i64]) -> Result<Vec<File>> {
     Ok(collected)
 }
 
+async fn projects_by_ids(state: &AppState, ids: &[String]) -> Result<Vec<Mod>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let api_key = key(state)?;
+    let mod_ids: Vec<u64> = ids.iter().filter_map(|id| id.parse().ok()).collect();
+    let mut collected = Vec::with_capacity(mod_ids.len());
+    for chunk in mod_ids.chunks(50) {
+        let response: Paged<Mod> = cache::post(
+            state,
+            state
+                .network
+                .post(format!("{API}/mods"))
+                .header("x-api-key", &api_key)
+                .json(&serde_json::json!({ "modIds": chunk })),
+        )
+        .await?;
+        collected.extend(response.data);
+    }
+    Ok(collected)
+}
+
 pub async fn project_classes(
     state: &AppState,
     ids: &[String],
@@ -602,40 +624,37 @@ pub async fn project_classes(
     if ids.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
-    let api_key = key(state)?;
-    let mod_ids: Vec<u64> = ids.iter().filter_map(|id| id.parse().ok()).collect();
-    let response: Paged<Mod> = cache::post(
-        state,
-        state
-            .network
-            .post(format!("{API}/mods"))
-            .header("x-api-key", api_key)
-            .json(&serde_json::json!({ "modIds": mod_ids })),
-    )
-    .await?;
-    Ok(response
-        .data
+    Ok(projects_by_ids(state, ids)
+        .await?
         .into_iter()
         .filter_map(|item| item.class_id.map(|class| (item.id.to_string(), class)))
         .collect())
 }
 
-pub async fn resolve_projects(state: &AppState, ids: &[String]) -> Result<Vec<ProjectSummary>> {
+pub async fn project_download_pages(
+    state: &AppState,
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, String>> {
     if ids.is_empty() {
-        return Ok(Vec::new());
+        return Ok(std::collections::HashMap::new());
     }
-    let api_key = key(state)?;
-    let mod_ids: Vec<u64> = ids.iter().filter_map(|i| i.parse().ok()).collect();
-    let response: Paged<Mod> = cache::post(
-        state,
-        state
-            .network
-            .post(format!("{API}/mods"))
-            .header("x-api-key", api_key)
-            .json(&serde_json::json!({ "modIds": mod_ids })),
-    )
-    .await?;
-    Ok(response.data.into_iter().map(summary).collect())
+    Ok(projects_by_ids(state, ids)
+        .await?
+        .into_iter()
+        .filter_map(|item| {
+            item.links
+                .and_then(|links| links.website_url)
+                .map(|url| (item.id.to_string(), url))
+        })
+        .collect())
+}
+
+pub async fn resolve_projects(state: &AppState, ids: &[String]) -> Result<Vec<ProjectSummary>> {
+    Ok(projects_by_ids(state, ids)
+        .await?
+        .into_iter()
+        .map(summary)
+        .collect())
 }
 
 #[derive(Deserialize)]

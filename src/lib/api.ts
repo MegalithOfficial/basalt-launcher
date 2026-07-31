@@ -28,6 +28,9 @@ import type {
   LogLine,
   LogSearch,
   LogRecord,
+  ManualDownload,
+  ManualDownloadSource,
+  ModpackInstallPlan,
   PackExport,
   PackFormat,
   PackPreview,
@@ -174,8 +177,32 @@ export const api = {
       versionId,
       withDependencies,
     }),
-  installModpack: (provider: string, projectId: string, versionId: string) =>
-    call<Instance>("install_modpack", { provider, projectId, versionId }),
+  planModpackInstall: (
+    provider: string,
+    projectId: string,
+    versionId: string,
+    manualDownloads: ManualDownloadSource[] = [],
+  ) =>
+    call<ModpackInstallPlan>("plan_modpack_install", {
+      provider,
+      projectId,
+      versionId,
+      manualDownloads,
+    }),
+  findCurseforgeDownload: (download: ManualDownload, startedAtMs: number) =>
+    call<string | null>("find_curseforge_download", { download, startedAtMs }),
+  installModpack: (
+    provider: string,
+    projectId: string,
+    versionId: string,
+    manualDownloads: ManualDownloadSource[] = [],
+  ) =>
+    call<Instance>("install_modpack", {
+      provider,
+      projectId,
+      versionId,
+      manualDownloads,
+    }),
   checkContentUpdates: (instanceId: string, force = false) =>
     call<ContentUpdate[]>("check_content_updates", { instanceId, force }),
   getContentUpdates: (instanceId: string) =>

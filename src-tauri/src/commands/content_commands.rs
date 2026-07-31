@@ -446,7 +446,48 @@ pub async fn install_modpack(
     provider: String,
     project_id: String,
     version_id: String,
+    manual_downloads: Option<Vec<crate::modpack::ManualDownloadSource>>,
 ) -> Result<Instance> {
     let provider = search::Provider::parse(&provider)?;
-    crate::modpack::install_modpack(&app, &state, provider, &project_id, &version_id).await
+    crate::modpack::install_modpack(
+        &app,
+        &state,
+        provider,
+        &project_id,
+        &version_id,
+        manual_downloads.as_deref().unwrap_or_default(),
+    )
+    .await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn plan_modpack_install(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    version_id: String,
+    manual_downloads: Option<Vec<crate::modpack::ManualDownloadSource>>,
+) -> Result<crate::modpack::ModpackInstallPlan> {
+    let provider = search::Provider::parse(&provider)?;
+    crate::modpack::plan_modpack_install(
+        &app,
+        &state,
+        provider,
+        &project_id,
+        &version_id,
+        manual_downloads.as_deref().unwrap_or_default(),
+    )
+    .await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app), err)]
+pub async fn find_curseforge_download(
+    app: AppHandle,
+    download: crate::modpack::ManualDownload,
+    started_at_ms: u64,
+) -> Result<Option<String>> {
+    crate::modpack::find_manual_download(&app, &download, started_at_ms).await
 }

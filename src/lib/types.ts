@@ -74,6 +74,27 @@ export type ContentKind =
 
 export type ContentOrigin = "user" | "dependency" | "pack" | "manual";
 
+export interface ManualDownload {
+  project_id: string;
+  file_id: string;
+  file_name: string;
+  download_page_url: string;
+  sha1: string | null;
+  size: number | null;
+  instance_path: string;
+  pack_archive: boolean;
+}
+
+export interface ManualDownloadSource {
+  project_id: string;
+  file_id: string;
+  path: string;
+}
+
+export interface ModpackInstallPlan {
+  manual_downloads: ManualDownload[];
+}
+
 export interface ContentFile {
   file_name: string;
   sha1: string | null;

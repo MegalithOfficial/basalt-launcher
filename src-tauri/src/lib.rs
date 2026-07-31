@@ -140,6 +140,8 @@ pub fn run() {
             commands::content_commands::get_installed_project_file,
             commands::content_commands::install_content,
             commands::content_commands::install_modpack,
+            commands::content_commands::plan_modpack_install,
+            commands::content_commands::find_curseforge_download,
             commands::content_commands::plan_content_install,
             commands::content_commands::get_filter_taxonomy,
             commands::content_commands::check_content_updates,

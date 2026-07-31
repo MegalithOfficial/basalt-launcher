@@ -8,8 +8,8 @@ use crate::{
     db::ContentFile,
     error::{Error, Result},
     files::FileManager,
-    modpack::{self, MrFile, MrHashes, MrIndex},
-    search::curseforge,
+    modpack::{self, ManualDownload, MrFile, MrHashes, MrIndex},
+    search::{self, curseforge},
     state::AppState,
     tasks::{TaskKind, TaskSpec},
 };
@@ -255,6 +255,7 @@ struct Resolved {
     index: MrIndex,
     links: Vec<(String, String, ContentFile)>,
     skipped: Vec<String>,
+    manual_downloads: Vec<ManualDownload>,
 }
 
 async fn resolve_curseforge(state: &AppState, manifest: &CfManifest) -> Result<Resolved> {
@@ -290,19 +291,29 @@ async fn resolve_curseforge(state: &AppState, manifest: &CfManifest) -> Result<R
     let classes = curseforge::project_classes(state, &project_ids)
         .await
         .unwrap_or_default();
+    let download_pages = curseforge::project_download_pages(state, &project_ids)
+        .await
+        .unwrap_or_default();
+    let project_info: HashMap<String, search::ProjectSummary> =
+        curseforge::resolve_projects(state, &project_ids)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|project| (project.id.clone(), project))
+            .collect();
 
     let now = chrono::Utc::now().timestamp();
     let mut files = Vec::new();
     let mut links = Vec::new();
     let mut skipped = Vec::new();
+    let mut manual_downloads = Vec::new();
 
     for entry in &manifest.files {
         let Some(file) = by_id.get(&(entry.file_id as u64)) else {
-            skipped.push(format!("project {}", entry.project_id));
-            continue;
-        };
-        let Some(url) = file.download_url.clone() else {
-            skipped.push(file.file_name.clone());
+            skipped.push(format!(
+                "project {} (file {})",
+                entry.project_id, entry.file_id
+            ));
             continue;
         };
         let sha1 = file
@@ -315,6 +326,7 @@ async fn resolve_curseforge(state: &AppState, manifest: &CfManifest) -> Result<R
             &file.file_name,
         );
         let path = format!("{kind}/{}", file.file_name);
+        let info = project_info.get(&entry.project_id.to_string());
 
         links.push((
             kind.to_string(),
@@ -325,20 +337,46 @@ async fn resolve_curseforge(state: &AppState, manifest: &CfManifest) -> Result<R
                 provider: Some("curseforge".to_string()),
                 project_id: Some(entry.project_id.to_string()),
                 version_id: Some(entry.file_id.to_string()),
-                title: Some(file.display_name.clone()),
+                title: info
+                    .map(|project| project.title.clone())
+                    .or_else(|| Some(file.display_name.clone())),
+                icon_url: info.and_then(|project| project.icon_url.clone()),
                 origin: "pack".to_string(),
                 installed_at: now,
                 ..Default::default()
             },
         ));
 
-        files.push(MrFile {
-            path,
-            hashes: MrHashes { sha1 },
-            downloads: vec![url],
-            file_size: file.file_length,
-            env: None,
-        });
+        if let Some(url) = file.download_url.clone() {
+            files.push(MrFile {
+                path,
+                hashes: MrHashes { sha1 },
+                downloads: vec![url],
+                file_size: file.file_length,
+                env: None,
+                local_source: None,
+            });
+        } else if let Some(page) = download_pages.get(&entry.project_id.to_string()) {
+            manual_downloads.push(ManualDownload {
+                project_id: entry.project_id.to_string(),
+                file_id: entry.file_id.to_string(),
+                file_name: file.file_name.clone(),
+                download_page_url: format!(
+                    "{}/download/{}",
+                    page.trim_end_matches('/'),
+                    entry.file_id
+                ),
+                sha1,
+                size: file.file_length,
+                instance_path: path,
+                pack_archive: false,
+            });
+        } else {
+            skipped.push(format!(
+                "{} (project {}, file {})",
+                file.file_name, entry.project_id, entry.file_id
+            ));
+        }
     }
 
     Ok(Resolved {
@@ -353,7 +391,38 @@ async fn resolve_curseforge(state: &AppState, manifest: &CfManifest) -> Result<R
         },
         links,
         skipped,
+        manual_downloads,
     })
+}
+
+pub(crate) async fn plan_curseforge_archive(
+    state: &AppState,
+    path: &Path,
+) -> Result<(
+    MrIndex,
+    Vec<(String, String, ContentFile)>,
+    Vec<String>,
+    Vec<ManualDownload>,
+)> {
+    let archive = {
+        let files = state.files.clone();
+        let path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || read_archive(&files, &path))
+            .await
+            .map_err(|error| Error::other(format!("pack parse task failed: {error}")))??
+    };
+    let Parsed::Curseforge(manifest) = archive.parsed else {
+        return Err(Error::other(
+            "The selected CurseForge version is not a CurseForge pack.",
+        ));
+    };
+    let resolved = resolve_curseforge(state, &manifest).await?;
+    Ok((
+        resolved.index,
+        resolved.links,
+        resolved.skipped,
+        resolved.manual_downloads,
+    ))
 }
 
 pub struct PreparedImport {
@@ -390,7 +459,14 @@ pub async fn prepare_import(
         Parsed::Mrpack(index) => (index, Vec::new(), Vec::new()),
         Parsed::Curseforge(manifest) => {
             let resolved = resolve_curseforge(state, &manifest).await?;
-            (resolved.index, resolved.links, resolved.skipped)
+            let mut skipped = resolved.skipped;
+            skipped.extend(
+                resolved
+                    .manual_downloads
+                    .iter()
+                    .map(|download| download.file_name.clone()),
+            );
+            (resolved.index, resolved.links, skipped)
         }
     };
 

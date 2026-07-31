@@ -270,6 +270,52 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         hashed.push((item.file_name.clone(), identity.sha1, identity.murmur2));
     }
 
+    let curseforge_missing_metadata: Vec<(&String, &String)> = known
+        .iter()
+        .filter_map(|(file_name, file)| {
+            (file.provider.as_deref() == Some(Provider::Curseforge.as_str())
+                && (file.title.is_none() || file.icon_url.is_none()))
+            .then(|| {
+                file.project_id
+                    .as_ref()
+                    .map(|project_id| (file_name, project_id))
+            })
+            .flatten()
+        })
+        .collect();
+
+    if !curseforge_missing_metadata.is_empty() && curseforge::key(state).is_ok() {
+        let mut project_ids: Vec<String> = curseforge_missing_metadata
+            .iter()
+            .map(|(_, project_id)| (*project_id).clone())
+            .collect();
+        project_ids.sort();
+        project_ids.dedup();
+
+        if let Ok(projects) = curseforge::resolve_projects(state, &project_ids).await {
+            let project_info: HashMap<&str, &super::ProjectSummary> = projects
+                .iter()
+                .map(|project| (project.id.as_str(), project))
+                .collect();
+
+            for (file_name, project_id) in curseforge_missing_metadata {
+                let Some(project) = project_info.get(project_id.as_str()) else {
+                    continue;
+                };
+                let _ = state.db.merge_provider_identity(
+                    instance_id,
+                    kind,
+                    file_name,
+                    Provider::Curseforge.as_str(),
+                    project_id,
+                    None,
+                    Some(&project.title),
+                    project.icon_url.as_deref(),
+                );
+            }
+        }
+    }
+
     let unlinked: Vec<&(String, String, u32)> = hashed
         .iter()
         .filter(|(name, _, _)| known.get(name).is_none_or(|f| f.project_id.is_none()))

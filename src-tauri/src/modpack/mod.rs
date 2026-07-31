@@ -4,14 +4,15 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use serde::Deserialize;
-use tauri::AppHandle;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 use crate::{
     config::Instance,
+    db::ContentFile,
     download::{self, DownloadSpec},
     error::{Error, Result},
-    install, loaders,
+    install, loaders, packs,
     search::{self, Provider},
     state::AppState,
 };
@@ -38,6 +39,8 @@ pub(crate) struct MrFile {
     pub file_size: Option<u64>,
     #[serde(default)]
     pub env: Option<MrEnv>,
+    #[serde(skip)]
+    pub local_source: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Default)]
@@ -50,6 +53,30 @@ pub(crate) struct MrHashes {
 pub(crate) struct MrEnv {
     #[serde(default)]
     pub client: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ManualDownload {
+    pub project_id: String,
+    pub file_id: String,
+    pub file_name: String,
+    pub download_page_url: String,
+    pub sha1: Option<String>,
+    pub size: Option<u64>,
+    pub instance_path: String,
+    pub pack_archive: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ManualDownloadSource {
+    pub project_id: String,
+    pub file_id: String,
+    pub path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModpackInstallPlan {
+    pub manual_downloads: Vec<ManualDownload>,
 }
 
 pub(crate) fn loader_from_dependencies(
@@ -109,6 +136,109 @@ fn kind_for_path(path: &str) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+fn unavailable_curseforge_files(files: &[String]) -> Error {
+    let shown = files.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+    let remaining = files.len().saturating_sub(5);
+    let suffix = if remaining == 0 {
+        String::new()
+    } else {
+        format!(" and {remaining} more")
+    };
+    Error::other(format!(
+        "CurseForge did not provide downloads for {} pack file{}. Their authors may have disabled third-party downloads, so Basalt cannot install this pack completely. Use the CurseForge app or choose another pack. Affected: {shown}{suffix}.",
+        files.len(),
+        if files.len() == 1 { "" } else { "s" }
+    ))
+}
+
+fn manual_key(project_id: &str, file_id: &str) -> String {
+    format!("{project_id}:{file_id}")
+}
+
+fn matches_download_name(expected: &str, actual: &str) -> bool {
+    if actual == expected {
+        return true;
+    }
+    let expected = Path::new(expected);
+    let actual = Path::new(actual);
+    let Some(expected_stem) = expected.file_stem().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    if actual.extension() != expected.extension() {
+        return false;
+    }
+    let Some(actual_stem) = actual.file_stem().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    let Some(number) = actual_stem
+        .strip_prefix(expected_stem)
+        .and_then(|rest| rest.strip_prefix(" (").or_else(|| rest.strip_prefix('(')))
+        .and_then(|rest| rest.strip_suffix(')'))
+    else {
+        return false;
+    };
+    !number.is_empty() && number.chars().all(|character| character.is_ascii_digit())
+}
+
+fn sha1_file(path: &Path) -> Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = sha1_smol::Sha1::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.digest().to_string())
+}
+
+fn validate_manual_download(
+    downloads_dir: &Path,
+    requirement: &ManualDownload,
+    path: &Path,
+) -> Result<()> {
+    let downloads_dir = downloads_dir.canonicalize()?;
+    let path = path.canonicalize()?;
+    if path.parent() != Some(downloads_dir.as_path()) {
+        return Err(Error::other(
+            "Manual downloads must come from the OS Downloads folder.",
+        ));
+    }
+    let actual_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| Error::other("The downloaded file name is not valid UTF-8."))?;
+    if !matches_download_name(&requirement.file_name, actual_name) {
+        return Err(Error::other(format!(
+            "Expected {}, found {actual_name}.",
+            requirement.file_name
+        )));
+    }
+    let actual_size = path.metadata()?.len();
+    if let Some(expected) = requirement.size {
+        if actual_size != expected {
+            return Err(Error::SizeMismatch {
+                path: path.display().to_string(),
+                expected,
+                actual: actual_size,
+            });
+        }
+    }
+    if let Some(expected) = &requirement.sha1 {
+        let actual = sha1_file(&path)?;
+        if &actual != expected {
+            return Err(Error::Checksum {
+                path: path.display().to_string(),
+                expected: expected.clone(),
+                actual,
+            });
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn extract_overrides(
@@ -222,20 +352,50 @@ async fn link_pack_files(state: &AppState, instance_id: &str, files: &[(String, 
     }
 }
 
-#[tracing::instrument(skip(app, state), fields(provider = provider.as_str()), err)]
-pub async fn install_modpack(
+struct PreparedPack {
+    target: search::ProjectVersion,
+    archive_path: PathBuf,
+    index: MrIndex,
+    curseforge_links: Vec<(String, String, ContentFile)>,
+    consumed_sources: Vec<PathBuf>,
+}
+
+enum PreparePackOutcome {
+    Ready(Box<PreparedPack>),
+    NeedsDownloads(Vec<ManualDownload>),
+}
+
+async fn archive_requirement(
+    state: &AppState,
+    project_id: &str,
+    version_id: &str,
+    archive: &search::VersionFile,
+) -> Result<ManualDownload> {
+    let page = search::curseforge::project_download_pages(state, &[project_id.to_string()])
+        .await?
+        .remove(project_id)
+        .ok_or_else(|| Error::other("CurseForge did not provide the pack's project page."))?;
+    Ok(ManualDownload {
+        project_id: project_id.to_string(),
+        file_id: version_id.to_string(),
+        file_name: archive.file_name.clone(),
+        download_page_url: format!("{}/download/{version_id}", page.trim_end_matches('/')),
+        sha1: archive.sha1.clone(),
+        size: archive.size,
+        instance_path: String::new(),
+        pack_archive: true,
+    })
+}
+
+async fn prepare_pack(
     app: &AppHandle,
     state: &AppState,
     provider: Provider,
     project_id: &str,
     version_id: &str,
-) -> Result<Instance> {
-    if !matches!(provider, Provider::Modrinth) {
-        return Err(Error::other(
-            "CurseForge modpacks are not supported yet. Use a Modrinth pack.",
-        ));
-    }
-
+    manual_sources: &[ManualDownloadSource],
+    stage_manual_files: bool,
+) -> Result<PreparePackOutcome> {
     let target = search::fetch_version(
         state,
         provider,
@@ -246,29 +406,224 @@ pub async fn install_modpack(
         Some(version_id),
     )
     .await?;
-    let (url, archive) = search::download_url(&target)?;
+    let archive = target
+        .primary_file()
+        .cloned()
+        .ok_or_else(|| Error::other("This pack version has no downloadable file."))?;
+    let archive_path = state
+        .paths
+        .root
+        .join("cache")
+        .join("modpacks")
+        .join(&archive.file_name);
+    let downloads_dir = app.path().download_dir()?;
+    let by_key: HashMap<String, &ManualDownloadSource> = manual_sources
+        .iter()
+        .map(|source| (manual_key(&source.project_id, &source.file_id), source))
+        .collect();
+    let mut consumed_sources = Vec::new();
+    let archive_read_path = if let Some(url) = archive.url.clone() {
+        download::download_one(
+            &state.network,
+            &state.files,
+            &DownloadSpec {
+                url,
+                dest: archive_path.clone(),
+                sha1: archive.sha1.clone(),
+                size: archive.size,
+            },
+        )
+        .await?;
+        archive_path.clone()
+    } else if provider == Provider::Curseforge {
+        let requirement = archive_requirement(state, project_id, version_id, &archive).await?;
+        let Some(source) = by_key.get(&manual_key(project_id, version_id)) else {
+            return Ok(PreparePackOutcome::NeedsDownloads(vec![requirement]));
+        };
+        let source_path = PathBuf::from(&source.path);
+        validate_manual_download(&downloads_dir, &requirement, &source_path)?;
+        if stage_manual_files {
+            download::copy_verified(
+                &state.files,
+                &source_path,
+                &archive_path,
+                requirement.sha1.as_deref(),
+                requirement.size,
+            )
+            .await?;
+            consumed_sources.push(source_path);
+            archive_path.clone()
+        } else {
+            source_path
+        }
+    } else {
+        return Err(search::download_url(&target).unwrap_err());
+    };
 
-    let cache_dir = state.paths.root.join("cache").join("modpacks");
-    let archive_path = cache_dir.join(&archive.file_name);
-    download::download_one(
-        &state.network,
-        &state.files,
-        &DownloadSpec {
-            url,
-            dest: archive_path.clone(),
-            sha1: archive.sha1.clone(),
-            size: archive.size,
-        },
+    let (index, curseforge_links, skipped, manual_downloads) = match provider {
+        Provider::Modrinth => {
+            let index = {
+                let path = archive_read_path.clone();
+                let files = state.files.clone();
+                tokio::task::spawn_blocking(move || read_index(&files, &path))
+                    .await
+                    .map_err(|error| {
+                        Error::other(format!("modpack parse task failed: {error}"))
+                    })??
+            };
+            (index, Vec::new(), Vec::new(), Vec::new())
+        }
+        Provider::Curseforge => packs::plan_curseforge_archive(state, &archive_read_path).await?,
+    };
+    if !skipped.is_empty() {
+        return Err(unavailable_curseforge_files(&skipped));
+    }
+
+    let missing: Vec<ManualDownload> = manual_downloads
+        .iter()
+        .filter(|requirement| {
+            !by_key.contains_key(&manual_key(&requirement.project_id, &requirement.file_id))
+        })
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return Ok(PreparePackOutcome::NeedsDownloads(missing));
+    }
+
+    let mut index = index;
+    if stage_manual_files {
+        for requirement in &manual_downloads {
+            let source = by_key
+                .get(&manual_key(&requirement.project_id, &requirement.file_id))
+                .expect("manual source checked above");
+            let source_path = PathBuf::from(&source.path);
+            validate_manual_download(&downloads_dir, requirement, &source_path)?;
+            index.files.push(MrFile {
+                path: requirement.instance_path.clone(),
+                hashes: MrHashes {
+                    sha1: requirement.sha1.clone(),
+                },
+                downloads: Vec::new(),
+                file_size: requirement.size,
+                env: None,
+                local_source: Some(source_path.clone()),
+            });
+            consumed_sources.push(source_path);
+        }
+    }
+
+    Ok(PreparePackOutcome::Ready(Box::new(PreparedPack {
+        target,
+        archive_path,
+        index,
+        curseforge_links,
+        consumed_sources,
+    })))
+}
+
+pub async fn plan_modpack_install(
+    app: &AppHandle,
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    version_id: &str,
+    manual_sources: &[ManualDownloadSource],
+) -> Result<ModpackInstallPlan> {
+    let outcome = prepare_pack(
+        app,
+        state,
+        provider,
+        project_id,
+        version_id,
+        manual_sources,
+        false,
     )
     .await?;
+    Ok(ModpackInstallPlan {
+        manual_downloads: match outcome {
+            PreparePackOutcome::Ready(_) => Vec::new(),
+            PreparePackOutcome::NeedsDownloads(downloads) => downloads,
+        },
+    })
+}
 
-    let index = {
-        let path = archive_path.clone();
-        let files = state.files.clone();
-        tokio::task::spawn_blocking(move || read_index(&files, &path))
-            .await
-            .map_err(|e| Error::other(format!("modpack parse task failed: {e}")))??
+pub async fn find_manual_download(
+    app: &AppHandle,
+    requirement: &ManualDownload,
+    started_at_ms: u64,
+) -> Result<Option<String>> {
+    if Path::new(&requirement.file_name)
+        .file_name()
+        .and_then(|value| value.to_str())
+        != Some(requirement.file_name.as_str())
+    {
+        return Err(Error::other("CurseForge returned an unsafe file name."));
+    }
+    let downloads_dir = app.path().download_dir()?;
+    let requirement = requirement.clone();
+    tokio::task::spawn_blocking(move || {
+        let threshold = std::time::UNIX_EPOCH
+            + std::time::Duration::from_millis(started_at_ms.saturating_sub(2_000));
+        for entry in std::fs::read_dir(&downloads_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !entry.file_type()?.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if !matches_download_name(&requirement.file_name, name) {
+                continue;
+            }
+            let metadata = path.metadata()?;
+            if metadata
+                .modified()
+                .is_ok_and(|modified| modified < threshold)
+            {
+                continue;
+            }
+            if validate_manual_download(&downloads_dir, &requirement, &path).is_ok() {
+                return Ok(Some(path.display().to_string()));
+            }
+        }
+        Ok(None)
+    })
+    .await
+    .map_err(|error| Error::other(format!("Downloads scan failed: {error}")))?
+}
+
+#[tracing::instrument(skip(app, state), fields(provider = provider.as_str()), err)]
+pub async fn install_modpack(
+    app: &AppHandle,
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    version_id: &str,
+    manual_sources: &[ManualDownloadSource],
+) -> Result<Instance> {
+    let outcome = prepare_pack(
+        app,
+        state,
+        provider,
+        project_id,
+        version_id,
+        manual_sources,
+        true,
+    )
+    .await?;
+    let PreparePackOutcome::Ready(prepared) = outcome else {
+        return Err(Error::other(
+            "Download all requested CurseForge files before continuing.",
+        ));
     };
+    let PreparedPack {
+        target,
+        archive_path,
+        index,
+        curseforge_links,
+        consumed_sources,
+    } = *prepared;
 
     let game_version = index
         .dependencies
@@ -362,6 +717,18 @@ pub async fn install_modpack(
 
     task.succeed();
 
+    for (kind, _, file) in &curseforge_links {
+        let _ = state.db.record_content_file(&instance.id, kind, file);
+    }
+    for source in consumed_sources {
+        if let Err(error) = std::fs::remove_file(&source) {
+            tracing::warn!(
+                path = %source.display(),
+                %error,
+                "could not remove consumed CurseForge download"
+            );
+        }
+    }
     state
         .db
         .list_instances(&state.files)?
@@ -408,6 +775,7 @@ pub(crate) async fn install_pack_body(
 
     task.stage("modpack-files");
     let mut specs = Vec::new();
+    let mut local_specs = Vec::new();
     let mut linkable: Vec<(String, String)> = Vec::new();
     for file in &index.files {
         if file
@@ -418,25 +786,38 @@ pub(crate) async fn install_pack_body(
         {
             continue;
         }
-        let Some(url) = file.downloads.first() else {
-            continue;
-        };
         let relative = sanitize_relative(&file.path)?;
-        specs.push(DownloadSpec {
-            url: url.clone(),
-            dest: instance_dir.join(relative),
-            sha1: file.hashes.sha1.clone(),
-            size: file.file_size,
-        });
+        let destination = instance_dir.join(relative);
+        if let Some(source) = &file.local_source {
+            local_specs.push((
+                source.clone(),
+                destination,
+                file.hashes.sha1.clone(),
+                file.file_size,
+            ));
+        } else if let Some(url) = file.downloads.first() {
+            specs.push(DownloadSpec {
+                url: url.clone(),
+                dest: destination,
+                sha1: file.hashes.sha1.clone(),
+                size: file.file_size,
+            });
+        } else {
+            continue;
+        }
         if let Some(sha1) = &file.hashes.sha1 {
             linkable.push((file.path.clone(), sha1.clone()));
         }
     }
     let concurrency = state.db.load_settings()?.concurrent_downloads;
-    task.set_total(
-        specs.len() as u64,
-        specs.iter().filter_map(|s| s.size).sum(),
-    );
+    let total_files = specs.len() + local_specs.len();
+    let total_bytes = specs.iter().filter_map(|spec| spec.size).sum::<u64>()
+        + local_specs
+            .iter()
+            .filter_map(|(_, _, _, size)| *size)
+            .sum::<u64>();
+    let network_known_bytes = specs.iter().filter_map(|spec| spec.size).sum::<u64>();
+    task.set_total(total_files as u64, total_bytes);
     let downloaded = download::download_many_cancellable(
         &state.network,
         &state.files,
@@ -445,9 +826,9 @@ pub(crate) async fn install_pack_body(
         |progress| {
             task.progress(
                 progress.completed as u64,
-                progress.total as u64,
+                total_files as u64,
                 progress.downloaded_bytes,
-                progress.total_bytes,
+                total_bytes,
             );
         },
         Some(task.token()),
@@ -457,6 +838,24 @@ pub(crate) async fn install_pack_body(
     .await;
 
     downloaded?;
+
+    let downloaded_files = total_files - local_specs.len();
+    let mut copied_bytes = network_known_bytes;
+    for (index, (source, destination, sha1, size)) in local_specs.iter().enumerate() {
+        if task.token().is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let copied =
+            download::copy_verified(&state.files, source, destination, sha1.as_deref(), *size)
+                .await?;
+        copied_bytes += copied;
+        task.progress(
+            (downloaded_files + index + 1) as u64,
+            total_files as u64,
+            copied_bytes,
+            total_bytes,
+        );
+    }
 
     task.stage("modpack-overrides");
     {
@@ -494,7 +893,10 @@ pub(crate) async fn install_pack_body(
 mod tests {
     use std::collections::HashMap;
 
-    use super::{kind_for_path, loader_from_dependencies, sanitize_relative};
+    use super::{
+        kind_for_path, loader_from_dependencies, matches_download_name, sanitize_relative,
+        unavailable_curseforge_files,
+    };
 
     #[test]
     fn rejects_unsafe_paths() {
@@ -518,5 +920,30 @@ mod tests {
         assert_eq!(kind_for_path("mods/a.jar"), Some("mods"));
         assert_eq!(kind_for_path("shaderpacks/b.zip"), Some("shaderpacks"));
         assert_eq!(kind_for_path("config/c.toml"), None);
+    }
+
+    #[test]
+    fn explains_unavailable_curseforge_files() {
+        let error = unavailable_curseforge_files(&[
+            "first.jar (project 1, file 2)".to_string(),
+            "second.jar (project 3, file 4)".to_string(),
+        ]);
+        let message = error.to_string();
+
+        assert!(message.contains("authors may have disabled third-party downloads"));
+        assert!(message.contains("first.jar"));
+        assert!(message.contains("second.jar"));
+        assert!(message.contains("cannot install this pack completely"));
+    }
+
+    #[test]
+    fn accepts_only_expected_browser_download_names() {
+        assert!(matches_download_name("example.jar", "example.jar"));
+        assert!(matches_download_name("example.jar", "example (1).jar"));
+        assert!(matches_download_name("example.jar", "example(1).jar"));
+        assert!(matches_download_name("example.jar", "example (42).jar"));
+        assert!(!matches_download_name("example.jar", "example.part"));
+        assert!(!matches_download_name("example.jar", "other.jar"));
+        assert!(!matches_download_name("example.jar", "example (copy).jar"));
     }
 }

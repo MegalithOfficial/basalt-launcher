@@ -27,6 +27,7 @@ import type {
   LogsTab,
   LogLine,
   LogRecord,
+  ManualDownloadSource,
   RunningInfo,
   SearchPage,
   SearchProvider,
@@ -211,6 +212,7 @@ interface AppStore {
     provider: SearchProvider,
     projectId: string,
     versionId: string,
+    manualDownloads?: ManualDownloadSource[],
   ) => Promise<Instance>;
   goBack: () => void;
   goBackTo: (index: number) => void;
@@ -318,8 +320,13 @@ export const useStore = create<AppStore>((set) => ({
 
   setDiscoverTarget: (instanceId) => set({ discoverTargetId: instanceId }),
 
-  installModpack: async (provider, projectId, versionId) => {
-    const instance = await api.installModpack(provider, projectId, versionId);
+  installModpack: async (provider, projectId, versionId, manualDownloads = []) => {
+    const instance = await api.installModpack(
+      provider,
+      projectId,
+      versionId,
+      manualDownloads,
+    );
     const installedVersions = await api.listInstalledVersions();
     set((s) => {
       const instances = s.instances.some((i) => i.id === instance.id)

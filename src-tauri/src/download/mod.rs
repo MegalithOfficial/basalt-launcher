@@ -39,6 +39,45 @@ pub fn sha1_hex(bytes: &[u8]) -> String {
     hasher.digest().to_string()
 }
 
+pub async fn copy_verified(
+    files: &FileManager,
+    source: impl AsRef<std::path::Path>,
+    destination: impl AsRef<std::path::Path>,
+    expected_sha1: Option<&str>,
+    expected_size: Option<u64>,
+) -> Result<u64> {
+    let destination = destination.as_ref();
+    let copied = files.copy_external_into(source, destination).await?;
+    let result = async {
+        if let Some(expected) = expected_size {
+            if copied != expected {
+                return Err(Error::SizeMismatch {
+                    path: destination.display().to_string(),
+                    expected,
+                    actual: copied,
+                });
+            }
+        }
+        if let Some(expected) = expected_sha1 {
+            let bytes = files.read_async(destination).await?;
+            let actual = sha1_hex(&bytes);
+            if actual != expected {
+                return Err(Error::Checksum {
+                    path: destination.display().to_string(),
+                    expected: expected.to_string(),
+                    actual,
+                });
+            }
+        }
+        Ok(copied)
+    }
+    .await;
+    if result.is_err() {
+        let _ = files.remove_file_if_exists(destination);
+    }
+    result
+}
+
 async fn already_valid(files: &FileManager, spec: &DownloadSpec) -> bool {
     let bytes = match files.read_async(&spec.dest).await {
         Ok(bytes) => bytes,
@@ -299,6 +338,41 @@ mod tests {
             root: root.to_path_buf(),
         })
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn verified_copies_reject_corrupt_manual_files() {
+        let dir = std::env::temp_dir().join(format!("basalt-manual-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("source.jar");
+        let destination = dir.join("installed.jar");
+        std::fs::write(&source, b"correct").unwrap();
+        let files = files(&dir);
+
+        copy_verified(
+            &files,
+            &source,
+            &destination,
+            Some(&sha1_hex(b"correct")),
+            Some(7),
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"correct");
+
+        std::fs::write(&source, b"corrupt").unwrap();
+        let error = copy_verified(
+            &files,
+            &source,
+            &destination,
+            Some(&sha1_hex(b"correct")),
+            Some(7),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, Error::Checksum { .. }));
+        assert!(!destination.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

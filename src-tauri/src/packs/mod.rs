@@ -2,6 +2,7 @@ mod export;
 mod import;
 
 pub use export::{export_instance, PackExport};
+pub(crate) use import::plan_curseforge_archive;
 pub use import::{finish_import, inspect_pack, prepare_import, PackPreview};
 
 use std::path::Path;
