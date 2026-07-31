@@ -21,6 +21,8 @@ import { SuggestedContent } from "../components/SuggestedContent";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
+import { toast } from "sonner";
+
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { log } from "../lib/log";
@@ -37,7 +39,7 @@ import type {
   RemovalPlan,
   SearchProvider,
 } from "../lib/types";
-import { useActiveProjectIds } from "../lib/useTasks";
+import { useActiveProjectIds, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
 type InstanceTab = ContentKind | "worlds";
@@ -117,14 +119,24 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+function Toggle({
+  on,
+  onClick,
+  disabled,
+}: {
+  on: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       aria-label={on ? "Disable" : "Enable"}
       className={cn(
         "relative h-5 w-9 shrink-0 rounded-full transition-colors duration-300",
         on ? "bg-[var(--accent)]" : "bg-surface-3",
+        disabled && "cursor-not-allowed opacity-40",
       )}
     >
       <span
@@ -288,6 +300,7 @@ export function InstanceView() {
     tab === "worlds" ? NO_UPDATES : updates.filter((u) => u.kind === tab);
   const items = itemsByTab[tab] ?? EMPTY_ITEMS;
   const loading = loadingTab !== null && itemsByTab[tab] === undefined;
+  const busyWithTask = !!useInstanceTask(instance?.id);
   const query = filter.trim().toLowerCase();
   const matching = query
     ? items.filter(
@@ -439,8 +452,12 @@ export function InstanceView() {
     beginToastBatch();
     try {
       for (const update of tabUpdates) {
-        await applyUpdate(instance.id, update.kind, update.file_name);
-        done += 1;
+        try {
+          await applyUpdate(instance.id, update.kind, update.file_name);
+          done += 1;
+        } catch (e) {
+          toast.error(`Could not update ${update.latest_name}`, { description: String(e) });
+        }
       }
       await refresh();
     } finally {
@@ -453,7 +470,13 @@ export function InstanceView() {
 
   const updateOne = async (item: ContentItem) => {
     if (tab === "worlds") return;
-    await applyUpdate(instance.id, tab, item.file_name);
+    try {
+      await applyUpdate(instance.id, tab, item.file_name);
+    } catch (e) {
+      toast.error(`Could not update ${item.source?.title ?? item.file_name}`, {
+        description: String(e),
+      });
+    }
     await refresh();
   };
 
@@ -559,8 +582,9 @@ export function InstanceView() {
               {tabUpdates.length > 0 && (
                 <button
                   onClick={updateAll}
-                  disabled={updatingAll}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs font-semibold text-warn transition-colors hover:bg-warn/20 disabled:opacity-60"
+                  disabled={updatingAll || busyWithTask}
+                  title={busyWithTask ? "Wait for the current download to finish" : undefined}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs font-semibold text-warn transition-colors hover:bg-warn/20 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {updatingAll ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -576,10 +600,12 @@ export function InstanceView() {
             onClick={() =>
               tab === "worlds" ? setWorldRefresh((v) => v + 1) : void checkUpdates()
             }
-            disabled={tab === "worlds" ? worldsLoading : checkingUpdates}
+            disabled={
+              tab === "worlds" ? worldsLoading : checkingUpdates || busyWithTask
+            }
             title={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
             aria-label={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
-            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-60"
+            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
           >
             <RefreshCw
               className={cn(
@@ -590,7 +616,9 @@ export function InstanceView() {
           </button>
           <button
             onClick={() => (tab === "worlds" ? setWorldImport(true) : void addContent())}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+            disabled={busyWithTask}
+            title={busyWithTask ? "Wait for the current download to finish" : undefined}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-[var(--accent-glow)] transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
           >
             {tab === "worlds" ? (
               <HardDriveUpload className="size-3.5" />
@@ -817,9 +845,13 @@ export function InstanceView() {
                   {item.update && (
                     <button
                       onClick={() => updateOne(item)}
-                      disabled={busy}
-                      title={`Update to ${item.update.latest_name}`}
-                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-warn/15 px-3 text-xs font-semibold text-warn transition-colors hover:bg-warn/25 disabled:opacity-60"
+                      disabled={busy || busyWithTask}
+                      title={
+                        busyWithTask
+                          ? "Wait for the current download to finish"
+                          : `Update to ${item.update.latest_name}`
+                      }
+                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-warn/15 px-3 text-xs font-semibold text-warn transition-colors hover:bg-warn/25 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {busy ? (
                         <Loader2 className="size-3.5 animate-spin" />
@@ -830,11 +862,17 @@ export function InstanceView() {
                     </button>
                   )}
 
-                  <Toggle on={item.enabled} onClick={() => toggle(item)} />
+                  <Toggle
+                    on={item.enabled}
+                    disabled={busyWithTask}
+                    onClick={() => toggle(item)}
+                  />
                   <button
                     onClick={() => askRemove(item)}
+                    disabled={busyWithTask}
                     aria-label="Delete file"
-                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger"
+                    title={busyWithTask ? "Wait for the current download to finish" : undefined}
+                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-faint"
                   >
                     <Trash2 className="size-4" />
                   </button>

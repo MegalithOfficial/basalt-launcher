@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { toast } from "sonner";
 import { create } from "zustand";
 import {
   notifyInstalled,
@@ -906,7 +907,12 @@ export const useStore = create<AppStore>((set) => ({
     try {
       await api.installInstance(id);
     } catch (e) {
-      set({ error: String(e) });
+      const message = String(e);
+      if (/cancelled/i.test(message)) return;
+      const name = useStore.getState().instances.find((i) => i.id === id)?.name;
+      toast.error(name ? `Could not install ${name}` : "Install failed", {
+        description: message,
+      });
     }
   },
 }));

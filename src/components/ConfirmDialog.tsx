@@ -38,9 +38,13 @@ export function ConfirmDialog({
 }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) setTyped("");
+    if (!open) {
+      setTyped("");
+      setFailure(null);
+    }
   }, [open]);
 
   const locked = !!requireText && typed.trim() !== requireText;
@@ -51,8 +55,11 @@ export function ConfirmDialog({
 
   const run = async () => {
     setBusy(true);
+    setFailure(null);
     try {
       await onConfirm();
+    } catch (error) {
+      setFailure(String(error));
     } finally {
       setBusy(false);
     }
@@ -106,6 +113,14 @@ export function ConfirmDialog({
       </div>
 
       {children && <div className="border-b border-border-soft px-5 py-4">{children}</div>}
+
+      {failure && (
+        <div className="border-b border-border-soft px-5 py-4">
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            {failure}
+          </div>
+        </div>
+      )}
 
       {requireText && (
         <div className="border-b border-border-soft px-5 py-4">
