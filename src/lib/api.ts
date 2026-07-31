@@ -28,6 +28,9 @@ import type {
   LogLine,
   LogSearch,
   LogRecord,
+  PackExport,
+  PackFormat,
+  PackPreview,
   ProjectDetails,
   RemovalPlan,
   ProjectSummary,
@@ -232,6 +235,13 @@ export const api = {
     call<MigrationScan>("scan_launcher", { kind, root }),
   migrateInstances: (kind: string, root: string, ids: string[]) =>
     call<MigrationOutcome>("migrate_instances", { kind, root, ids }),
+  inspectPackFile: (path: string) => call<PackPreview>("inspect_pack_file", { path }),
+  importPackFile: (path: string, name: string | null) =>
+    call<Instance>("import_pack_file", { path, name }),
+  exportInstancePack: (instanceId: string, format: PackFormat, path: string) =>
+    call<PackExport>("export_instance_pack", { instanceId, format, path }),
+  packExportName: (name: string, format: PackFormat) =>
+    call<string>("pack_export_name", { name, format }),
   listTasks: () => call<Task[]>("list_tasks"),
   clearFinishedTasks: () => call<void>("clear_finished_tasks"),
   cancelTask: (taskId: string) => call<boolean>("cancel_task", { taskId }),

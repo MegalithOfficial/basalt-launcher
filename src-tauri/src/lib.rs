@@ -16,6 +16,7 @@ mod meta;
 mod migrate;
 mod modpack;
 mod network;
+mod packs;
 mod paths;
 mod search;
 mod skin;
@@ -158,6 +159,10 @@ pub fn run() {
             commands::migrate_commands::detect_launchers,
             commands::migrate_commands::scan_launcher,
             commands::migrate_commands::migrate_instances,
+            commands::pack_commands::inspect_pack_file,
+            commands::pack_commands::import_pack_file,
+            commands::pack_commands::export_instance_pack,
+            commands::pack_commands::pack_export_name,
             commands::launch_commands::launch_instance,
             commands::launch_commands::kill_instance,
             commands::launch_commands::list_running,

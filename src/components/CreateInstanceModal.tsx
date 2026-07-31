@@ -13,10 +13,12 @@ export function CreateInstanceModal({
   open,
   onClose,
   onCreated,
+  onImportFile,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (id: string) => void;
+  onImportFile?: () => void;
 }) {
   const createInstance = useStore((s) => s.createInstance);
 
@@ -212,15 +214,28 @@ export function CreateInstanceModal({
             </div>
 
             <div className="flex items-center gap-2 border-t border-border-soft px-5 py-4">
-              <button
-                onClick={() => {
-                  onClose();
-                  useStore.getState().openDiscover("modpacks", null);
-                }}
-                className="mr-auto text-xs font-medium text-content-muted transition-colors hover:text-content"
-              >
-                Browse modpacks instead
-              </button>
+              <div className="mr-auto flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    onClose();
+                    useStore.getState().openDiscover("modpacks", null);
+                  }}
+                  className="text-xs font-medium text-content-muted transition-colors hover:text-content"
+                >
+                  Browse modpacks instead
+                </button>
+                {onImportFile && (
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onImportFile();
+                    }}
+                    className="text-xs font-medium text-content-muted transition-colors hover:text-content"
+                  >
+                    Import a pack file
+                  </button>
+                )}
+              </div>
               <button
                 onClick={onClose}
                 className="rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-content hover:bg-surface-3"

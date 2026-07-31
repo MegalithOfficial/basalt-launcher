@@ -114,6 +114,8 @@ struct Mod {
     summary: String,
     #[serde(default)]
     logo: Option<Logo>,
+    #[serde(rename = "classId", default)]
+    class_id: Option<u32>,
     #[serde(rename = "downloadCount", default)]
     download_count: f64,
     #[serde(rename = "thumbsUpCount", default)]
@@ -570,6 +572,52 @@ pub async fn version(state: &AppState, project_id: &str, version_id: &str) -> Re
     )
     .await?;
     Ok(response.data)
+}
+
+pub async fn files(state: &AppState, file_ids: &[i64]) -> Result<Vec<File>> {
+    if file_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let api_key = key(state)?;
+    let mut collected = Vec::with_capacity(file_ids.len());
+    for chunk in file_ids.chunks(200) {
+        let response: Paged<File> = cache::post(
+            state,
+            state
+                .network
+                .post(format!("{API}/mods/files"))
+                .header("x-api-key", &api_key)
+                .json(&serde_json::json!({ "fileIds": chunk })),
+        )
+        .await?;
+        collected.extend(response.data);
+    }
+    Ok(collected)
+}
+
+pub async fn project_classes(
+    state: &AppState,
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, u32>> {
+    if ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let api_key = key(state)?;
+    let mod_ids: Vec<u64> = ids.iter().filter_map(|id| id.parse().ok()).collect();
+    let response: Paged<Mod> = cache::post(
+        state,
+        state
+            .network
+            .post(format!("{API}/mods"))
+            .header("x-api-key", api_key)
+            .json(&serde_json::json!({ "modIds": mod_ids })),
+    )
+    .await?;
+    Ok(response
+        .data
+        .into_iter()
+        .filter_map(|item| item.class_id.map(|class| (item.id.to_string(), class)))
+        .collect())
 }
 
 pub async fn resolve_projects(state: &AppState, ids: &[String]) -> Result<Vec<ProjectSummary>> {

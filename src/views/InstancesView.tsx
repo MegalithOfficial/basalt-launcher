@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Boxes,
+  FileArchive,
   LayoutGrid,
   List,
   Pencil,
-  Plus,
   Trash2,
+  Plus,
   TriangleAlert,
 } from "lucide-react";
 
@@ -14,6 +15,8 @@ import { Select } from "../components/Select";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EditInstanceModal } from "../components/EditInstanceModal";
+import { ImportPackModal } from "../components/ImportPackModal";
+import { pickPackFile } from "../lib/packs";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc, mediaSrc } from "../lib/media";
@@ -149,6 +152,7 @@ export function InstancesView() {
   const openInstance = useStore((s) => s.openInstance);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [packPath, setPackPath] = useState<string | null>(null);
   const [editing, setEditing] = useState<Instance | null>(null);
   const [removing, setRemoving] = useState<Instance | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -161,6 +165,11 @@ export function InstancesView() {
   });
 
   const ordered = useMemo(() => sortInstances(instances, sort), [instances, sort]);
+
+  const choosePack = async () => {
+    const chosen = await pickPackFile();
+    if (chosen) setPackPath(chosen);
+  };
 
   const switchSort = (mode: SortMode) => {
     setSort(mode);
@@ -222,6 +231,14 @@ export function InstancesView() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => void choosePack()}
+            aria-label="Import a pack file"
+            title="Import a .mrpack or CurseForge pack"
+            className="grid size-8 place-items-center rounded-lg border border-border-soft bg-surface-2/60 text-content-faint transition-colors hover:text-content"
+          >
+            <FileArchive className="size-4" />
+          </button>
           <Button onClick={() => setModalOpen(true)}>
             <Plus className="size-4" />
             New instance
@@ -394,7 +411,9 @@ export function InstancesView() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={() => {}}
+        onImportFile={() => void choosePack()}
       />
+      <ImportPackModal path={packPath} onClose={() => setPackPath(null)} />
       <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
 
       <ConfirmDialog

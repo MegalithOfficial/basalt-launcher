@@ -12,6 +12,7 @@ import {
   PinOff,
   Play,
   Settings,
+  Share,
   SquareChartGantt,
   Trash2,
   UserCircle2,
@@ -24,6 +25,7 @@ import { PlayerHead } from "./Avatar";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ContextMenu, useContextMenu, type MenuItem } from "./ContextMenu";
 import { EditInstanceModal } from "./EditInstanceModal";
+import { ExportPackModal } from "./ExportPackModal";
 import { useStore } from "../store";
 
 const MAX_TILES = 5;
@@ -210,6 +212,7 @@ export function Sidebar() {
   }, []);
   const [pins, setPins] = useState<string[]>(readPins);
   const [editing, setEditing] = useState<Instance | null>(null);
+  const [exporting, setExporting] = useState<Instance | null>(null);
   const [removing, setRemoving] = useState<Instance | null>(null);
 
   const anyRunning = Object.values(running).some((r) => r.state === "running");
@@ -304,6 +307,11 @@ export function Sidebar() {
         label: "Open folder",
         icon: FolderOpen,
         onSelect: () => void openPath(instance.dir),
+      },
+      {
+        label: "Export as pack",
+        icon: Share,
+        onSelect: () => setExporting(instance),
       },
       {
         label: "Settings",
@@ -415,6 +423,7 @@ export function Sidebar() {
       <ContextMenu menu={menu} onClose={closeMenu} />
 
       <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
+      <ExportPackModal instance={exporting} onClose={() => setExporting(null)} />
 
       <ConfirmDialog
         open={!!removing}

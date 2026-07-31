@@ -18,7 +18,9 @@ import { formatPlaytime, relativeTime } from "../lib/time";
 import { useUptime } from "../lib/useUptime";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { ImportPackModal } from "../components/ImportPackModal";
 import { InstanceSheet } from "../components/InstanceSheet";
+import { pickPackFile } from "../lib/packs";
 import { taskFraction, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
@@ -96,6 +98,7 @@ export function HomeView() {
   const selectInstance = useStore((s) => s.selectInstance);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [packPath, setPackPath] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [java, setJava] = useState<JavaStatus | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -314,6 +317,14 @@ export function HomeView() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={(id) => selectInstance(id)}
+        onImportFile={() => {
+          void pickPackFile().then((chosen) => chosen && setPackPath(chosen));
+        }}
+      />
+      <ImportPackModal
+        path={packPath}
+        onClose={() => setPackPath(null)}
+        onImported={(instance) => selectInstance(instance.id)}
       />
     </div>
   );

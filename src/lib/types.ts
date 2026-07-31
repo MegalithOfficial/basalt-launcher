@@ -270,6 +270,31 @@ export interface MigrationOutcome {
   failed: Array<[string, string]>;
 }
 
+export type PackFormat = "mrpack" | "curseforge";
+
+export interface PackPreview {
+  format: PackFormat;
+  name: string;
+  version: string | null;
+  author: string | null;
+  game_version: string;
+  loader: string | null;
+  loader_version: string | null;
+  declared_files: number;
+  override_files: number;
+  override_bytes: number;
+  warnings: string[];
+  importable: boolean;
+}
+
+export interface PackExport {
+  path: string;
+  format: PackFormat;
+  linked: number;
+  bundled: number;
+  bytes: number;
+}
+
 export type TaskKind =
   | "game_install"
   | "loader_install"

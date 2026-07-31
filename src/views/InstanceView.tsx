@@ -11,10 +11,12 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Share,
   Trash2,
 } from "lucide-react";
 
 import { EditInstanceModal } from "../components/EditInstanceModal";
+import { ExportPackModal } from "../components/ExportPackModal";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SuggestedContent } from "../components/SuggestedContent";
@@ -177,6 +179,7 @@ export function InstanceView() {
   const [itemsByTab, setItemsByTab] = useState<Record<string, ContentItem[]>>({});
   const [loadingTab, setLoadingTab] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [hasSchematicMod, setHasSchematicMod] = useState(false);
   const [filter, setFilter] = useState("");
@@ -529,6 +532,14 @@ export function InstanceView() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <PlayButton instance={instance} onError={setLaunchError} />
+            <button
+              onClick={() => setExportOpen(true)}
+              aria-label="Export as pack"
+              title="Export as pack"
+              className="grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+            >
+              <Share className="size-4" />
+            </button>
             <button
               onClick={() => setEditOpen(true)}
               aria-label="Edit instance"
@@ -1004,6 +1015,10 @@ export function InstanceView() {
         onCancel={() => setSuggestPlan(null)}
       />
 
+      <ExportPackModal
+        instance={exportOpen ? instance : null}
+        onClose={() => setExportOpen(false)}
+      />
       <EditInstanceModal
         instance={editOpen ? instance : null}
         onClose={() => setEditOpen(false)}

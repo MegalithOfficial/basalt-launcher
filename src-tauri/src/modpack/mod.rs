@@ -19,40 +19,42 @@ use crate::{
 const MODRINTH: &str = "https://api.modrinth.com/v2";
 
 #[derive(Deserialize)]
-struct MrIndex {
-    name: String,
+pub(crate) struct MrIndex {
+    pub name: String,
     #[serde(default)]
-    dependencies: HashMap<String, String>,
+    pub dependencies: HashMap<String, String>,
     #[serde(default)]
-    files: Vec<MrFile>,
+    pub files: Vec<MrFile>,
 }
 
 #[derive(Deserialize)]
-struct MrFile {
-    path: String,
+pub(crate) struct MrFile {
+    pub path: String,
     #[serde(default)]
-    hashes: MrHashes,
+    pub hashes: MrHashes,
     #[serde(default)]
-    downloads: Vec<String>,
+    pub downloads: Vec<String>,
     #[serde(rename = "fileSize", default)]
-    file_size: Option<u64>,
+    pub file_size: Option<u64>,
     #[serde(default)]
-    env: Option<MrEnv>,
+    pub env: Option<MrEnv>,
 }
 
 #[derive(Deserialize, Default)]
-struct MrHashes {
+pub(crate) struct MrHashes {
     #[serde(default)]
-    sha1: Option<String>,
+    pub sha1: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct MrEnv {
+pub(crate) struct MrEnv {
     #[serde(default)]
-    client: Option<String>,
+    pub client: Option<String>,
 }
 
-fn loader_from_dependencies(deps: &HashMap<String, String>) -> Result<Option<(String, String)>> {
+pub(crate) fn loader_from_dependencies(
+    deps: &HashMap<String, String>,
+) -> Result<Option<(String, String)>> {
     for (key, loader) in [
         ("fabric-loader", "fabric"),
         ("quilt-loader", "quilt"),
@@ -109,7 +111,7 @@ fn kind_for_path(path: &str) -> Option<&'static str> {
     }
 }
 
-fn extract_overrides(
+pub(crate) fn extract_overrides(
     files: &crate::files::FileManager,
     archive_path: &Path,
     dest: &Path,
@@ -282,18 +284,7 @@ pub async fn install_modpack(
         "modpack index parsed"
     );
 
-    let existing_names: Vec<String> = state
-        .db
-        .list_instances(&state.files)?
-        .into_iter()
-        .map(|i| i.name)
-        .collect();
-    let mut name = index.name.clone();
-    let mut counter = 2;
-    while existing_names.contains(&name) {
-        name = format!("{} ({counter})", index.name);
-        counter += 1;
-    }
+    let name = unique_instance_name(state, &index.name)?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let instance = Instance {
@@ -349,8 +340,7 @@ pub async fn install_modpack(
     let outcome = install_pack_body(
         app,
         state,
-        provider,
-        project_id,
+        Some((provider, project_id)),
         &instance,
         &instance_dir,
         &archive_path,
@@ -380,12 +370,27 @@ pub async fn install_modpack(
         .ok_or_else(|| Error::other("instance vanished after pack install"))
 }
 
+pub(crate) fn unique_instance_name(state: &AppState, base: &str) -> Result<String> {
+    let taken: Vec<String> = state
+        .db
+        .list_instances(&state.files)?
+        .into_iter()
+        .map(|instance| instance.name)
+        .collect();
+    let mut name = base.to_string();
+    let mut counter = 2;
+    while taken.contains(&name) {
+        name = format!("{base} ({counter})");
+        counter += 1;
+    }
+    Ok(name)
+}
+
 #[allow(clippy::too_many_arguments)]
-async fn install_pack_body(
+pub(crate) async fn install_pack_body(
     app: &AppHandle,
     state: &AppState,
-    provider: Provider,
-    project_id: &str,
+    icon_source: Option<(Provider, &str)>,
     instance: &Instance,
     instance_dir: &Path,
     archive_path: &Path,
@@ -465,19 +470,21 @@ async fn install_pack_body(
 
     link_pack_files(state, &instance.id, &linkable).await;
 
-    if let Some(icon_url) = search::resolve_projects(state, provider, &[project_id.to_string()])
-        .await
-        .ok()
-        .and_then(|mut list| list.pop())
-        .and_then(|summary| summary.icon_url)
-    {
-        crate::meta::media::fetch_instance_logo(
-            &state.network,
-            &state.files,
-            &instance.id,
-            &icon_url,
-        )
-        .await;
+    if let Some((provider, project_id)) = icon_source {
+        if let Some(icon_url) = search::resolve_projects(state, provider, &[project_id.to_string()])
+            .await
+            .ok()
+            .and_then(|mut list| list.pop())
+            .and_then(|summary| summary.icon_url)
+        {
+            crate::meta::media::fetch_instance_logo(
+                &state.network,
+                &state.files,
+                &instance.id,
+                &icon_url,
+            )
+            .await;
+        }
     }
 
     Ok(())
