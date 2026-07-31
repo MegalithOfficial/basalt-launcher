@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -21,6 +21,9 @@ import { ContextMenu, useContextMenu, type MenuItem } from "./ContextMenu";
 import { useStore } from "../store";
 
 const MAX_TILES = 5;
+const TILE_SIZE = 44;
+const TILE_GAP = 6;
+const DOCK_HEADING = 25;
 const PIN_KEY = "sidebar-pins";
 
 function readPins(): string[] {
@@ -182,6 +185,21 @@ export function Sidebar() {
   const openDiscover = useStore((s) => s.openDiscover);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [capacity, setCapacity] = useState(MAX_TILES);
+
+  useEffect(() => {
+    const node = dockRef.current;
+    if (!node) return;
+    const measure = () => {
+      const room = node.clientHeight - DOCK_HEADING;
+      setCapacity(Math.max(0, Math.floor((room + TILE_GAP) / (TILE_SIZE + TILE_GAP))));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const [pins, setPins] = useState<string[]>(readPins);
 
   const anyRunning = Object.values(running).some((r) => r.state === "running");
@@ -209,6 +227,7 @@ export function Sidebar() {
   }, [instances, pins]);
 
   const tiles = [...dock.pinned, ...dock.recents];
+  const shownTiles = tiles.slice(0, capacity);
 
   useEffect(() => {
     tiles.forEach((i) => void loadMedia(i.id));
@@ -285,11 +304,12 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {tiles.length > 0 && (
-        <>
-          <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
-          <div className="flex w-full flex-col items-center gap-1.5">
-            {tiles.map((instance) => (
+      <div ref={dockRef} className="flex min-h-0 w-full flex-1 flex-col items-center overflow-hidden">
+        {shownTiles.length > 0 && (
+          <>
+            <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
+            <div className="flex w-full flex-col items-center gap-1.5">
+              {shownTiles.map((instance) => (
               <RecentTile
                 key={instance.id}
                 instance={instance}
@@ -301,13 +321,12 @@ export function Sidebar() {
                 onContextMenu={(e) =>
                   openMenu(e, tileMenu(instance), instance.name, { fromElement: true })
                 }
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      <div className="flex-1" />
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
 
