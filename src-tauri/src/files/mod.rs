@@ -150,6 +150,58 @@ impl FileManager {
             .map_err(|error| Error::other(format!("copy task failed: {error}")))?
     }
 
+    pub fn link_or_copy(
+        &self,
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<()> {
+        let source = source.as_ref();
+        let destination = destination.as_ref();
+        if source == destination {
+            return Ok(());
+        }
+
+        let source_relative = self.relative(source)?;
+        self.relative(destination)?;
+        if let Some(parent) = destination.parent() {
+            self.ensure_dir(parent)?;
+        }
+
+        let temporary = temporary_path(destination);
+        let temporary_relative = self.relative(&temporary)?;
+        match self
+            .root
+            .hard_link(source_relative, &self.root, temporary_relative)
+        {
+            Ok(()) => {
+                let result = self.replace_staged(&temporary, destination);
+                if result.is_err() {
+                    let _ = self.remove_file_if_exists(&temporary);
+                }
+                result
+            }
+            Err(_) => {
+                let mut source = self.open(source)?;
+                self.write_atomic_with(destination, |target| {
+                    std::io::copy(&mut source, target).map(|_| ())
+                })
+            }
+        }
+    }
+
+    pub async fn link_or_copy_async(
+        &self,
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<()> {
+        let files = self.clone();
+        let source = source.as_ref().to_path_buf();
+        let destination = destination.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || files.link_or_copy(source, destination))
+            .await
+            .map_err(|error| Error::other(format!("link task failed: {error}")))?
+    }
+
     pub fn copy_external_into_sync(
         &self,
         source: impl AsRef<Path>,
@@ -485,6 +537,29 @@ mod tests {
         drop(files.create(&path).unwrap());
 
         assert!(files.read(&path).unwrap().is_empty());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn links_managed_files_without_changing_their_contents() {
+        let root = std::env::temp_dir().join(format!("basalt-link-test-{}", uuid::Uuid::new_v4()));
+        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let source = root.join("versions/1.21.1/1.21.1.jar");
+        let destination = root.join("versions/neoforge/neoforge.jar");
+        files.write_atomic(&source, b"minecraft").unwrap();
+        files.write_atomic(&destination, b"stale").unwrap();
+
+        files.link_or_copy(&source, &destination).unwrap();
+
+        assert_eq!(files.read(&destination).unwrap(), b"minecraft");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            assert_eq!(
+                std::fs::metadata(&source).unwrap().ino(),
+                std::fs::metadata(&destination).unwrap().ino()
+            );
+        }
         std::fs::remove_dir_all(root).ok();
     }
 

@@ -337,8 +337,12 @@ impl VersionJson {
         resolved
     }
 
-    pub fn jar_id(&self) -> &str {
+    pub fn client_jar_id(&self) -> &str {
         self.jar.as_deref().unwrap_or(&self.id)
+    }
+
+    pub fn launch_jar_id(&self) -> &str {
+        &self.id
     }
 
     pub fn assets_name(&self) -> String {
@@ -352,7 +356,7 @@ impl VersionJson {
         let client = &self.downloads.as_ref()?.client;
         Some(DownloadSpec {
             url: client.url.clone(),
-            dest: paths.version_jar(self.jar_id()),
+            dest: paths.version_jar(self.client_jar_id()),
             sha1: Some(client.sha1.clone()),
             size: Some(client.size),
         })
@@ -447,7 +451,8 @@ mod tests {
 
         let merged = merge_versions(parent, child);
         assert_eq!(merged.id, "fabric-loader-0.16.9-1.21.1");
-        assert_eq!(merged.jar_id(), "1.21.1");
+        assert_eq!(merged.client_jar_id(), "1.21.1");
+        assert_eq!(merged.launch_jar_id(), "fabric-loader-0.16.9-1.21.1");
         assert_eq!(
             merged.main_class,
             "net.fabricmc.loader.impl.launch.knot.KnotClient"

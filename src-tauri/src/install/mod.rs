@@ -61,6 +61,37 @@ pub async fn load_merged_version(state: &AppState, version_id: &str) -> Result<V
     Ok(current)
 }
 
+pub async fn ensure_launch_jar(
+    state: &AppState,
+    version: &VersionJson,
+) -> Result<std::path::PathBuf> {
+    let source = state.paths.version_jar(version.client_jar_id());
+    let destination = state.paths.version_jar(version.launch_jar_id());
+    if source == destination {
+        return Ok(source);
+    }
+
+    let source_metadata = state.files.metadata(&source)?;
+    if state
+        .files
+        .metadata(&destination)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() == source_metadata.len())
+    {
+        return Ok(destination);
+    }
+
+    state
+        .files
+        .link_or_copy_async(&source, &destination)
+        .await?;
+    tracing::info!(
+        source = %source.display(),
+        destination = %destination.display(),
+        "created loader profile jar alias"
+    );
+    Ok(destination)
+}
+
 #[tracing::instrument(skip_all, fields(version_id = %version.id), err)]
 async fn load_asset_index(state: &AppState, version: &VersionJson) -> Result<AssetIndex> {
     let asset_index = version
@@ -177,6 +208,9 @@ pub async fn install_version(
         Some(&|attempt, max, reason| task.note_retry(attempt, max, reason)),
     )
     .await?;
+
+    task.stage("version-jar");
+    ensure_launch_jar(state, &version).await?;
 
     task.stage("natives");
     let natives = resolved.natives.clone();

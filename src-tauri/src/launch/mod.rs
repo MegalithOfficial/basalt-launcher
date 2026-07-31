@@ -293,6 +293,7 @@ pub async fn launch_instance(
         .clone()
         .unwrap_or_else(|| instance.version_id.clone());
     let version: VersionJson = install::load_merged_version(state, &launch_version_id).await?;
+    let launch_jar = install::ensure_launch_jar(state, &version).await?;
     let account = ensure_account(state).await?;
 
     let settings = state.db.load_settings()?;
@@ -338,13 +339,7 @@ pub async fn launch_instance(
             .iter()
             .map(|native| native.spec.dest.display().to_string()),
     );
-    classpath.push(
-        state
-            .paths
-            .version_jar(version.jar_id())
-            .display()
-            .to_string(),
-    );
+    classpath.push(launch_jar.display().to_string());
     let classpath = classpath.join(classpath_separator());
 
     let natives_dir = state.paths.natives_dir(&version.id);
