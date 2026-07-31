@@ -56,12 +56,12 @@ async fn fetch_json<T: serde::de::DeserializeOwned>(
     client: &NetworkManager,
     url: &str,
 ) -> Result<T> {
-    Ok(client
+    client
         .send(client.get(url))
         .await?
         .error_for_status()?
         .json()
-        .await?)
+        .await
 }
 
 fn neoforge_prefix(game_version: &str) -> String {

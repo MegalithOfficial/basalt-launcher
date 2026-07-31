@@ -226,7 +226,7 @@ async fn capture_worn(state: &AppState, current: &Appearance) -> Option<String> 
 }
 
 pub fn is_skin_shaped(width: u32, height: u32) -> bool {
-    if width < 64 || width % 64 != 0 {
+    if width < 64 || !width.is_multiple_of(64) {
         return false;
     }
     let scale = width / 64;

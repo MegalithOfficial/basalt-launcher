@@ -206,6 +206,7 @@ async fn download_once(
     Ok(true)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn download_many_cancellable<F>(
     client: &NetworkManager,
     files: &FileManager,

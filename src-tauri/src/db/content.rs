@@ -41,6 +41,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn merge_identity(
         &self,
         instance_id: &str,
@@ -78,6 +79,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn merge_provider_identity(
         &self,
         instance_id: &str,

@@ -272,7 +272,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
 
     let unlinked: Vec<&(String, String, u32)> = hashed
         .iter()
-        .filter(|(name, _, _)| known.get(name).map_or(true, |f| f.project_id.is_none()))
+        .filter(|(name, _, _)| known.get(name).is_none_or(|f| f.project_id.is_none()))
         .collect();
 
     if unlinked.is_empty() {

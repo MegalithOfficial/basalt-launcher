@@ -80,7 +80,7 @@ pub fn list(files: &FileManager, instance_id: &str, kind: &str) -> Result<Vec<Co
             update: None,
         });
     }
-    items.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
+    items.sort_by_key(|item| item.file_name.to_lowercase());
     Ok(items)
 }
 

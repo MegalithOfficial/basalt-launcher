@@ -88,6 +88,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_instance_settings(
         &self,
         instance_id: &str,

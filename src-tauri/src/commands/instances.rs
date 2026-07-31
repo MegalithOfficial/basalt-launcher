@@ -90,6 +90,7 @@ pub async fn list_loader_versions(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
+#[allow(clippy::too_many_arguments)]
 pub fn update_instance(
     state: State<AppState>,
     instance_id: String,
@@ -399,7 +400,7 @@ pub async fn get_java_status(
         .clone()
         .or_else(|| state.db.load_settings().ok().and_then(|s| s.java_path));
     let found = java::find_for_major(&state.files, required_major, explicit.as_deref()).await;
-    let ok = found.as_ref().map_or(false, |j| j.major >= required_major);
+    let ok = found.as_ref().is_some_and(|j| j.major >= required_major);
 
     Ok(JavaStatus {
         required_major,

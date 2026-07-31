@@ -178,9 +178,9 @@ pub fn rules_allow(rules: &[Rule]) -> bool {
         if rule.features.is_some() {
             continue;
         }
-        let os_matches = rule.os.as_ref().map_or(true, |os| {
-            os.name.as_ref().map_or(true, |n| n == current_os())
-                && os.arch.as_ref().map_or(true, |a| a == current_arch())
+        let os_matches = rule.os.as_ref().is_none_or(|os| {
+            os.name.as_ref().is_none_or(|n| n == current_os())
+                && os.arch.as_ref().is_none_or(|a| a == current_arch())
         });
         if os_matches {
             allowed = rule.action == "allow";
@@ -190,13 +190,13 @@ pub fn rules_allow(rules: &[Rule]) -> bool {
 }
 
 fn name_classifier(name: &str) -> Option<&str> {
-    name.splitn(5, ':').nth(3)
+    name.split(':').nth(3)
 }
 
 fn dedupe_key(name: &str) -> String {
     let parts: Vec<&str> = name.split(':').collect();
     match parts.len() {
-        0 | 1 | 2 => name.to_string(),
+        0..=2 => name.to_string(),
         3 => format!("{}:{}", parts[0], parts[1]),
         _ => format!("{}:{}:{}", parts[0], parts[1], parts[3]),
     }
@@ -325,7 +325,7 @@ impl VersionJson {
 
             if let Some(spec) = lib.to_spec(paths) {
                 let is_native =
-                    name_classifier(&lib.name).map_or(false, |c| c.starts_with("natives"));
+                    name_classifier(&lib.name).is_some_and(|c| c.starts_with("natives"));
                 if is_native {
                     resolved.natives.push(NativeSpec { spec, exclude });
                 } else {

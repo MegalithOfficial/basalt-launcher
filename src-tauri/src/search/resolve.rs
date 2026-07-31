@@ -291,10 +291,14 @@ pub async fn plan(
             continue;
         }
 
-        let info = resolve_projects(state, provider, &[dependency.project_id.clone()])
-            .await
-            .ok()
-            .and_then(|mut list| list.pop());
+        let info = resolve_projects(
+            state,
+            provider,
+            std::slice::from_ref(&dependency.project_id),
+        )
+        .await
+        .ok()
+        .and_then(|mut list| list.pop());
 
         if let Some(existing) = installed.by_project.get(&dependency.project_id) {
             if let Some(summary) = info.clone() {

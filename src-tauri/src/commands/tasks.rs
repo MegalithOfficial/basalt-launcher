@@ -38,10 +38,10 @@ fn sweep_partials(files: &crate::files::FileManager, dir: &std::path::Path) -> u
             } else {
                 removed += sweep_partials(files, &path);
             }
-        } else if path.extension().is_some_and(|e| e == "part") {
-            if files.remove_file_if_exists(&path).is_ok() {
-                removed += 1;
-            }
+        } else if path.extension().is_some_and(|e| e == "part")
+            && files.remove_file_if_exists(&path).is_ok()
+        {
+            removed += 1;
         }
     }
     removed

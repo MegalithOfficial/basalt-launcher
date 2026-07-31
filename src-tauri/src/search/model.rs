@@ -61,20 +61,15 @@ impl ContentKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SortOrder {
+    #[default]
     Relevance,
     Downloads,
     Follows,
     Newest,
     Updated,
-}
-
-impl Default for SortOrder {
-    fn default() -> Self {
-        SortOrder::Relevance
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -241,9 +236,8 @@ impl ProjectVersion {
         let version_ok =
             game_version.is_empty() || self.game_versions.iter().any(|g| g == game_version);
         let loader_ok = !kind.uses_loaders()
-            || loader.map_or(true, |l| {
-                self.loaders.is_empty() || self.loaders.iter().any(|x| x == l)
-            });
+            || loader
+                .is_none_or(|l| self.loaders.is_empty() || self.loaders.iter().any(|x| x == l));
         version_ok && loader_ok
     }
 }

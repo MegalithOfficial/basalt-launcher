@@ -172,7 +172,7 @@ pub async fn list_all(files: &FileManager) -> Vec<JavaInfo> {
             });
         }
     }
-    result.sort_by(|a, b| b.major.cmp(&a.major));
+    result.sort_by_key(|runtime| std::cmp::Reverse(runtime.major));
     result
 }
 
