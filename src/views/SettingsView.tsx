@@ -13,6 +13,7 @@ import {
   Plus,
   Radio,
   RefreshCw,
+  RotateCcw,
   ScrollText,
   Sparkles,
   Tag,
@@ -25,11 +26,13 @@ import { MemoryRange } from "../components/MemoryRange";
 import { MigrateModal } from "../components/MigrateModal";
 import { Select } from "../components/Select";
 import { SettingGroup, SettingRow as Row, Toggle } from "../components/ui";
+import { ACCENT_PRESETS, applyTheme, DEFAULTS, isHex, themeVars } from "../lib/accent";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
 import type {
   AboutLinks,
+  AccentMode,
   AppInfo,
   JavaInfo,
   EnvVar,
@@ -50,8 +53,71 @@ const TABS = [
   { id: "game", label: "Game" },
   { id: "integrations", label: "Integrations" },
   { id: "network", label: "Network" },
+  { id: "appearance", label: "Look and feel" },
   { id: "resources", label: "Resources" },
 ];
+
+const ACCENT_MODES: Array<{ id: AccentMode; label: string; hint: string }> = [
+  {
+    id: "banner",
+    label: "From the banner",
+    hint: "Picks up the dominant colour of the instance you have selected",
+  },
+  { id: "custom", label: "Custom", hint: "One colour of your choosing, everywhere" },
+  { id: "default", label: "Basalt orange", hint: "The colour Basalt ships with" },
+];
+
+function ColorField({
+  label,
+  hint,
+  value,
+  fallback,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  fallback: string;
+  onChange: (next: string) => void;
+}) {
+  const valid = isHex(value);
+  return (
+    <Row label={label} hint={hint} stacked>
+      <label
+        className="relative size-9 shrink-0 cursor-pointer overflow-hidden rounded-lg border border-border"
+        style={{ background: valid ? value : fallback }}
+        title="Pick a colour"
+      >
+        <input
+          type="color"
+          value={valid ? value : fallback}
+          onChange={(event) => onChange(event.target.value)}
+          className="absolute inset-0 cursor-pointer opacity-0"
+        />
+      </label>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        spellCheck={false}
+        placeholder={fallback}
+        className={cn(
+          inputCls,
+          "w-28 font-mono text-xs uppercase",
+          !valid && "border-danger/50 text-danger",
+        )}
+      />
+      {value.toLowerCase() !== fallback.toLowerCase() && (
+        <button
+          onClick={() => onChange(fallback)}
+          title="Back to the default"
+          className="grid size-9 shrink-0 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+        >
+          <RotateCcw className="size-3.5" />
+        </button>
+      )}
+    </Row>
+  );
+}
 
 function Section(props: React.ComponentProps<typeof SettingGroup>) {
   return <SettingGroup {...props} className={cn("mb-6", props.className)} />;
@@ -227,6 +293,9 @@ export function SettingsView() {
   const logConfig = useStore((s) => s.logConfig);
   const setLogLevel = useStore((s) => s.setLogLevel);
   const setView = useStore((s) => s.setView);
+  const bannerAccent = useStore((s) =>
+    s.selectedInstanceId ? (s.media[s.selectedInstanceId]?.accent ?? null) : null,
+  );
   const [draft, setDraft] = useState<LauncherSettings | null>(settings);
   const [javas, setJavas] = useState<JavaInfo[]>([]);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -282,6 +351,10 @@ export function SettingsView() {
     }, 500);
     return () => clearTimeout(debounceRef.current);
   }, [draft]);
+
+  useEffect(() => {
+    if (draft) applyTheme(themeVars(draft, bannerAccent));
+  }, [draft, bannerAccent]);
 
   if (!draft) return null;
 
@@ -1026,6 +1099,117 @@ export function SettingsView() {
                 label="Accept invalid certificates"
                 checked={draft.allow_insecure_tls}
                 onChange={(v) => set({ allow_insecure_tls: v })}
+              />
+            </Row>
+          </Section>
+          </div>
+        )}
+
+        {tab === "appearance" && (
+          <div className="gap-6 [column-fill:balance] lg:columns-2">
+          <Section
+            title="Accent colour"
+            description="The colour Basalt uses for buttons, highlights and progress."
+          >
+            {ACCENT_MODES.map((mode) => (
+              <Row key={mode.id} label={mode.label} hint={mode.hint}>
+                <button
+                  onClick={() => set({ accent_mode: mode.id })}
+                  aria-pressed={draft.accent_mode === mode.id}
+                  className={cn(
+                    "grid size-5 shrink-0 place-items-center rounded-full border transition-colors",
+                    draft.accent_mode === mode.id
+                      ? "border-(--accent) bg-(--accent) text-black"
+                      : "border-border bg-surface-3 hover:border-content-faint",
+                  )}
+                >
+                  {draft.accent_mode === mode.id && <Check className="size-3" strokeWidth={4} />}
+                </button>
+              </Row>
+            ))}
+
+            {draft.accent_mode === "custom" && (
+              <>
+                <Row label="Presets" hint="A starting point you can fine tune below" stacked>
+                  <div className="flex flex-wrap gap-2">
+                    {ACCENT_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => set({ accent_color: preset })}
+                        aria-label={preset}
+                        title={preset}
+                        style={{ background: preset }}
+                        className={cn(
+                          "grid size-7 place-items-center rounded-lg border transition-transform hover:scale-105",
+                          draft.accent_color.toLowerCase() === preset
+                            ? "border-content"
+                            : "border-border",
+                        )}
+                      >
+                        {draft.accent_color.toLowerCase() === preset && (
+                          <Check className="size-3.5 text-black" strokeWidth={3} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </Row>
+                <ColorField
+                  label="Accent"
+                  hint="Used for the play button, links, progress and focus rings"
+                  value={draft.accent_color}
+                  fallback={DEFAULTS.accent}
+                  onChange={(accent_color) => set({ accent_color })}
+                />
+              </>
+            )}
+          </Section>
+
+          <Section
+            title="Status colours"
+            description="What Basalt uses to say something went well, needs attention, or failed."
+          >
+            <ColorField
+              label="Success"
+              hint="Verified downloads, a running instance, finished tasks"
+              value={draft.ok_color}
+              fallback={DEFAULTS.ok}
+              onChange={(ok_color) => set({ ok_color })}
+            />
+            <ColorField
+              label="Warning"
+              hint="Available updates, loader changes, recovered worlds"
+              value={draft.warn_color}
+              fallback={DEFAULTS.warn}
+              onChange={(warn_color) => set({ warn_color })}
+            />
+            <ColorField
+              label="Danger"
+              hint="Deletions, failed tasks, the reset button"
+              value={draft.danger_color}
+              fallback={DEFAULTS.danger}
+              onChange={(danger_color) => set({ danger_color })}
+            />
+          </Section>
+
+          <Section title="Behaviour" description="How Basalt acts while you use it.">
+            <Row
+              label="Suggest content while searching"
+              hint="When an instance search finds nothing installed, look for matches on Modrinth and CurseForge"
+            >
+              <Toggle
+                label="Suggest content while searching"
+                checked={draft.show_suggestions}
+                onChange={(show_suggestions) => set({ show_suggestions })}
+              />
+            </Row>
+            <Row
+              label="Minimize while the game runs"
+              hint="Gets Basalt out of the way on launch and brings it back when the last instance closes"
+            >
+              <Toggle
+                label="Minimize while the game runs"
+                checked={draft.minimize_on_launch}
+                onChange={(minimize_on_launch) => set({ minimize_on_launch })}
               />
             </Row>
           </Section>

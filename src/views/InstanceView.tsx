@@ -188,6 +188,7 @@ export function InstanceView() {
   );
   const updates = storedUpdates ?? NO_UPDATES;
   const activeProjects = useActiveProjectIds();
+  const suggestionsEnabled = useStore((s) => s.settings?.show_suggestions !== false);
   const busyWithTask = !!useInstanceTask(instance?.id);
 
   const [tab, setTab] = useState<InstanceTab>("mods");
@@ -876,7 +877,7 @@ export function InstanceView() {
                 {`No ${listView === "unlinked" ? "unlinked" : listView} ${tabMeta.label.toLowerCase()}.`}
               </div>
             )}
-            {query && (
+            {query && suggestionsEnabled && (
               <SuggestedContent
                 instance={instance}
                 kind={tab}

@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { create } from "zustand";
@@ -264,6 +265,21 @@ let batching = false;
 let installsInFlight = 0;
 let unlisteners: Array<() => void> = [];
 let processLogTimer: ReturnType<typeof setTimeout> | null = null;
+let minimizedForPlay = false;
+
+function restoreAfterPlay() {
+  if (!minimizedForPlay) return;
+  const stillPlaying = Object.values(useStore.getState().running).some(
+    (session) => session.state === "running",
+  );
+  if (stillPlaying) return;
+  minimizedForPlay = false;
+  const win = getCurrentWindow();
+  void win
+    .unminimize()
+    .then(() => win.setFocus())
+    .catch(() => {});
+}
 const pendingProcessLogs = new Map<string, LogLine[]>();
 
 function flushProcessLogs() {
@@ -644,6 +660,7 @@ export const useStore = create<AppStore>((set) => ({
         });
         if (info.state !== "running") {
           void useStore.getState().refreshInstances();
+          restoreAfterPlay();
         }
       }));
     }
@@ -840,6 +857,10 @@ export const useStore = create<AppStore>((set) => ({
       view: "logs",
       viewStack: s.view !== "logs" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
     }));
+    if (useStore.getState().settings?.minimize_on_launch) {
+      minimizedForPlay = true;
+      void getCurrentWindow().minimize().catch(() => {});
+    }
     const backfill = await api.getLogs(runningId);
     set((s) => {
       const streamed = s.logs[runningId] ?? [];

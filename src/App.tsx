@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "motion/react";
 
-import { accentVars } from "./lib/accent";
+import { applyTheme, themeVars } from "./lib/accent";
 import { cn } from "./lib/cn";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { Sidebar } from "./components/Sidebar";
@@ -37,9 +37,10 @@ function App() {
   const ready = useStore((s) => s.ready);
   const error = useStore((s) => s.error);
   const init = useStore((s) => s.init);
-  const accent = useStore((s) =>
+  const banner = useStore((s) =>
     s.selectedInstanceId ? (s.media[s.selectedInstanceId]?.accent ?? null) : null,
   );
+  const settings = useStore((s) => s.settings);
 
   const [maximized, setMaximized] = useState(false);
   const onboarding = useStore((s) => s.ready && s.settings?.onboarded === false);
@@ -58,6 +59,11 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    applyTheme(themeVars(settings, onboarding ? null : banner));
+  }, [settings, banner, onboarding]);
+
+
   const Current = VIEWS[view];
   const immersive = view === "instance" || view === "project";
 
@@ -67,7 +73,6 @@ function App() {
         "flex h-full w-full overflow-hidden bg-base text-content",
         !maximized && "rounded-xl border border-border-soft",
       )}
-      style={accentVars(onboarding ? null : accent)}
     >
       <WindowFrame enabled={!maximized} />
       <Toaster

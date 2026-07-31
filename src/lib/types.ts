@@ -22,7 +22,16 @@ export interface LauncherSettings {
   max_retries: number;
   allow_insecure_tls: boolean;
   onboarded: boolean;
+  accent_mode: AccentMode;
+  accent_color: string;
+  ok_color: string;
+  warn_color: string;
+  danger_color: string;
+  show_suggestions: boolean;
+  minimize_on_launch: boolean;
 }
+
+export type AccentMode = "banner" | "custom" | "default";
 
 export type ProxyMode = "system" | "none" | "http" | "socks5";
 

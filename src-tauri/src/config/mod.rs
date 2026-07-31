@@ -42,10 +42,48 @@ pub struct LauncherSettings {
     pub allow_insecure_tls: bool,
     #[serde(default)]
     pub onboarded: bool,
+    #[serde(default = "default_accent_mode")]
+    pub accent_mode: String,
+    #[serde(default = "default_accent_color")]
+    pub accent_color: String,
+    #[serde(default = "default_ok_color")]
+    pub ok_color: String,
+    #[serde(default = "default_warn_color")]
+    pub warn_color: String,
+    #[serde(default = "default_danger_color")]
+    pub danger_color: String,
+    #[serde(default = "default_true")]
+    pub show_suggestions: bool,
+    #[serde(default)]
+    pub minimize_on_launch: bool,
 }
 
 pub fn default_proxy_mode() -> String {
     "system".to_string()
+}
+
+pub fn default_accent_mode() -> String {
+    "banner".to_string()
+}
+
+pub fn default_accent_color() -> String {
+    "#ff6a2b".to_string()
+}
+
+pub fn default_ok_color() -> String {
+    "#46c08a".to_string()
+}
+
+pub fn default_warn_color() -> String {
+    "#e9b949".to_string()
+}
+
+pub fn default_danger_color() -> String {
+    "#e5484d".to_string()
+}
+
+pub fn default_true() -> bool {
+    true
 }
 
 pub fn default_timeout_secs() -> u64 {
@@ -81,6 +119,13 @@ impl Default for LauncherSettings {
             max_retries: default_max_retries(),
             allow_insecure_tls: false,
             onboarded: false,
+            accent_mode: default_accent_mode(),
+            accent_color: default_accent_color(),
+            ok_color: default_ok_color(),
+            warn_color: default_warn_color(),
+            danger_color: default_danger_color(),
+            show_suggestions: true,
+            minimize_on_launch: false,
         }
     }
 }
