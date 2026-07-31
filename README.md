@@ -76,9 +76,10 @@ bun run tauri dev
 Modrinth works without additional configuration. CurseForge requires an application
 API key.
 
-Create a key at [console.curseforge.com](https://console.curseforge.com/), then add it
-under **Settings → Integrations** in Basalt. Never commit an API key or include one in
-a bug report.
+Sign in at [console.curseforge.com](https://console.curseforge.com/), open the
+**API KEYS** tab, and copy the generated key. Paste it under
+**Settings → Integrations** in Basalt. Never commit an API key or include one in a
+bug report.
 
 ## Contributing
 
