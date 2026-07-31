@@ -177,7 +177,7 @@ jobs:
         run: |
           mapfile -t files < <(
             find release-assets -type f \
-              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+              \( -name '*.AppImage' -o -name '*.deb' \
               -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \)
           )
           if [ "${#files[@]}" -eq 0 ]; then
@@ -201,3 +201,79 @@ jobs:
             --title "$title" \
             --generate-notes \
             "${channel_args[@]}"
+
+  publish-aur:
+    name: Publish AUR
+    if: inputs.upload_release && inputs.build_type == 'release'
+    needs:
+      - prepare
+      - publish
+    runs-on: ubuntu-latest
+    environment: aur
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Require AUR publishing key
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "Add AUR_SSH_PRIVATE_KEY to the aur GitHub Environment before publishing a stable release."
+            exit 1
+          fi
+
+      - name: Download stable Debian package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/debian"
+          gh release download "v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.deb' \
+            --dir "$RUNNER_TEMP/debian"
+
+      - name: Configure AUR SSH access
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$HOME/.ssh/aur"
+          chmod 600 "$HOME/.ssh/aur"
+          ssh-keyscan -t ed25519 aur.archlinux.org >> "$HOME/.ssh/known_hosts"
+          cat >> "$HOME/.ssh/config" <<EOF
+          Host aur.archlinux.org
+            IdentityFile $HOME/.ssh/aur
+            IdentitiesOnly yes
+          EOF
+
+      - name: Update AUR package metadata
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          git clone ssh://aur@aur.archlinux.org/basalt-launcher-bin.git "$RUNNER_TEMP/aur"
+          mapfile -t debs < <(find "$RUNNER_TEMP/debian" -maxdepth 1 -type f -name '*.deb')
+          if [ "${#debs[@]}" -ne 1 ]; then
+            echo "Expected exactly one Debian package, found ${#debs[@]}."
+            exit 1
+          fi
+          sha256="$(sha256sum "${debs[0]}" | cut -d ' ' -f 1)"
+          node .github/scripts/update-aur-package.mjs "$VERSION" "$sha256" "$RUNNER_TEMP/aur"
+
+      - name: Publish AUR package
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          cd "$RUNNER_TEMP/aur"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "AUR metadata is already current."
+            exit 0
+          fi
+          git commit -m "Update to ${VERSION}"
+          git push origin master

@@ -43,10 +43,26 @@ Windows and macOS paths exist through Tauri but have not been properly tested.
 CurseForge modpacks are not supported yet, and Mojang's low-resolution version
 artwork may appear soft on large windows.
 
+## Install
+
+Release builds are available as AppImage and Debian packages. Arch users can
+install `basalt-launcher-bin` from the AUR after the first stable release.
+
+Nix and NixOS users can build and run Basalt directly from source:
+
+```bash
+nix run github:MegalithOfficial/basalt-launcher
+```
+
+To build the latest development source with development-only features enabled:
+
+```bash
+nix run github:MegalithOfficial/basalt-launcher#dev
+```
+
 ## Running from source
 
-Basalt is not packaged yet. To run it locally, install [Rust](https://rustup.rs/),
-[Bun](https://bun.sh/), and the
+To run it locally, install [Rust](https://rustup.rs/), [Bun](https://bun.sh/), and the
 [native dependencies required by Tauri](https://v2.tauri.app/start/prerequisites/).
 Then, from the repository root:
 

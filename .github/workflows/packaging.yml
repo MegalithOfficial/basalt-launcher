@@ -1,0 +1,55 @@
+name: Packaging
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/update-aur-package.mjs"
+      - ".github/scripts/update-aur-package.test.mjs"
+      - ".github/workflows/packaging.yml"
+      - "flake.nix"
+      - "nix/**"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "src-tauri/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aur:
+    name: AUR metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Test package generator
+        run: node --test .github/scripts/update-aur-package.test.mjs
+
+      - name: Validate generated PKGBUILD and SRCINFO
+        run: |
+          package_dir="$RUNNER_TEMP/aur-package"
+          sha256="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          node .github/scripts/update-aur-package.mjs 1.2.3 "$sha256" "$package_dir"
+          bash -n "$package_dir/PKGBUILD"
+          docker run --rm -v "$package_dir:/pkg" archlinux:base-devel bash -lc '
+            useradd --create-home builder
+            chown -R builder:builder /pkg
+            su builder -c "cd /pkg && makepkg --printsrcinfo" > /pkg/.SRCINFO.actual
+          '
+          diff -u "$package_dir/.SRCINFO" "$package_dir/.SRCINFO.actual"
+
+  nix:
+    name: Nix source build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Build and check flake
+        run: nix flake check --print-build-logs
