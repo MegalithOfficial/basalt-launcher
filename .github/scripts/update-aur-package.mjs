@@ -75,7 +75,7 @@ sha256sums_x86_64=('${sha256}')
 package() {
   bsdtar -xf "\${pkgname}-\${pkgver}.deb"
   bsdtar -xf data.tar.* -C "\${pkgdir}"
-  mv "\${pkgdir}/usr/share/applications/Basalt Launcher.desktop" \
+  mv "\${pkgdir}/usr/share/applications/Basalt Launcher.desktop" \\
     "\${pkgdir}/usr/share/applications/basalt-launcher.desktop"
 }
 `;
