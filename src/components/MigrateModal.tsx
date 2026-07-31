@@ -243,7 +243,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
         onClose={importing ? undefined : onClose}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
         {scanning && (
           <div className="flex flex-col items-center gap-3 py-14 text-center">
             <Loader2 className="size-5 animate-spin text-[var(--accent)]" />
@@ -267,7 +267,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
         {!scanning && source && outcome === null && (
           <>
             {sources.length > 0 && (
-              <div className="mb-3 flex items-center gap-3">
+              <div className="mb-3 flex shrink-0 items-center gap-3">
                 <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border-soft bg-surface-2/60 p-1">
                   {sources.map((entry) => (
                     <SourceTab
@@ -284,7 +284,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
               </div>
             )}
 
-            <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
               <span className="text-[11px] text-content-faint">
                 Minecraft and the loader are downloaded the first time you play.
               </span>
@@ -301,7 +301,8 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
                 {selected.size > 0 ? "Clear" : "Select all"}
               </button>
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
+              <div className="flex flex-col gap-0.5">
               {candidates.map((candidate) => (
                 <CandidateRow
                   key={candidate.id}
@@ -310,6 +311,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
                   onToggle={() => toggle(candidate.id)}
                 />
               ))}
+              </div>
             </div>
           </>
         )}
