@@ -531,22 +531,25 @@ export function InstanceView() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <PlayButton instance={instance} onError={setLaunchError} />
             <button
               onClick={() => setExportOpen(true)}
               aria-label="Export as pack"
               title="Export as pack"
-              className="grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+              className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
             >
               <Share className="size-4" />
             </button>
             <button
               onClick={() => setEditOpen(true)}
               aria-label="Edit instance"
-              className="grid size-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+              title="Instance settings"
+              className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
             >
               <Pencil className="size-4" />
             </button>
+            <div className="ml-1">
+              <PlayButton instance={instance} hero onError={setLaunchError} />
+            </div>
           </div>
         </div>
       </div>

@@ -9,10 +9,12 @@ import { useStore } from "../store";
 export function PlayButton({
   instance,
   compact,
+  hero,
   onError,
 }: {
   instance: Instance;
   compact?: boolean;
+  hero?: boolean;
   onError: (message: string | null) => void;
 }) {
   const installedIds = useStore((s) => s.installedIds);
@@ -33,14 +35,16 @@ export function PlayButton({
   const uptime = useUptime(run?.started_at ?? 0, !!run);
 
   const base = cn(
-    "inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-all",
-    compact ? "h-8 px-3" : "h-9 px-4",
+    "inline-flex items-center justify-center gap-1.5 font-semibold transition-all",
+    hero ? "h-11 rounded-xl px-6 text-sm" : "rounded-lg text-xs",
+    hero ? "min-w-28" : compact ? "h-8 px-3" : "h-9 px-4",
   );
+  const glyph = hero ? "size-4" : "size-3.5";
 
   if (install) {
     return (
       <span className={cn(base, "cursor-default bg-surface-3 text-content-muted")}>
-        <Loader2 className="size-3.5 animate-spin" />
+        <Loader2 className={cn(glyph, "animate-spin")} />
         {percent}%
       </span>
     );
@@ -48,7 +52,7 @@ export function PlayButton({
   if (starting) {
     return (
       <span className={cn(base, "cursor-default bg-surface-3 text-content-muted")}>
-        <Loader2 className="size-3.5 animate-spin" />
+        <Loader2 className={cn(glyph, "animate-spin")} />
         Starting
       </span>
     );
@@ -74,7 +78,7 @@ export function PlayButton({
         onClick={() => installInstance(instance.id)}
         className={cn(base, "border border-border bg-surface-3 text-content hover:bg-border")}
       >
-        <Download className="size-3.5" />
+        <Download className={glyph} />
         Install
       </button>
     );
@@ -94,7 +98,7 @@ export function PlayButton({
         "text-black shadow-md shadow-[var(--accent-glow)] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
       )}
     >
-      <Play className="size-3.5 fill-black" />
+      <Play className={cn(glyph, "fill-black")} />
       Play
     </button>
   );
