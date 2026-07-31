@@ -147,6 +147,7 @@ pub fn run() {
             commands::content_commands::check_content_updates,
             commands::content_commands::get_content_updates,
             commands::content_commands::apply_content_update,
+            commands::content_commands::plan_content_update,
             commands::content_commands::get_content_dependents,
             commands::content_commands::plan_content_removal,
             commands::content_commands::list_instance_content,

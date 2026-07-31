@@ -31,6 +31,11 @@ interface InstallRequest {
   downloads: ManualDownload[];
 }
 
+interface BrowserDownloadRequest {
+  downloads: ManualDownload[];
+  resolve: (sources: ManualDownloadSource[] | null) => void;
+}
+
 interface DownloadState {
   status: "waiting" | "ready" | "error";
   startedAt: number;
@@ -162,11 +167,13 @@ function ManualDownloadDialog({
   onClose,
   onReady,
   onError,
+  resolveMore,
 }: {
-  request: InstallRequest;
+  request: { downloads: ManualDownload[] };
   onClose: () => void;
   onReady: (sources: ManualDownloadSource[]) => void;
   onError: (error: string) => void;
+  resolveMore?: (sources: ManualDownloadSource[]) => Promise<ManualDownload[]>;
 }) {
   const [requirements, setRequirements] = useState(request.downloads);
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
@@ -216,10 +223,9 @@ function ManualDownloadDialog({
       file_id: download.file_id,
       path: downloads[key(download)]?.path ?? "",
     }));
-    void api
-      .planModpackInstall(request.provider, request.projectId, request.versionId, sources)
+    void Promise.resolve(resolveMore?.(sources) ?? [])
       .then((next) => {
-        const additions = next.manual_downloads.filter(
+        const additions = next.filter(
           (download) => !requirements.some((existing) => key(existing) === key(download)),
         );
         if (additions.length > 0) {
@@ -234,7 +240,7 @@ function ManualDownloadDialog({
         onError(String(error));
         onClose();
       });
-  }, [current, downloads, onClose, onError, onReady, request, requirements]);
+  }, [current, downloads, onClose, onError, onReady, requirements, resolveMore]);
 
   const currentKey = current ? key(current) : null;
 
@@ -380,6 +386,11 @@ export function useModpackInstaller({
     modal: request ? (
       <ManualDownloadDialog
         request={request}
+        resolveMore={(sources) =>
+          api
+            .planModpackInstall(request.provider, request.projectId, request.versionId, sources)
+            .then((plan) => plan.manual_downloads)
+        }
         onClose={() => setRequest(null)}
         onReady={(sources) => {
           const active = request;
@@ -397,6 +408,40 @@ export function useModpackInstaller({
             .catch((error) => onError(String(error)));
         }}
         onError={onError}
+      />
+    ) : null,
+  };
+}
+
+export function useCurseforgeDownloads() {
+  const [request, setRequest] = useState<BrowserDownloadRequest | null>(null);
+
+  const collect = useCallback(
+    (downloads: ManualDownload[]) =>
+      new Promise<ManualDownloadSource[] | null>((resolve) => {
+        setRequest({ downloads, resolve });
+      }),
+    [],
+  );
+
+  const finish = useCallback(
+    (sources: ManualDownloadSource[] | null) => {
+      request?.resolve(sources);
+      setRequest(null);
+    },
+    [request],
+  );
+
+  return {
+    collect,
+    modal: request ? (
+      <ManualDownloadDialog
+        request={request}
+        onClose={() => finish(null)}
+        onReady={(sources) => finish(sources)}
+        onError={(error) => {
+          toast.error("Could not verify the browser download", { description: error });
+        }}
       />
     ) : null,
   };

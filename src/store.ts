@@ -235,7 +235,12 @@ interface AppStore {
   dismissInterrupted: () => void;
   beginToastBatch: () => void;
   endToastBatch: (summary: string | null) => void;
-  applyUpdate: (instanceId: string, kind: string, fileName: string) => Promise<void>;
+  applyUpdate: (
+    instanceId: string,
+    kind: string,
+    fileName: string,
+    manualDownloads?: ManualDownloadSource[],
+  ) => Promise<void>;
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
   pickLogo: (instanceId: string) => Promise<void>;
@@ -458,8 +463,8 @@ export const useStore = create<AppStore>((set) => ({
     }
   },
 
-  applyUpdate: async (instanceId, kind, fileName) => {
-    await api.applyContentUpdate(instanceId, kind, fileName);
+  applyUpdate: async (instanceId, kind, fileName, manualDownloads = []) => {
+    await api.applyContentUpdate(instanceId, kind, fileName, manualDownloads);
     set((s) => ({
       updates: {
         ...s.updates,

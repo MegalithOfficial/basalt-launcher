@@ -196,7 +196,7 @@ fn sha1_file(path: &Path) -> Result<String> {
     Ok(hasher.digest().to_string())
 }
 
-fn validate_manual_download(
+pub(crate) fn validate_manual_download(
     downloads_dir: &Path,
     requirement: &ManualDownload,
     path: &Path,

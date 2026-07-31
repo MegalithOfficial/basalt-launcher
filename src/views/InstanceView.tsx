@@ -22,6 +22,7 @@ import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SuggestedContent } from "../components/SuggestedContent";
 import { DeferredImage } from "../components/DeferredImage";
+import { useCurseforgeDownloads } from "../components/CurseForgeDownloadModal";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
@@ -202,8 +203,10 @@ export function InstanceView() {
   );
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
+  const [updatingFile, setUpdatingFile] = useState<string | null>(null);
   const [suggestBusy, setSuggestBusy] = useState<string | null>(null);
   const installingInstance = useRef<string | null>(null);
+  const browserDownloads = useCurseforgeDownloads();
 
   const close = () => setDialog(null);
   const removal = dialog?.kind === "remove" ? dialog : null;
@@ -494,6 +497,25 @@ export function InstanceView() {
     }
   };
 
+  const applyAvailableUpdate = async (update: ContentUpdate) => {
+    const requirement = await api.planContentUpdate(
+      instance.id,
+      update.kind,
+      update.file_name,
+    );
+    let sources = undefined;
+    if (requirement) {
+      const downloaded = await browserDownloads.collect([requirement]);
+      if (!downloaded) return false;
+      sources = downloaded;
+      toast.info("Browser download verified", {
+        description: "The update will start shortly.",
+      });
+    }
+    await applyUpdate(instance.id, update.kind, update.file_name, sources);
+    return true;
+  };
+
   const updateAll = async () => {
     setUpdatingAll(true);
     const total = tabUpdates.length;
@@ -502,7 +524,7 @@ export function InstanceView() {
     try {
       for (const update of tabUpdates) {
         try {
-          await applyUpdate(instance.id, update.kind, update.file_name);
+          if (!(await applyAvailableUpdate(update))) break;
           done += 1;
         } catch (e) {
           toast.error(`Could not update ${update.latest_name}`, { description: String(e) });
@@ -518,15 +540,18 @@ export function InstanceView() {
   };
 
   const updateOne = async (item: ContentItem) => {
-    if (tab === "worlds") return;
+    if (tab === "worlds" || !item.update) return;
+    setUpdatingFile(item.file_name);
     try {
-      await applyUpdate(instance.id, tab, item.file_name);
+      await applyAvailableUpdate(item.update);
     } catch (e) {
       toast.error(`Could not update ${item.source?.title ?? item.file_name}`, {
         description: String(e),
       });
+    } finally {
+      setUpdatingFile(null);
+      await refresh();
     }
-    await refresh();
   };
 
   return (
@@ -852,7 +877,10 @@ export function InstanceView() {
               const source = item.source;
               const displayName = source?.title ?? item.file_name;
               const linked = !!source?.provider && !!source.project_id;
-              const busy = !!source?.project_id && activeProjects.has(source.project_id);
+              const busy =
+                (!!source?.project_id && activeProjects.has(source.project_id)) ||
+                updatingAll ||
+                updatingFile !== null;
               return (
                 <div
                   key={item.file_name}
@@ -1099,6 +1127,7 @@ export function InstanceView() {
         instance={dialog?.kind === "edit" ? instance : null}
         onClose={close}
       />
+      {browserDownloads.modal}
     </div>
   );
 }

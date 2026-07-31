@@ -1,9 +1,10 @@
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::{
     config::Instance,
     content::{self, ContentItem},
+    download,
     error::{Error, Result},
     search,
     state::AppState,
@@ -378,6 +379,76 @@ pub fn get_content_updates(
     state.db.content_updates(&instance_id)
 }
 
+async fn restricted_update(
+    state: &AppState,
+    instance_id: &str,
+    kind: &str,
+    file_name: &str,
+) -> Result<Option<(crate::modpack::ManualDownload, search::ProjectVersion)>> {
+    let instance = find_instance(state, instance_id)?;
+    let kind_enum = search::ContentKind::parse(kind)?;
+    let file = state
+        .db
+        .content_file(instance_id, kind, file_name)?
+        .ok_or_else(|| Error::other("This file is not linked to a project."))?;
+    let (Some(provider), Some(project_id)) = (file.provider, file.project_id) else {
+        return Err(Error::other("This file is not linked to a project."));
+    };
+    if provider != "curseforge" {
+        return Ok(None);
+    }
+    let update = state
+        .db
+        .content_updates(instance_id)?
+        .into_iter()
+        .find(|update| update.kind == kind && update.file_name == file_name)
+        .ok_or_else(|| Error::other("No update is available for this file."))?;
+    let version = search::fetch_version(
+        state,
+        search::Provider::Curseforge,
+        &project_id,
+        kind_enum,
+        &instance.version_id,
+        instance.loader.as_deref(),
+        Some(&update.latest_version_id),
+    )
+    .await?;
+    let archive = version
+        .primary_file()
+        .cloned()
+        .ok_or_else(|| Error::other("This update has no downloadable file."))?;
+    if archive.url.is_some() {
+        return Ok(None);
+    }
+    let page = search::curseforge::project_download_pages(state, std::slice::from_ref(&project_id))
+        .await?
+        .remove(&project_id)
+        .ok_or_else(|| Error::other("CurseForge did not provide the project's download page."))?;
+    let requirement = crate::modpack::ManualDownload {
+        project_id,
+        file_id: version.id.clone(),
+        file_name: archive.file_name.clone(),
+        download_page_url: format!("{}/download/{}", page.trim_end_matches('/'), version.id),
+        sha1: archive.sha1.clone(),
+        size: archive.size,
+        instance_path: format!("{kind}/{}", archive.file_name),
+        pack_archive: false,
+    };
+    Ok(Some((requirement, version)))
+}
+
+#[tauri::command]
+pub async fn plan_content_update(
+    state: State<'_, AppState>,
+    instance_id: String,
+    kind: String,
+    file_name: String,
+) -> Result<Option<crate::modpack::ManualDownload>> {
+    Ok(restricted_update(&state, &instance_id, &kind, &file_name)
+        .await?
+        .map(|(requirement, _)| requirement))
+}
+
 #[tauri::command]
 pub async fn apply_content_update(
     app: AppHandle,
@@ -385,7 +456,70 @@ pub async fn apply_content_update(
     instance_id: String,
     kind: String,
     file_name: String,
+    manual_downloads: Option<Vec<crate::modpack::ManualDownloadSource>>,
 ) -> Result<String> {
+    if let Some((requirement, version)) =
+        restricted_update(&state, &instance_id, &kind, &file_name).await?
+    {
+        let source = manual_downloads
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .find(|source| {
+                source.project_id == requirement.project_id && source.file_id == requirement.file_id
+            })
+            .ok_or_else(|| {
+                Error::other("Download the requested CurseForge file before continuing.")
+            })?;
+        let source_path = std::path::PathBuf::from(&source.path);
+        let downloads_dir = app.path().download_dir()?;
+        crate::modpack::validate_manual_download(&downloads_dir, &requirement, &source_path)?;
+
+        let kind_enum = search::ContentKind::parse(&kind)?;
+        let directory = content::dir_for(&state.paths, &instance_id, kind_enum.as_str())?;
+        state.files.ensure_dir(&directory)?;
+        let destination = directory.join(&requirement.file_name);
+        download::copy_verified(
+            &state.files,
+            &source_path,
+            &destination,
+            requirement.sha1.as_deref(),
+            requirement.size,
+        )
+        .await?;
+
+        let previous = state
+            .db
+            .content_file(&instance_id, &kind, &file_name)?
+            .ok_or_else(|| Error::other("This file is not linked to a project."))?;
+        let primary = version
+            .primary_file()
+            .ok_or_else(|| Error::other("This update has no downloadable file."))?;
+        state.db.record_content_file(
+            &instance_id,
+            &kind,
+            &crate::db::ContentFile {
+                file_name: requirement.file_name.clone(),
+                sha1: primary.sha1.clone(),
+                sha512: primary.sha512.clone(),
+                version_id: Some(version.id.clone()),
+                dependencies: serde_json::to_string(&version.dependencies).ok(),
+                installed_at: chrono::Utc::now().timestamp(),
+                ..previous.clone()
+            },
+        )?;
+        if file_name != requirement.file_name {
+            content::delete(&state.files, &instance_id, &kind, &file_name)?;
+            state
+                .db
+                .delete_content_file(&instance_id, &kind, &file_name)?;
+        }
+        if let Err(error) = std::fs::remove_file(&source_path) {
+            tracing::warn!(path = %source_path.display(), %error, "could not remove consumed CurseForge download");
+        }
+        return Ok(requirement.file_name);
+    }
+
     let instance = find_instance(&state, &instance_id)?;
     let kind_enum = search::ContentKind::parse(&kind)?;
     let file = state

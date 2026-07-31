@@ -207,8 +207,15 @@ export const api = {
     call<ContentUpdate[]>("check_content_updates", { instanceId, force }),
   getContentUpdates: (instanceId: string) =>
     call<ContentUpdate[]>("get_content_updates", { instanceId }),
-  applyContentUpdate: (instanceId: string, kind: string, fileName: string) =>
-    call<string>("apply_content_update", { instanceId, kind, fileName }),
+  planContentUpdate: (instanceId: string, kind: string, fileName: string) =>
+    call<ManualDownload | null>("plan_content_update", { instanceId, kind, fileName }),
+  applyContentUpdate: (
+    instanceId: string,
+    kind: string,
+    fileName: string,
+    manualDownloads: ManualDownloadSource[] = [],
+  ) =>
+    call<string>("apply_content_update", { instanceId, kind, fileName, manualDownloads }),
   planContentRemoval: (instanceId: string, kind: string, fileName: string) =>
     call<RemovalPlan>("plan_content_removal", { instanceId, kind, fileName }),
   getContentDependents: (instanceId: string, kind: string, fileName: string) =>
