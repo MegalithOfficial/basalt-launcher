@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { Banner } from "../components/Banner";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { ExportPackModal } from "../components/ExportPackModal";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
@@ -33,7 +34,7 @@ import { api } from "../lib/api";
 import { log } from "../lib/log";
 import { notifyRemoved } from "../lib/notify";
 import { loaderLabel } from "../lib/loader";
-import { logoSrc, mediaSrc } from "../lib/media";
+import { logoSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type {
   ContentItem,
@@ -577,14 +578,7 @@ export function InstanceView() {
     <div className="-mt-9 flex min-h-0 flex-1 flex-col">
       <div className="relative h-68 shrink-0 overflow-hidden">
         {media ? (
-          <img
-            src={mediaSrc(media)}
-            className={cn(
-              "absolute inset-0 h-full w-full object-cover",
-              !media.local && "[image-rendering:pixelated]",
-            )}
-            draggable={false}
-          />
+          <Banner media={media} className="absolute inset-0 h-full w-full" />
         ) : (
           <div className="absolute inset-0 bg-surface-2" />
         )}

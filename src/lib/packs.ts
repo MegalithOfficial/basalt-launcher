@@ -39,6 +39,20 @@ export async function pickPackFile(): Promise<string | null> {
   return typeof chosen === "string" ? chosen : null;
 }
 
+export async function pickBannerFile(mode: "banner" | "logo"): Promise<string | null> {
+  const extensions =
+    mode === "logo"
+      ? ["png", "jpg", "jpeg", "webp", "gif"]
+      : ["png", "jpg", "jpeg", "webp", "gif", "mp4", "webm", "mkv", "mov"];
+  const chosen = await openFileDialog({
+    multiple: false,
+    directory: false,
+    title: mode === "logo" ? "Choose a logo" : "Choose a banner",
+    filters: [{ name: mode === "logo" ? "Images" : "Images and video", extensions }],
+  });
+  return typeof chosen === "string" ? chosen : null;
+}
+
 export async function pickPackDestination(
   suggested: string,
   format: PackFormat,

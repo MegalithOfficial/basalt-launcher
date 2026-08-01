@@ -346,6 +346,7 @@ pub fn import(
                 pack_version_id: profile.pack_version.clone(),
                 import_source: Some("modrinth".to_string()),
                 import_source_id: Some(profile.id.clone()),
+                banner_id: None,
                 jvm_args: None,
                 jvm_args_mode: None,
                 env_vars: None,

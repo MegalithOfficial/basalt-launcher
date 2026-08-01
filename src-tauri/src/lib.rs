@@ -89,6 +89,13 @@ pub fn run() {
                 }
                 _ => {}
             }
+            match meta::banners::adopt_legacy_banners(&state.files, &state.db) {
+                Ok(count) if count > 0 => {
+                    tracing::info!(count, "moved existing banners into the library")
+                }
+                Err(e) => tracing::warn!(error = %e, "could not adopt the existing banners"),
+                _ => {}
+            }
             if let Err(e) = skin::reconcile_library(&state) {
                 tracing::warn!(error = %e, "could not reconcile the skin library");
             }
@@ -120,6 +127,11 @@ pub fn run() {
             commands::instances::get_instance_media,
             commands::instances::set_instance_banner,
             commands::instances::clear_instance_banner,
+            commands::instances::list_banner_library,
+            commands::instances::add_banner_to_library,
+            commands::instances::delete_banner,
+            commands::instances::apply_banner,
+            commands::instances::apply_logo,
             commands::instances::set_instance_logo,
             commands::instances::clear_instance_logo,
             commands::instances::backfill_pack_logos,

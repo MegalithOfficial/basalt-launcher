@@ -556,6 +556,7 @@ pub fn import(
                 pack_version_id: pack.as_ref().and_then(|(_, _, version)| version.clone()),
                 import_source: Some("prism".to_string()),
                 import_source_id: Some(id.clone()),
+                banner_id: None,
                 jvm_args: None,
                 jvm_args_mode: None,
                 env_vars: None,

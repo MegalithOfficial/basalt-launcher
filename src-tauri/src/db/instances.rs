@@ -13,7 +13,7 @@ impl Db {
                     java_path, last_played_at, playtime_secs, loader, loader_version,
                     launch_version_id, pack_provider, pack_project_id, pack_version_id,
                     jvm_args, jvm_args_mode, env_vars, env_vars_mode,
-                    import_source, import_source_id
+                    import_source, import_source_id, banner_id
              FROM instances ORDER BY created_at",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -45,6 +45,7 @@ impl Db {
                 env_vars_mode: row.get(18)?,
                 import_source: row.get(19)?,
                 import_source_id: row.get(20)?,
+                banner_id: row.get(21)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -58,9 +59,9 @@ impl Db {
                  java_path, last_played_at, playtime_secs, loader, loader_version,
                  launch_version_id, pack_provider, pack_project_id, pack_version_id,
                  jvm_args, jvm_args_mode, env_vars, env_vars_mode,
-                 import_source, import_source_id)
+                 import_source, import_source_id, banner_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                     ?16, ?17, ?18, ?19, ?20, ?21)",
+                     ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![
                 instance.id,
                 instance.name,
@@ -83,6 +84,7 @@ impl Db {
                 instance.env_vars_mode,
                 instance.import_source,
                 instance.import_source_id,
+                instance.banner_id,
             ],
         )?;
         Ok(())

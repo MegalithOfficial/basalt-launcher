@@ -7,6 +7,7 @@ use crate::{
     java::{self, JavaStatus},
     loaders,
     meta::{
+        banners,
         manifest::{self, VersionEntry},
         media::{self, VersionMedia},
     },
@@ -55,6 +56,7 @@ pub fn create_instance(
         launch_version_id: None,
         import_source: None,
         import_source_id: None,
+        banner_id: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,
@@ -171,7 +173,7 @@ pub async fn get_instance_media(
         return Ok(cached.clone());
     }
 
-    let result = match media::custom_banner(&state.files, &instance_id).await {
+    let result = match banners::media_for_instance(&state.files, &state.db, &instance_id) {
         Some(banner) => Some(banner),
         None => {
             let instance = find_instance(&state, &instance_id)?;
@@ -206,7 +208,55 @@ pub async fn set_instance_banner(
     source_path: String,
 ) -> Result<VersionMedia> {
     find_instance(&state, &instance_id)?;
-    let media = media::set_custom_banner(&state.files, &instance_id, &source_path).await?;
+    let entry = banners::import(&state.files, &state.db, &source_path).await?;
+    state.db.set_instance_banner_id(&instance_id, Some(&entry.id))?;
+    let media = banners::media_for_instance(&state.files, &state.db, &instance_id)
+        .ok_or_else(|| crate::error::Error::other("the banner vanished after import"))?;
+    state
+        .media_cache
+        .lock()
+        .unwrap()
+        .insert(instance_id, Some(media.clone()));
+    Ok(media)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn list_banner_library(state: State<'_, AppState>) -> Result<Vec<banners::BannerEntry>> {
+    banners::list(&state.files, &state.db)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn add_banner_to_library(
+    state: State<'_, AppState>,
+    source_path: String,
+) -> Result<banners::BannerEntry> {
+    banners::import(&state.files, &state.db, &source_path).await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn delete_banner(state: State<'_, AppState>, banner_id: String) -> Result<()> {
+    let affected = state.db.banner_users(&banner_id).unwrap_or_default();
+    banners::remove(&state.files, &state.db, &banner_id).await?;
+    if !affected.is_empty() {
+        state.media_cache.lock().unwrap().clear();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn apply_banner(
+    state: State<'_, AppState>,
+    instance_id: String,
+    banner_id: String,
+) -> Result<VersionMedia> {
+    find_instance(&state, &instance_id)?;
+    state.db.set_instance_banner_id(&instance_id, Some(&banner_id))?;
+    let media = banners::media_for_instance(&state.files, &state.db, &instance_id)
+        .ok_or_else(|| crate::error::Error::other("that banner is no longer in the library"))?;
     state
         .media_cache
         .lock()
@@ -218,6 +268,7 @@ pub async fn set_instance_banner(
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub async fn clear_instance_banner(state: State<'_, AppState>, instance_id: String) -> Result<()> {
+    state.db.set_instance_banner_id(&instance_id, None)?;
     media::clear_custom_banner(&state.files, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     Ok(())
@@ -230,7 +281,33 @@ pub async fn set_instance_logo(
     source_path: String,
 ) -> Result<String> {
     find_instance(&state, &instance_id)?;
+    let _ = banners::import(&state.files, &state.db, &source_path).await;
     media::set_instance_logo(&state.files, &instance_id, &source_path).await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn apply_logo(
+    state: State<'_, AppState>,
+    instance_id: String,
+    banner_id: String,
+) -> Result<String> {
+    find_instance(&state, &instance_id)?;
+    let record = state
+        .db
+        .banner(&banner_id)?
+        .ok_or_else(|| Error::other("that image is no longer in the library"))?;
+    if record.kind != "image" {
+        return Err(Error::other("A logo has to be an image."));
+    }
+    let path = banners::library_path(&state.files, &record);
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("png")
+        .to_string();
+    let bytes = state.files.read_async(&path).await?;
+    media::write_logo(&state.files, &instance_id, &extension, &bytes).await
 }
 
 #[tauri::command]

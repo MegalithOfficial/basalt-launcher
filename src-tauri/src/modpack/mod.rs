@@ -663,6 +663,7 @@ pub async fn install_modpack(
         pack_version_id: Some(target.id.clone()),
         import_source: None,
         import_source_id: None,
+        banner_id: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,

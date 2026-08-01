@@ -6,9 +6,11 @@ import { Boxes, FolderOpen, ImageOff, ImagePlus, Loader2, Plus, Trash2, X } from
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { LOADERS, loaderLabel } from "../lib/loader";
-import { logoSrc, mediaSrc } from "../lib/media";
+import { logoSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { EnvVar, Instance, JavaInfo, SystemStats } from "../lib/types";
+import { Banner } from "./Banner";
+import { BannerLibraryModal } from "./BannerLibraryModal";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MemoryRange } from "./MemoryRange";
 import { Modal } from "./Modal";
@@ -133,10 +135,10 @@ export function EditInstanceModal({
   onClose: () => void;
 }) {
   const mediaMap = useStore((s) => s.media);
-  const pickBanner = useStore((s) => s.pickBanner);
   const clearBanner = useStore((s) => s.clearBanner);
-  const pickLogo = useStore((s) => s.pickLogo);
   const clearLogo = useStore((s) => s.clearLogo);
+  const applyBanner = useStore((s) => s.applyBanner);
+  const applyLogo = useStore((s) => s.applyLogo);
   const updateInstance = useStore((s) => s.updateInstance);
   const deleteInstance = useStore((s) => s.deleteInstance);
 
@@ -150,6 +152,7 @@ export function EditInstanceModal({
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [library, setLibrary] = useState<"banner" | "logo" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const openFor = instance?.id ?? null;
@@ -285,11 +288,7 @@ export function EditInstanceModal({
     <Modal open onClose={onClose} size="xl" className="h-[min(680px,calc(100vh-48px))]">
       <div className="relative h-24 shrink-0 overflow-hidden">
         {media ? (
-          <img
-            src={mediaSrc(media)}
-            className="h-full w-full object-cover"
-            draggable={false}
-          />
+          <Banner media={media} className="h-full w-full" />
         ) : (
           <div className="h-full w-full bg-surface-2" />
         )}
@@ -398,11 +397,7 @@ export function EditInstanceModal({
               <div className="p-4">
                 <div className="h-32 overflow-hidden rounded-xl border border-border-soft">
                   {media ? (
-                    <img
-                      src={mediaSrc(media)}
-                      className="h-full w-full object-cover"
-                      draggable={false}
-                    />
+                    <Banner media={media} className="h-full w-full" />
                   ) : (
                     <div className="grid h-full w-full place-items-center bg-surface-3 text-content-faint">
                       <Boxes className="size-6" />
@@ -410,9 +405,9 @@ export function EditInstanceModal({
                   )}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button onClick={() => pickBanner(instance.id)} className={chipCls}>
+                  <button onClick={() => setLibrary("banner")} className={chipCls}>
                     <ImagePlus className="size-3.5" />
-                    Change banner
+                    Choose banner
                   </button>
                   {media?.local && (
                     <button onClick={() => clearBanner(instance.id)} className={chipCls}>
@@ -439,7 +434,7 @@ export function EditInstanceModal({
                   </span>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => pickLogo(instance.id)} className={chipCls}>
+                  <button onClick={() => setLibrary("logo")} className={chipCls}>
                     <ImagePlus className="size-3.5" />
                     {instance.logo ? "Change logo" : "Add logo"}
                   </button>
@@ -824,6 +819,17 @@ export function EditInstanceModal({
           </button>
         </div>
       </div>
+
+      <BannerLibraryModal
+        open={library !== null}
+        mode={library ?? "banner"}
+        currentId={library === "banner" ? instance.banner_id : null}
+        onClose={() => setLibrary(null)}
+        onPick={async (entry) => {
+          if (library === "logo") await applyLogo(instance.id, entry.id);
+          else await applyBanner(instance.id, entry.id);
+        }}
+      />
 
       <ConfirmDialog
         open={confirmRemove}

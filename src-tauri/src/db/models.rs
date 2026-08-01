@@ -10,6 +10,19 @@ pub struct ActiveRun {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct BannerRecord {
+    pub id: String,
+    pub file_name: String,
+    pub original_name: Option<String>,
+    pub kind: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub bytes: i64,
+    pub accent: Option<String>,
+    pub added_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SkinRecord {
     pub id: String,
     pub name: String,

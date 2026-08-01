@@ -70,6 +70,7 @@ export interface Instance {
   jvm_args_mode: string | null;
   env_vars: string | null;
   env_vars_mode: string | null;
+  banner_id: string | null;
 }
 
 export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
@@ -530,6 +531,22 @@ export interface VersionMedia {
   short_text: string | null;
   accent: string | null;
   local: boolean;
+  kind: BannerKind;
+}
+
+export type BannerKind = "image" | "video";
+
+export interface BannerEntry {
+  id: string;
+  path: string;
+  kind: BannerKind;
+  original_name: string | null;
+  width: number | null;
+  height: number | null;
+  bytes: number;
+  accent: string | null;
+  added_at: number;
+  in_use_by: string[];
 }
 
 export interface RunningInfo {

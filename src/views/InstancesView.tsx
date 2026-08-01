@@ -12,6 +12,7 @@ import {
 
 import { Button, EmptyState } from "../components/ui";
 import { Select } from "../components/Select";
+import { Banner } from "../components/Banner";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EditInstanceModal } from "../components/EditInstanceModal";
@@ -19,7 +20,7 @@ import { ImportPackModal } from "../components/ImportPackModal";
 import { pickPackFile } from "../lib/packs";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
-import { logoSrc, mediaSrc } from "../lib/media";
+import { logoSrc } from "../lib/media";
 import { taskFraction, useActiveTasksByInstance } from "../lib/useTasks";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance, Task, VersionMedia } from "../lib/types";
@@ -58,12 +59,7 @@ function Artwork({ media, className }: { media: VersionMedia | null; className?:
     );
   }
   return (
-    <img
-      src={mediaSrc(media)}
-      alt=""
-      draggable={false}
-      className={cn("object-cover", !media.local && "[image-rendering:pixelated]", className)}
-    />
+    <Banner media={media} still className={className} />
   );
 }
 

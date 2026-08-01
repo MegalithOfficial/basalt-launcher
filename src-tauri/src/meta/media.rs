@@ -30,6 +30,12 @@ pub struct VersionMedia {
     pub short_text: Option<String>,
     pub accent: Option<String>,
     pub local: bool,
+    #[serde(default = "default_media_kind")]
+    pub kind: String,
+}
+
+pub fn default_media_kind() -> String {
+    "image".to_string()
 }
 
 const BANNER_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "gif"];
@@ -48,7 +54,7 @@ pub async fn fetch_notes(client: &NetworkManager, files: &FileManager) -> Result
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-fn accent_from_pixels(img: &image::RgbImage) -> Option<String> {
+pub(super) fn accent_from_pixels(img: &image::RgbImage) -> Option<String> {
     let mut buckets = [(0f32, 0f32, 0f32, 0f32); 36];
     for pixel in img.pixels() {
         let (r, g, b) = (
@@ -171,90 +177,6 @@ fn banner_accent_path(paths: &Paths, instance_id: &str) -> std::path::PathBuf {
         .join(format!("instance-{instance_id}.accent"))
 }
 
-pub async fn custom_banner(files: &FileManager, instance_id: &str) -> Option<VersionMedia> {
-    let paths = files.paths();
-    let img_path = {
-        let mut found = None;
-        for candidate in banner_paths(paths, instance_id) {
-            if files.is_file(&candidate).unwrap_or(false) {
-                found = Some(candidate);
-                break;
-            }
-        }
-        found?
-    };
-
-    let accent_path = banner_accent_path(paths, instance_id);
-    let accent = match files.read_string_async(&accent_path).await {
-        Ok(cached) => {
-            let cached = cached.trim().to_string();
-            if cached.is_empty() {
-                None
-            } else {
-                Some(cached)
-            }
-        }
-        Err(_) => {
-            let bytes = files.read_async(&img_path).await.ok()?;
-            let accent = compute_accent(bytes).await;
-            let _ = files
-                .write_atomic_async(&accent_path, accent.clone().unwrap_or_default())
-                .await;
-            accent
-        }
-    };
-
-    Some(VersionMedia {
-        image_url: img_path.display().to_string(),
-        short_text: None,
-        accent,
-        local: true,
-    })
-}
-
-pub async fn set_custom_banner(
-    files: &FileManager,
-    instance_id: &str,
-    source: &str,
-) -> crate::error::Result<VersionMedia> {
-    use crate::error::Error;
-
-    let source_path = std::path::Path::new(source);
-    let ext = source_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .unwrap_or_default();
-    if !BANNER_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(Error::other(format!(
-            "Unsupported image type .{ext}. Use png, jpg, webp, or gif."
-        )));
-    }
-
-    clear_custom_banner(files, instance_id).await;
-
-    let paths = files.paths();
-    let media_dir = paths.root.join("media");
-    let dest = media_dir.join(format!("instance-{instance_id}.{ext}"));
-    files.copy_external_into(source_path, &dest).await?;
-
-    let bytes = files.read_async(&dest).await?;
-    let accent = compute_accent(bytes).await;
-    let _ = files
-        .write_atomic_async(
-            banner_accent_path(paths, instance_id),
-            accent.clone().unwrap_or_default(),
-        )
-        .await;
-
-    Ok(VersionMedia {
-        image_url: dest.display().to_string(),
-        short_text: None,
-        accent,
-        local: true,
-    })
-}
-
 pub async fn clear_custom_banner(files: &FileManager, instance_id: &str) {
     let paths = files.paths();
     for path in banner_paths(paths, instance_id) {
@@ -287,7 +209,7 @@ pub async fn clear_instance_logo(files: &FileManager, instance_id: &str) {
     }
 }
 
-async fn write_logo(
+pub async fn write_logo(
     files: &FileManager,
     instance_id: &str,
     ext: &str,
@@ -380,5 +302,6 @@ pub async fn media_for(
         short_text: entry.short_text.clone(),
         accent,
         local: false,
+        kind: default_media_kind(),
     })
 }

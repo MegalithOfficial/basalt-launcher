@@ -59,6 +59,14 @@ impl Paths {
             .join("runs")
             .join(format!("{running_id}.{stream}.log"))
     }
+    pub fn media(&self) -> PathBuf {
+        self.root.join("media")
+    }
+
+    pub fn banner_library(&self) -> PathBuf {
+        self.root.join("media").join("library")
+    }
+
     pub fn skins(&self) -> PathBuf {
         self.root.join("media").join("skins")
     }

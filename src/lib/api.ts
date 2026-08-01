@@ -4,6 +4,7 @@ import { log } from "./log";
 import type {
   AboutLinks,
   AccountView,
+  BannerEntry,
   Appearance,
   AppInfo,
   Changelog,
@@ -261,6 +262,14 @@ export const api = {
     call<VersionMedia>("set_instance_banner", { instanceId, sourcePath }),
   clearInstanceBanner: (instanceId: string) =>
     call<void>("clear_instance_banner", { instanceId }),
+  listBannerLibrary: () => call<BannerEntry[]>("list_banner_library"),
+  addBannerToLibrary: (sourcePath: string) =>
+    call<BannerEntry>("add_banner_to_library", { sourcePath }),
+  deleteBanner: (bannerId: string) => call<void>("delete_banner", { bannerId }),
+  applyBanner: (instanceId: string, bannerId: string) =>
+    call<VersionMedia>("apply_banner", { instanceId, bannerId }),
+  applyLogo: (instanceId: string, bannerId: string) =>
+    call<string>("apply_logo", { instanceId, bannerId }),
   setInstanceLogo: (instanceId: string, sourcePath: string) =>
     call<string>("set_instance_logo", { instanceId, sourcePath }),
   clearInstanceLogo: (instanceId: string) =>

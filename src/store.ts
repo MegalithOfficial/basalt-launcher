@@ -256,6 +256,8 @@ interface AppStore {
   pickBanner: (instanceId: string) => Promise<void>;
   clearBanner: (instanceId: string) => Promise<void>;
   pickLogo: (instanceId: string) => Promise<void>;
+  applyBanner: (instanceId: string, bannerId: string) => Promise<void>;
+  applyLogo: (instanceId: string, bannerId: string) => Promise<void>;
   clearLogo: (instanceId: string) => Promise<void>;
 }
 
@@ -929,6 +931,18 @@ export const useStore = create<AppStore>((set) => ({
     if (typeof file !== "string") return;
     const media = await api.setInstanceBanner(instanceId, file);
     set((s) => ({ media: { ...s.media, [instanceId]: media } }));
+  },
+
+  applyBanner: async (instanceId, bannerId) => {
+    const media = await api.applyBanner(instanceId, bannerId);
+    set((s) => ({ media: { ...s.media, [instanceId]: media } }));
+  },
+
+  applyLogo: async (instanceId, bannerId) => {
+    const logo = await api.applyLogo(instanceId, bannerId);
+    set((s) => ({
+      instances: s.instances.map((i) => (i.id === instanceId ? { ...i, logo } : i)),
+    }));
   },
 
   clearBanner: async (instanceId) => {

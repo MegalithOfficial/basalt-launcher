@@ -3,7 +3,7 @@ import { Check, Plus } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
-import { mediaSrc } from "../lib/media";
+import { Banner } from "./Banner";
 import { useEscape } from "../lib/useEscape";
 import { useStore } from "../store";
 
@@ -78,13 +78,10 @@ export function InstanceSheet({
                     )}
                   >
                     {media ? (
-                      <img
-                        src={mediaSrc(media)}
-                        className={cn(
-                          "absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]",
-                          !media.local && "[image-rendering:pixelated]",
-                        )}
-                        draggable={false}
+                      <Banner
+                        media={media}
+                        still
+                        className="absolute inset-0 h-full w-full transition-transform duration-300 group-hover:scale-[1.03]"
                       />
                     ) : (
                       <div className="absolute inset-0 bg-surface-2" style={tileGrid} />

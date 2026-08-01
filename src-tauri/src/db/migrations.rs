@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 8;
+pub(super) const SCHEMA_VERSION: i64 = 9;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -119,6 +119,18 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             fetched_at INTEGER NOT NULL,
             ttl_secs INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS banners(
+            id TEXT PRIMARY KEY,
+            file_name TEXT NOT NULL,
+            original_name TEXT,
+            kind TEXT NOT NULL,
+            width INTEGER,
+            height INTEGER,
+            bytes INTEGER NOT NULL,
+            accent TEXT,
+            added_at INTEGER NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS skins(
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -144,6 +156,7 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         ("env_vars_mode", "TEXT"),
         ("import_source", "TEXT"),
         ("import_source_id", "TEXT"),
+        ("banner_id", "TEXT"),
     ] {
         add_column_if_missing(conn, "instances", column, declaration)?;
     }

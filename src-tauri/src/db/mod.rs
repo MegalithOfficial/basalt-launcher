@@ -6,6 +6,7 @@ use rusqlite::Connection;
 pub struct Db(Arc<Mutex<Connection>>);
 
 mod accounts;
+mod banners;
 mod cache;
 mod content;
 mod core;
@@ -18,7 +19,8 @@ mod settings;
 mod skins;
 
 pub use models::{
-    ActiveRun, CachedResponse, ContentFile, ContentUpdate, PendingOperation, SkinRecord,
+    ActiveRun, BannerRecord, CachedResponse, ContentFile, ContentUpdate, PendingOperation,
+    SkinRecord,
 };
 
 use migrations::{migrate, SCHEMA_VERSION};

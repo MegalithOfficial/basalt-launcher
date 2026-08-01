@@ -513,6 +513,7 @@ pub async fn prepare_import(
         pack_version_id: None,
         import_source: None,
         import_source_id: None,
+        banner_id: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,
