@@ -22,7 +22,7 @@ import { CreateInstanceModal } from "../components/CreateInstanceModal";
 import { ImportPackModal } from "../components/ImportPackModal";
 import { InstanceSheet } from "../components/InstanceSheet";
 import { pickPackFile } from "../lib/packs";
-import { taskFraction, useInstanceTask } from "../lib/useTasks";
+import { instanceTaskLabel, taskFraction, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
 const gridStyle: React.CSSProperties = {
@@ -192,8 +192,16 @@ export function HomeView() {
     actionLabel = "CREATE INSTANCE";
     actionIcon = <Plus className="size-4" />;
   } else if (installing) {
-    actionLabel = `${STAGE_LABEL[install.stage] ?? install.stage}${
-      install.stage === "downloading" ? ` ${percent}%` : ""
+    const taskLabel =
+      install.kind === "instance_repair" || install.kind === "instance_duplicate"
+        ? instanceTaskLabel(install)
+        : (STAGE_LABEL[install.stage] ?? instanceTaskLabel(install));
+    const showProgress =
+      install.stage === "downloading" ||
+      install.kind === "instance_repair" ||
+      install.kind === "instance_duplicate";
+    actionLabel = `${taskLabel}${
+      showProgress && taskFraction(install) != null ? ` ${percent}%` : ""
     }`;
     actionIcon = <Loader2 className="size-4 animate-spin" />;
   } else if (starting) {

@@ -8,6 +8,7 @@ mod download;
 mod error;
 mod files;
 mod install;
+mod instance_ops;
 mod java;
 mod launch;
 mod loaders;
@@ -123,6 +124,8 @@ pub fn run() {
             commands::instances::create_instance,
             commands::instances::update_instance,
             commands::instances::delete_instance,
+            commands::instances::repair_instance,
+            commands::instances::duplicate_instance,
             commands::instances::list_versions,
             commands::instances::list_loader_versions,
             commands::instances::list_installed_versions,

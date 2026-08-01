@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Boxes,
+  Copy,
   FileArchive,
   LayoutGrid,
   List,
   Pencil,
   Trash2,
   Plus,
+  Search,
+  SearchX,
   TriangleAlert,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button, EmptyState } from "../components/ui";
 import { Select } from "../components/Select";
@@ -21,7 +25,11 @@ import { pickPackFile } from "../lib/packs";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc } from "../lib/media";
-import { taskFraction, useActiveTasksByInstance } from "../lib/useTasks";
+import {
+  instanceTaskLabel,
+  taskFraction,
+  useActiveTasksByInstance,
+} from "../lib/useTasks";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { Instance, Task, VersionMedia } from "../lib/types";
 import { PlayButton } from "../components/PlayButton";
@@ -84,7 +92,7 @@ function StatusLine({ instance, task }: { instance: Instance; task?: Task }) {
     return task.retry_note ? (
       <span className="text-warn">Retrying</span>
     ) : (
-      <span className="capitalize text-(--accent)">{task.stage}</span>
+      <span className="capitalize text-(--accent)">{instanceTaskLabel(task)}</span>
     );
   }
   const played = formatPlaytime(instance.playtime_secs);
@@ -101,10 +109,12 @@ function StatusLine({ instance, task }: { instance: Instance; task?: Task }) {
 
 function RowActions({
   onEdit,
+  onDuplicate,
   onDelete,
   floating,
 }: {
   onEdit: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
   floating?: boolean;
 }) {
@@ -122,6 +132,19 @@ function RowActions({
         )}
       >
         <Pencil className="size-4" />
+      </button>
+      <button
+        onClick={onDuplicate}
+        aria-label="Duplicate instance"
+        title="Duplicate instance"
+        className={cn(
+          base,
+          floating
+            ? "bg-black/55 text-white/80 backdrop-blur hover:bg-black/75 hover:text-white"
+            : "text-content-faint hover:bg-surface-3 hover:text-content",
+        )}
+      >
+        <Copy className="size-4" />
       </button>
       <button
         onClick={onDelete}
@@ -143,6 +166,7 @@ export function InstancesView() {
   const busyTasks = useActiveTasksByInstance();
   const instances = useStore((s) => s.instances);
   const deleteInstance = useStore((s) => s.deleteInstance);
+  const duplicateInstance = useStore((s) => s.duplicateInstance);
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
   const openInstance = useStore((s) => s.openInstance);
@@ -152,6 +176,7 @@ export function InstancesView() {
   const [editing, setEditing] = useState<Instance | null>(null);
   const [removing, setRemoving] = useState<Instance | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(
     () => (localStorage.getItem("instances-view") as ViewMode) ?? "grid",
   );
@@ -160,7 +185,29 @@ export function InstancesView() {
     return stored && SORTS.includes(stored) ? stored : "Last played";
   });
 
-  const ordered = useMemo(() => sortInstances(instances, sort), [instances, sort]);
+  const ordered = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    const filtered = needle
+      ? instances.filter((instance) =>
+          [
+            instance.name,
+            instance.version_id,
+            instance.loader,
+            instance.loader_version,
+            instance.pack_provider,
+          ].some((value) => value?.toLocaleLowerCase().includes(needle)),
+        )
+      : instances;
+    return sortInstances(filtered, sort);
+  }, [instances, query, sort]);
+
+  const duplicate = async (instance: Instance) => {
+    try {
+      await duplicateInstance(instance.id);
+    } catch (error) {
+      toast.error(`Could not duplicate ${instance.name}`, { description: String(error) });
+    }
+  };
 
   const choosePack = async () => {
     const chosen = await pickPackFile();
@@ -190,11 +237,25 @@ export function InstancesView() {
           </h1>
           {instances.length > 0 && (
             <span className="text-xs text-content-faint">
-              {instances.length} {instances.length === 1 ? "instance" : "instances"}
+              {query.trim()
+                ? `${ordered.length} of ${instances.length} instances`
+                : `${instances.length} ${instances.length === 1 ? "instance" : "instances"}`}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
+          {instances.length > 0 && (
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-content-faint" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search instances"
+                aria-label="Search instances"
+                className="h-9 w-full rounded-lg border border-border-soft bg-surface-2/60 pl-9 pr-3 text-xs text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+              />
+            </div>
+          )}
           {instances.length > 1 && (
             <div className="w-44">
               <Select
@@ -261,6 +322,17 @@ export function InstancesView() {
             </Button>
           }
         />
+      ) : ordered.length === 0 ? (
+        <EmptyState
+          icon={<SearchX className="size-6" />}
+          title="No matching instances"
+          description={`Nothing matches “${query.trim()}”.`}
+          action={
+            <Button variant="ghost" onClick={() => setQuery("")}>
+              Clear search
+            </Button>
+          }
+        />
       ) : viewMode === "list" ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
           <div className="flex flex-col gap-2">
@@ -313,6 +385,7 @@ export function InstancesView() {
                     <PlayButton instance={it} onError={setLaunchError} />
                     <RowActions
                       onEdit={() => setEditing(it)}
+                      onDuplicate={() => void duplicate(it)}
                       onDelete={() => setRemoving(it)}
                     />
                   </div>
@@ -373,6 +446,7 @@ export function InstancesView() {
                       <RowActions
                         floating
                         onEdit={() => setEditing(it)}
+                        onDuplicate={() => void duplicate(it)}
                         onDelete={() => setRemoving(it)}
                       />
                     </div>
@@ -390,15 +464,17 @@ export function InstancesView() {
               );
             })}
 
-            <button
-              onClick={() => setModalOpen(true)}
-              className="group flex min-h-52 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border text-content-faint transition-colors hover:border-(--accent)/50 hover:bg-surface-2/40 hover:text-content"
-            >
-              <span className="grid size-11 place-items-center rounded-full border border-border-soft bg-surface-2 transition-colors group-hover:border-(--accent)/40">
-                <Plus className="size-5" />
-              </span>
-              <span className="text-xs font-medium">New instance</span>
-            </button>
+            {!query.trim() && (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="group flex min-h-52 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border text-content-faint transition-colors hover:border-(--accent)/50 hover:bg-surface-2/40 hover:text-content"
+              >
+                <span className="grid size-11 place-items-center rounded-full border border-border-soft bg-surface-2 transition-colors group-hover:border-(--accent)/40">
+                  <Plus className="size-5" />
+                </span>
+                <span className="text-xs font-medium">New instance</span>
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -24,6 +24,8 @@ pub enum TaskKind {
     WorldImport,
     InstanceImport,
     AppUpdate,
+    InstanceRepair,
+    InstanceDuplicate,
 }
 
 impl TaskKind {
@@ -38,6 +40,8 @@ impl TaskKind {
             Self::WorldImport => "world_import",
             Self::InstanceImport => "instance_import",
             Self::AppUpdate => "app_update",
+            Self::InstanceRepair => "instance_repair",
+            Self::InstanceDuplicate => "instance_duplicate",
         }
     }
 
@@ -52,6 +56,8 @@ impl TaskKind {
             "world_import" | "WorldImport" => Some(Self::WorldImport),
             "instance_import" | "InstanceImport" => Some(Self::InstanceImport),
             "app_update" | "AppUpdate" => Some(Self::AppUpdate),
+            "instance_repair" | "InstanceRepair" => Some(Self::InstanceRepair),
+            "instance_duplicate" | "InstanceDuplicate" => Some(Self::InstanceDuplicate),
             _ => None,
         }
     }
@@ -440,6 +446,14 @@ mod tests {
         assert_eq!(
             TaskKind::parse("ModpackInstall"),
             Some(TaskKind::ModpackInstall)
+        );
+        assert_eq!(
+            TaskKind::parse("instance_repair"),
+            Some(TaskKind::InstanceRepair)
+        );
+        assert_eq!(
+            TaskKind::parse("InstanceDuplicate"),
+            Some(TaskKind::InstanceDuplicate)
         );
         assert_eq!(TaskKind::parse("unknown"), None);
     }

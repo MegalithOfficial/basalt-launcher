@@ -38,6 +38,7 @@ import type {
   PackPreview,
   ProjectDetails,
   RemovalPlan,
+  RepairReport,
   ProjectSummary,
   ProjectVersion,
   RunningInfo,
@@ -254,6 +255,10 @@ export const api = {
     }),
   deleteInstance: (instanceId: string) =>
     call<void>("delete_instance", { instanceId }),
+  repairInstance: (instanceId: string) =>
+    call<RepairReport>("repair_instance", { instanceId }),
+  duplicateInstance: (instanceId: string) =>
+    call<Instance>("duplicate_instance", { instanceId }),
   listVersions: (includeSnapshots = false) =>
     call<VersionEntry[]>("list_versions", { includeSnapshots }),
   listInstalledVersions: () => call<string[]>("list_installed_versions"),

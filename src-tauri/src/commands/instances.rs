@@ -164,6 +164,28 @@ pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) ->
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub async fn repair_instance(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<crate::instance_ops::RepairReport> {
+    let instance = find_instance(&state, &instance_id)?;
+    crate::instance_ops::repair(&app, &state, instance).await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub async fn duplicate_instance(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<Instance> {
+    let instance = find_instance(&state, &instance_id)?;
+    crate::instance_ops::duplicate(&app, &state, instance).await
+}
+
+#[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub async fn get_instance_media(
     state: State<'_, AppState>,

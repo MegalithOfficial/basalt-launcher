@@ -232,6 +232,33 @@ impl Db {
         Ok(())
     }
 
+    pub fn clone_instance_content(&self, source_id: &str, destination_id: &str) -> Result<()> {
+        let mut guard = self.0.lock().unwrap();
+        let transaction = guard.transaction()?;
+        transaction.execute(
+            "INSERT INTO content_files
+                (instance_id, kind, file_name, sha1, sha512, murmur2, provider, project_id,
+                 version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
+                 pack_version_id, installed_at)
+             SELECT ?2, kind, file_name, sha1, sha512, murmur2, provider, project_id,
+                    version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
+                    pack_version_id, installed_at
+             FROM content_files WHERE instance_id = ?1",
+            params![source_id, destination_id],
+        )?;
+        transaction.execute(
+            "INSERT INTO content_updates
+                (instance_id, kind, file_name, latest_version_id, latest_name,
+                 latest_file_name, checked_at)
+             SELECT ?2, kind, file_name, latest_version_id, latest_name,
+                    latest_file_name, checked_at
+             FROM content_updates WHERE instance_id = ?1",
+            params![source_id, destination_id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn replace_content_updates(
         &self,
         instance_id: &str,
@@ -293,5 +320,56 @@ impl Db {
             )
             .optional()?;
         Ok(result.flatten())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clone_instance_content_keeps_identity_and_updates() {
+        let db = Db::open_in_memory().unwrap();
+        db.record_content_file(
+            "source",
+            "mods",
+            &ContentFile {
+                file_name: "example.jar".into(),
+                sha1: Some("abc".into()),
+                provider: Some("modrinth".into()),
+                project_id: Some("project".into()),
+                version_id: Some("version".into()),
+                title: Some("Example".into()),
+                origin: "user".into(),
+                installed_at: 42,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        db.replace_content_updates(
+            "source",
+            &[ContentUpdate {
+                kind: "mods".into(),
+                file_name: "example.jar".into(),
+                latest_version_id: "next".into(),
+                latest_name: "Next".into(),
+                latest_file_name: "example-next.jar".into(),
+            }],
+            50,
+        )
+        .unwrap();
+
+        db.clone_instance_content("source", "copy").unwrap();
+
+        let file = db
+            .content_file("copy", "mods", "example.jar")
+            .unwrap()
+            .unwrap();
+        assert_eq!(file.project_id.as_deref(), Some("project"));
+        assert_eq!(file.installed_at, 42);
+        assert_eq!(
+            db.content_updates("copy").unwrap()[0].latest_version_id,
+            "next"
+        );
     }
 }

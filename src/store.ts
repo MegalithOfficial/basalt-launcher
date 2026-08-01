@@ -31,6 +31,7 @@ import type {
   LogRecord,
   ManualDownloadSource,
   RunningInfo,
+  RepairReport,
   SearchPage,
   SearchProvider,
   SortOrder,
@@ -181,6 +182,8 @@ interface AppStore {
     envVarsMode?: string | null,
   ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
+  repairInstance: (id: string) => Promise<RepairReport>;
+  duplicateInstance: (id: string) => Promise<Instance>;
   installInstance: (id: string) => Promise<void>;
   refreshAccounts: () => Promise<void>;
   addAccount: () => Promise<void>;
@@ -611,6 +614,7 @@ export const useStore = create<AppStore>((set) => ({
           justFinished &&
           !quiet &&
           task.kind !== "app_update" &&
+          task.kind !== "instance_repair" &&
           task.state === "succeeded"
         ) {
           notifyTaskFinished(task);
@@ -1094,6 +1098,25 @@ export const useStore = create<AppStore>((set) => ({
           s.selectedInstanceId === id ? (instances[0]?.id ?? null) : s.selectedInstanceId,
       };
     });
+  },
+
+  repairInstance: async (id) => api.repairInstance(id),
+
+  duplicateInstance: async (id) => {
+    const duplicate = await api.duplicateInstance(id);
+    const installedVersions = await api.listInstalledVersions();
+    set((state) => {
+      const instances = [...state.instances, duplicate];
+      return {
+        instances,
+        selectedInstanceId: duplicate.id,
+        discoverTargetId: duplicate.id,
+        installedIds: instances
+          .filter((instance) => isInstanceInstalled(instance, installedVersions))
+          .map((instance) => instance.id),
+      };
+    });
+    return duplicate;
   },
 
   installInstance: async (id) => {

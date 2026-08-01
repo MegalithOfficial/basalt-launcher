@@ -6,6 +6,7 @@ import {
   Boxes,
   CircleStop,
   Compass,
+  Copy,
   Download,
   FolderOpen,
   Pin,
@@ -16,6 +17,7 @@ import {
   SquareChartGantt,
   Trash2,
   UserCircle2,
+  Wrench,
 } from "lucide-react";
 
 import { cn } from "../lib/cn";
@@ -193,6 +195,8 @@ export function Sidebar() {
   const openDiscover = useStore((s) => s.openDiscover);
   const killInstance = useStore((s) => s.killInstance);
   const deleteInstance = useStore((s) => s.deleteInstance);
+  const duplicateInstance = useStore((s) => s.duplicateInstance);
+  const repairInstance = useStore((s) => s.repairInstance);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const dockRef = useRef<HTMLDivElement>(null);
@@ -309,9 +313,51 @@ export function Sidebar() {
         onSelect: () => void openPath(instance.dir),
       },
       {
+        label: "Repair and verify",
+        icon: Wrench,
+        disabled: isRunning,
+        onSelect: () => {
+          repairInstance(instance.id)
+            .then((report) => {
+              if (report.unresolved.length > 0) {
+                toast.warning(
+                  `Repair finished with ${report.unresolved.length} unresolved ${report.unresolved.length === 1 ? "file" : "files"}`,
+                  { description: report.unresolved.slice(0, 3).join(" · ") },
+                );
+              } else {
+                toast.success(`${instance.name} is healthy`, {
+                  description:
+                    report.repaired_content > 0
+                      ? `Repaired ${report.repaired_content} tracked ${report.repaired_content === 1 ? "file" : "files"}.`
+                      : "Game and tracked content files passed verification.",
+                });
+              }
+            })
+            .catch((error) => {
+              if (!/cancelled/i.test(String(error))) {
+                toast.error(`Could not repair ${instance.name}`, {
+                  description: String(error),
+                });
+              }
+            });
+        },
+      },
+      {
         label: "Export as pack",
         icon: Share,
         onSelect: () => setExporting(instance),
+      },
+      {
+        label: "Duplicate instance",
+        icon: Copy,
+        disabled: isRunning,
+        onSelect: () => {
+          duplicateInstance(instance.id).catch((error) =>
+            toast.error(`Could not duplicate ${instance.name}`, {
+              description: String(error),
+            }),
+          );
+        },
       },
       {
         label: "Settings",

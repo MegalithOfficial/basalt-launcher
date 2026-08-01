@@ -14,6 +14,7 @@ import {
   SearchX,
   Share,
   Trash2,
+  Wrench,
 } from "lucide-react";
 
 import { Banner } from "../components/Banner";
@@ -176,6 +177,7 @@ export function InstanceView() {
   const openProject = useStore((s) => s.openProject);
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const refreshUpdates = useStore((s) => s.refreshUpdates);
+  const repairInstance = useStore((s) => s.repairInstance);
   const applyUpdate = useStore((s) => s.applyUpdate);
   const beginOptimisticTask = useStore((s) => s.beginOptimisticTask);
   const endOptimisticTask = useStore((s) => s.endOptimisticTask);
@@ -209,6 +211,7 @@ export function InstanceView() {
   const [updatingAll, setUpdatingAll] = useState(false);
   const [updatingFile, setUpdatingFile] = useState<string | null>(null);
   const [suggestBusy, setSuggestBusy] = useState<string | null>(null);
+  const [repairing, setRepairing] = useState(false);
   const installingInstance = useRef<string | null>(null);
   const browserDownloads = useCurseforgeDownloads();
 
@@ -574,6 +577,33 @@ export function InstanceView() {
     }
   };
 
+  const repair = async () => {
+    setRepairing(true);
+    try {
+      const report = await repairInstance(instance.id);
+      if (report.unresolved.length > 0) {
+        toast.warning(
+          `Repair finished with ${report.unresolved.length} unresolved ${report.unresolved.length === 1 ? "file" : "files"}`,
+          { description: report.unresolved.slice(0, 3).join(" · ") },
+        );
+      } else {
+        toast.success("Instance verified", {
+          description:
+            report.repaired_content > 0
+              ? `Repaired ${report.repaired_content} tracked ${report.repaired_content === 1 ? "file" : "files"}.`
+              : `Game files and ${report.checked_content} tracked content files are healthy.`,
+        });
+      }
+      await refresh();
+    } catch (error) {
+      if (!/cancelled/i.test(String(error))) {
+        toast.error(`Could not repair ${instance.name}`, { description: String(error) });
+      }
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   return (
     <div className="-mt-9 flex min-h-0 flex-1 flex-col">
       <div className="relative h-68 shrink-0 overflow-hidden">
@@ -615,6 +645,23 @@ export function InstanceView() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => void repair()}
+              disabled={repairing || busyWithTask || gameRunning}
+              aria-label="Repair and verify instance"
+              title={
+                gameRunning
+                  ? "Stop the instance before repairing it"
+                  : "Repair and verify instance"
+              }
+              className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {repairing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Wrench className="size-4" />
+              )}
+            </button>
             <button
               onClick={() => setDialog({ kind: "export" })}
               aria-label="Export as pack"

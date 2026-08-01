@@ -90,6 +90,12 @@ export function taskFraction(task: Task): number | null {
   return null;
 }
 
+export function instanceTaskLabel(task: Task): string {
+  if (task.kind === "instance_repair") return "Repairing";
+  if (task.kind === "instance_duplicate") return "Duplicating";
+  return task.stage.replace(/-/g, " ");
+}
+
 export function aggregateFraction(tasks: Task[]): number | null {
   const bytes = tasks.filter((t) => t.total_bytes > 0);
   if (bytes.length > 0) {

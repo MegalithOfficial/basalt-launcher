@@ -336,7 +336,15 @@ export type TaskKind =
   | "content_update"
   | "world_import"
   | "instance_import"
-  | "app_update";
+  | "app_update"
+  | "instance_repair"
+  | "instance_duplicate";
+
+export interface RepairReport {
+  checked_content: number;
+  repaired_content: number;
+  unresolved: string[];
+}
 
 export type WorldStatus = "ok" | "recovered" | "damaged";
 
