@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 9;
+pub(super) const SCHEMA_VERSION: i64 = 10;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -130,6 +130,11 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             accent TEXT,
             added_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS instance_groups(
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            sort_order INTEGER NOT NULL
+        );
 
         CREATE TABLE IF NOT EXISTS skins(
             id TEXT PRIMARY KEY,
@@ -157,6 +162,8 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         ("import_source", "TEXT"),
         ("import_source_id", "TEXT"),
         ("banner_id", "TEXT"),
+        ("group_id", "TEXT"),
+        ("group_order", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         add_column_if_missing(conn, "instances", column, declaration)?;
     }
@@ -195,6 +202,8 @@ mod tests {
         assert!(column_exists(&conn, "content_files", "origin").unwrap());
         assert!(super::table_exists(&conn, "api_cache").unwrap());
         assert!(super::table_exists(&conn, "active_runs").unwrap());
+        assert!(super::table_exists(&conn, "instance_groups").unwrap());
+        assert!(column_exists(&conn, "instances", "group_id").unwrap());
     }
 
     #[test]

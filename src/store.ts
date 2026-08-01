@@ -22,6 +22,8 @@ import type {
   PendingOperation,
   Task,
   Instance,
+  InstanceGroup,
+  InstanceOrganization,
   InstalledItem,
   LauncherSettings,
   LogConfig,
@@ -130,6 +132,7 @@ interface AppStore {
   error: string | null;
   settings: LauncherSettings | null;
   instances: Instance[];
+  instanceOrganization: InstanceOrganization;
   installedIds: string[];
   accounts: AccountView[];
   auth: AuthFlow;
@@ -161,6 +164,13 @@ interface AppStore {
   setView: (view: View) => void;
   init: () => Promise<void>;
   refreshInstances: () => Promise<void>;
+  refreshInstanceOrganization: () => Promise<void>;
+  createInstanceGroup: (name: string) => Promise<InstanceGroup>;
+  renameInstanceGroup: (id: string, name: string) => Promise<void>;
+  deleteInstanceGroup: (id: string) => Promise<void>;
+  moveInstanceToGroup: (instanceId: string, groupId: string | null) => Promise<void>;
+  reorderInstanceGroups: (ids: string[]) => Promise<void>;
+  reorderGroupInstances: (groupId: string | null, ids: string[]) => Promise<void>;
   createInstance: (
     name: string,
     versionId: string,
@@ -325,6 +335,7 @@ export const useStore = create<AppStore>((set) => ({
   error: null,
   settings: null,
   instances: [],
+  instanceOrganization: { groups: [], placements: [] },
   installedIds: [],
   accounts: [],
   auth: { status: "idle" },
@@ -414,6 +425,7 @@ export const useStore = create<AppStore>((set) => ({
           .map((i) => i.id),
       };
     });
+    await useStore.getState().refreshInstanceOrganization();
     return instance;
   },
 
@@ -703,6 +715,7 @@ export const useStore = create<AppStore>((set) => ({
       const [
         settings,
         instances,
+        instanceOrganization,
         accounts,
         installedVersions,
         tasks,
@@ -712,6 +725,7 @@ export const useStore = create<AppStore>((set) => ({
       ] = await Promise.all([
         api.getSettings(),
         api.listInstances(),
+        api.getInstanceOrganization(),
         api.listAccounts(),
         api.listInstalledVersions(),
         api.listTasks().catch(() => [] as Task[]),
@@ -753,6 +767,7 @@ export const useStore = create<AppStore>((set) => ({
         return {
           settings,
           instances,
+          instanceOrganization,
           accounts,
           installedIds,
           ready: true,
@@ -1007,7 +1022,87 @@ export const useStore = create<AppStore>((set) => ({
   },
 
   refreshInstances: async () => {
-    set({ instances: await api.listInstances() });
+    const [instances, instanceOrganization] = await Promise.all([
+      api.listInstances(),
+      api.getInstanceOrganization(),
+    ]);
+    set({ instances, instanceOrganization });
+  },
+
+  refreshInstanceOrganization: async () => {
+    set({ instanceOrganization: await api.getInstanceOrganization() });
+  },
+
+  createInstanceGroup: async (name) => {
+    const group = await api.createInstanceGroup(name);
+    set((state) => ({
+      instanceOrganization: {
+        ...state.instanceOrganization,
+        groups: [...state.instanceOrganization.groups, group],
+      },
+    }));
+    return group;
+  },
+
+  renameInstanceGroup: async (id, name) => {
+    const group = await api.renameInstanceGroup(id, name);
+    set((state) => ({
+      instanceOrganization: {
+        ...state.instanceOrganization,
+        groups: state.instanceOrganization.groups.map((item) =>
+          item.id === id ? group : item,
+        ),
+      },
+    }));
+  },
+
+  deleteInstanceGroup: async (id) => {
+    await api.deleteInstanceGroup(id);
+    set((state) => ({
+      instanceOrganization: {
+        groups: state.instanceOrganization.groups.filter((group) => group.id !== id),
+        placements: state.instanceOrganization.placements.map((placement) =>
+          placement.group_id === id ? { ...placement, group_id: null } : placement,
+        ),
+      },
+    }));
+  },
+
+  moveInstanceToGroup: async (instanceId, groupId) => {
+    await api.moveInstanceToGroup(instanceId, groupId);
+    await useStore.getState().refreshInstanceOrganization();
+  },
+
+  reorderInstanceGroups: async (ids) => {
+    await api.reorderInstanceGroups(ids);
+    set((state) => {
+      const order = new Map(ids.map((id, index) => [id, index]));
+      return {
+        instanceOrganization: {
+          ...state.instanceOrganization,
+          groups: state.instanceOrganization.groups
+            .map((group) => ({ ...group, sort_order: order.get(group.id) ?? group.sort_order }))
+            .sort((a, b) => a.sort_order - b.sort_order),
+        },
+      };
+    });
+  },
+
+  reorderGroupInstances: async (groupId, ids) => {
+    await api.reorderGroupInstances(groupId, ids);
+    set((state) => {
+      const order = new Map(ids.map((id, index) => [id, index]));
+      return {
+        instanceOrganization: {
+          ...state.instanceOrganization,
+          placements: state.instanceOrganization.placements.map((placement) =>
+            placement.group_id === groupId
+              ? { ...placement, sort_order: order.get(placement.instance_id) ?? placement.sort_order }
+              : placement,
+          ),
+        },
+      };
+    });
   },
 
   createInstance: async (name, versionId, loader, loaderVersion) => {
@@ -1021,6 +1116,7 @@ export const useStore = create<AppStore>((set) => ({
         ? [...s.installedIds, instance.id]
         : s.installedIds,
     }));
+    await useStore.getState().refreshInstanceOrganization();
     return instance;
   },
 
@@ -1084,6 +1180,12 @@ export const useStore = create<AppStore>((set) => ({
       );
       return {
         instances,
+        instanceOrganization: {
+          ...s.instanceOrganization,
+          placements: s.instanceOrganization.placements.filter(
+            (placement) => placement.instance_id !== id,
+          ),
+        },
         view: deletingOpenInstance && s.view === "instance" ? "instances" : s.view,
         viewStack: deletingOpenInstance
           ? s.viewStack.filter((view) => view !== "instance")
@@ -1116,6 +1218,7 @@ export const useStore = create<AppStore>((set) => ({
           .map((instance) => instance.id),
       };
     });
+    await useStore.getState().refreshInstanceOrganization();
     return duplicate;
   },
 

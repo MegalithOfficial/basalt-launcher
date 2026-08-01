@@ -10,6 +10,7 @@ mod banners;
 mod cache;
 mod content;
 mod core;
+mod groups;
 mod instances;
 mod migrations;
 mod models;
@@ -19,8 +20,8 @@ mod settings;
 mod skins;
 
 pub use models::{
-    ActiveRun, BannerRecord, CachedResponse, ContentFile, ContentUpdate, PendingOperation,
-    SkinRecord,
+    ActiveRun, BannerRecord, CachedResponse, ContentFile, ContentUpdate, InstanceGroup,
+    InstanceOrganization, InstancePlacement, PendingOperation, SkinRecord,
 };
 
 use migrations::{migrate, SCHEMA_VERSION};

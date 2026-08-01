@@ -24,6 +24,62 @@ pub fn list_instances(state: State<AppState>) -> Result<Vec<Instance>> {
 }
 
 #[tauri::command]
+pub fn get_instance_organization(
+    state: State<AppState>,
+) -> Result<crate::db::InstanceOrganization> {
+    state.db.instance_organization()
+}
+
+#[tauri::command]
+pub fn create_instance_group(
+    state: State<AppState>,
+    name: String,
+) -> Result<crate::db::InstanceGroup> {
+    state.db.create_instance_group(&name)
+}
+
+#[tauri::command]
+pub fn rename_instance_group(
+    state: State<AppState>,
+    group_id: String,
+    name: String,
+) -> Result<crate::db::InstanceGroup> {
+    state.db.rename_instance_group(&group_id, &name)
+}
+
+#[tauri::command]
+pub fn delete_instance_group(state: State<AppState>, group_id: String) -> Result<()> {
+    state.db.delete_instance_group(&group_id)
+}
+
+#[tauri::command]
+pub fn move_instance_to_group(
+    state: State<AppState>,
+    instance_id: String,
+    group_id: Option<String>,
+) -> Result<()> {
+    state
+        .db
+        .move_instance_to_group(&instance_id, group_id.as_deref())
+}
+
+#[tauri::command]
+pub fn reorder_instance_groups(state: State<AppState>, group_ids: Vec<String>) -> Result<()> {
+    state.db.reorder_instance_groups(&group_ids)
+}
+
+#[tauri::command]
+pub fn reorder_group_instances(
+    state: State<AppState>,
+    group_id: Option<String>,
+    instance_ids: Vec<String>,
+) -> Result<()> {
+    state
+        .db
+        .reorder_group_instances(group_id.as_deref(), &instance_ids)
+}
+
+#[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub fn create_instance(
     state: State<AppState>,

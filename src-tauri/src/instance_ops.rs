@@ -410,6 +410,7 @@ pub async fn duplicate(app: &AppHandle, state: &AppState, source: Instance) -> R
     let persist = (|| {
         state.db.insert_instance(&duplicate)?;
         state.db.clone_instance_content(&source.id, &id)?;
+        state.db.clone_instance_placement(&source.id, &id)?;
         if let Some(logo) = source.logo.as_deref() {
             let path = Path::new(logo);
             let extension = path

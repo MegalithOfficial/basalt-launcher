@@ -1,5 +1,25 @@
 use crate::tasks::TaskKind;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InstanceGroup {
+    pub id: String,
+    pub name: String,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InstancePlacement {
+    pub instance_id: String,
+    pub group_id: Option<String>,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InstanceOrganization {
+    pub groups: Vec<InstanceGroup>,
+    pub placements: Vec<InstancePlacement>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveRun {
     pub running_id: String,

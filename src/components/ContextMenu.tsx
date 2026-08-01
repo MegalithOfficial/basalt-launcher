@@ -20,7 +20,7 @@ export interface MenuState {
   items: MenuItem[];
 }
 
-const EDGE = 8;
+const EDGE = 12;
 
 export function ContextMenu({ menu, onClose }: { menu: MenuState | null; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -33,7 +33,10 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState | null; onClose
   useLayoutEffect(() => {
     if (!menu || !ref.current) return;
     const rect = ref.current.getBoundingClientRect();
-    const left = Math.min(menu.x, window.innerWidth - rect.width - EDGE);
+    const maxLeft = window.innerWidth - rect.width - EDGE;
+    const mirrored = menu.x - rect.width;
+    const left =
+      menu.x > maxLeft && mirrored >= EDGE ? mirrored : Math.min(menu.x, maxLeft);
     const top = Math.min(menu.y, window.innerHeight - rect.height - EDGE);
     setPos({ left: Math.max(EDGE, left), top: Math.max(EDGE, top) });
   }, [menu]);

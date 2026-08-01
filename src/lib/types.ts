@@ -74,6 +74,23 @@ export interface Instance {
   banner_id: string | null;
 }
 
+export interface InstanceGroup {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
+export interface InstancePlacement {
+  instance_id: string;
+  group_id: string | null;
+  sort_order: number;
+}
+
+export interface InstanceOrganization {
+  groups: InstanceGroup[];
+  placements: InstancePlacement[];
+}
+
 export type LoaderKind = "fabric" | "quilt" | "neoforge" | "forge";
 
 export type ContentKind =

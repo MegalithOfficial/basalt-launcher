@@ -17,6 +17,8 @@ import type {
   InstalledFile,
   InstalledItem,
   Instance,
+  InstanceGroup,
+  InstanceOrganization,
   JavaInfo,
   JavaStatus,
   LauncherSource,
@@ -79,6 +81,20 @@ export const api = {
   updateSettings: (settings: LauncherSettings) =>
     call<void>("update_settings", { settings }),
   listInstances: () => call<Instance[]>("list_instances"),
+  getInstanceOrganization: () =>
+    call<InstanceOrganization>("get_instance_organization"),
+  createInstanceGroup: (name: string) =>
+    call<InstanceGroup>("create_instance_group", { name }),
+  renameInstanceGroup: (groupId: string, name: string) =>
+    call<InstanceGroup>("rename_instance_group", { groupId, name }),
+  deleteInstanceGroup: (groupId: string) =>
+    call<void>("delete_instance_group", { groupId }),
+  moveInstanceToGroup: (instanceId: string, groupId: string | null) =>
+    call<void>("move_instance_to_group", { instanceId, groupId }),
+  reorderInstanceGroups: (groupIds: string[]) =>
+    call<void>("reorder_instance_groups", { groupIds }),
+  reorderGroupInstances: (groupId: string | null, instanceIds: string[]) =>
+    call<void>("reorder_group_instances", { groupId, instanceIds }),
   createInstance: (
     name: string,
     versionId: string,
