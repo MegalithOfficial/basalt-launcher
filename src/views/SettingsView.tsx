@@ -30,7 +30,6 @@ import { SettingGroup, SettingRow as Row, Toggle } from "../components/ui";
 import { ACCENT_PRESETS, applyTheme, DEFAULTS, isHex, themeVars } from "../lib/accent";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
-import { log } from "../lib/log";
 import type {
   AboutLinks,
   AccentMode,
@@ -43,7 +42,6 @@ import type {
   NetworkProbe,
   ProxyMode,
   SystemStats,
-  SystemUsage,
   UpdateInfo,
 } from "../lib/types";
 import { useStore } from "../store";
@@ -160,135 +158,6 @@ function formatGb(mb?: number | null) {
   return `${(mb / 1024).toFixed(1)} GB`;
 }
 
-function StatTile({
-  label,
-  value,
-  hint,
-  children,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 bg-surface-2/60 px-5 py-4">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-content-faint">
-        {label}
-      </div>
-      <div className="truncate text-sm font-medium text-content" title={value}>
-        {value}
-      </div>
-      {hint && (
-        <div className="truncate text-xs text-content-faint" title={hint}>
-          {hint}
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-function SystemCard({
-  stats,
-  appInfo,
-  update,
-  checking,
-  checkFailed,
-  onRefresh,
-  refreshing,
-}: {
-  stats: SystemStats | null;
-  appInfo: AppInfo | null;
-  update: UpdateInfo | null;
-  checking: boolean;
-  checkFailed: boolean;
-  onRefresh: () => void;
-  refreshing: boolean;
-}) {
-  const updateNote = checking
-    ? "checking for updates"
-    : checkFailed
-      ? "could not reach GitHub"
-      : update?.update_available && update.latest
-        ? `${update.latest} available`
-        : update
-          ? "up to date"
-          : "updates not checked yet";
-
-  return (
-    <section className="mt-6">
-      <div className="mb-2 flex items-end justify-between gap-4 px-1">
-        <div>
-          <h2 className="font-display text-sm font-semibold text-content">This install</h2>
-          <p className="mt-0.5 text-xs text-content-muted">
-            What Basalt is and what it sees. Useful when deciding how much memory to hand the
-            game, and worth quoting in a bug report.
-          </p>
-        </div>
-        <button
-          onClick={onRefresh}
-          disabled={refreshing}
-          title="Re-read memory and disk space"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:opacity-50"
-        >
-          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-          Refresh
-        </button>
-      </div>
-      <div className="overflow-hidden rounded-2xl border border-border-soft">
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 bg-surface-2 px-5 py-3">
-          <span className="font-display text-sm font-semibold text-content">
-            Basalt {appInfo?.version ?? "\u2026"}
-          </span>
-          <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
-            {appInfo?.build_channel === "release" ? "Release" : "Development"}
-          </span>
-          <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
-            {appInfo?.arch ?? "\u2026"}
-          </span>
-          {appInfo?.install_source && (
-            <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
-              {appInfo.install_source.label}
-            </span>
-          )}
-          <span className="ml-auto text-[11px] text-content-faint">{updateNote}</span>
-        </div>
-        <div className="grid gap-px border-t border-border-soft bg-border-soft sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
-          label="Memory"
-          value={`${formatGb(stats?.total_memory_mb)} installed`}
-          hint={`${formatGb(stats?.available_memory_mb)} free right now`}
-        />
-        <StatTile
-          label="Processor"
-          value={stats?.cpu ?? "reading"}
-          hint={stats ? `${stats.cores} physical cores` : undefined}
-        />
-        <StatTile
-          label="Operating system"
-          value={stats?.os ?? "reading"}
-          hint={stats?.kernel ? `kernel ${stats.kernel}` : undefined}
-        />
-        <StatTile
-          label="Disk"
-          value={
-            stats?.data_dir_free_mb != null
-              ? `${formatGb(stats.data_dir_free_mb)} free`
-              : "unknown"
-          }
-          hint={
-            stats?.data_dir_total_mb != null
-              ? `of ${formatGb(stats.data_dir_total_mb)}, where instances live`
-              : "where instances live"
-          }
-        />
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function SettingsView() {
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [probe, setProbe] = useState<NetworkProbe | null>(null);
@@ -315,7 +184,6 @@ export function SettingsView() {
   const [saved, setSaved] = useState(false);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [preview, setPreview] = useState<LaunchPreview | null>(null);
-  const [refreshingUsage, setRefreshingUsage] = useState(false);
   const [tab, setTab] = useState(TABS[0].id);
   const [links, setLinks] = useState<AboutLinks | null>(null);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
@@ -460,18 +328,6 @@ export function SettingsView() {
 
   const addEnvVar = () =>
     setDraft({ ...draft, env_vars: [...draft.env_vars, { key: "", value: "" }] });
-
-  const refreshUsage = async () => {
-    setRefreshingUsage(true);
-    try {
-      const usage: SystemUsage = await api.getSystemUsage();
-      setStats((prev) => (prev ? { ...prev, ...usage } : prev));
-    } catch (e) {
-      log.warn("settings", `could not refresh system usage: ${String(e)}`);
-    } finally {
-      setRefreshingUsage(false);
-    }
-  };
 
   const installedMb = stats?.total_memory_mb ?? 0;
   const availableMb = stats?.available_memory_mb ?? 0;
@@ -739,15 +595,6 @@ export function SettingsView() {
           </div>
           </div>
 
-          <SystemCard
-            stats={stats}
-            appInfo={appInfo}
-            update={update}
-            checking={checking}
-            checkFailed={checkFailed}
-            onRefresh={() => void refreshUsage()}
-            refreshing={refreshingUsage}
-          />
           </div>
         )}
 
