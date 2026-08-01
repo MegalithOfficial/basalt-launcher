@@ -50,6 +50,16 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: node .github/scripts/set-version.mjs "$REQUESTED_VERSION"
 
+      - name: Require updater signing key
+        if: inputs.upload_release
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "Add TAURI_SIGNING_PRIVATE_KEY as a repository secret before publishing releases."
+            exit 1
+          fi
+
   build:
     name: ${{ matrix.name }}
     needs: prepare
@@ -61,12 +71,15 @@ jobs:
           - name: Linux
             runner: ubuntu-22.04
             artifact: linux
+            updater_platform: linux-x86_64
           - name: Windows
             runner: windows-latest
             artifact: windows
+            updater_platform: windows-x86_64
           - name: macOS
             runner: macos-latest
             artifact: macos
+            updater_platform: darwin-aarch64
 
     steps:
       - name: Check out repository
@@ -109,16 +122,37 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build development bundles
-        if: inputs.build_type == 'dev'
+        if: inputs.build_type == 'dev' && !inputs.upload_release
         env:
           BASALT_BUILD_CHANNEL: dev
+          BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
         run: bun run tauri build --debug
 
+      - name: Build signed development bundles
+        if: inputs.build_type == 'dev' && inputs.upload_release
+        env:
+          BASALT_BUILD_CHANNEL: dev
+          BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: bun run tauri build --debug --config src-tauri/tauri.updater.conf.json
+
       - name: Build release bundles
-        if: inputs.build_type == 'release'
+        if: inputs.build_type == 'release' && !inputs.upload_release
         env:
           BASALT_BUILD_CHANNEL: release
+          BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
         run: bun run tauri build
+
+      - name: Build signed release bundles
+        if: inputs.build_type == 'release' && inputs.upload_release
+        env:
+          BASALT_BUILD_CHANNEL: release
+          BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: bun run tauri build --config src-tauri/tauri.updater.conf.json
+
+      - name: Record updater platform
+        run: node .github/scripts/write-updater-platform.mjs "${{ inputs.build_type == 'dev' && 'debug' || 'release' }}" "${{ matrix.updater_platform }}"
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
@@ -164,7 +198,6 @@ jobs:
         with:
           pattern: basalt-${{ inputs.build_type }}-${{ needs.prepare.outputs.version }}-*
           path: release-assets
-          merge-multiple: true
 
       - name: Create GitHub release
         env:
@@ -175,24 +208,31 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
-          mapfile -t files < <(
-            find release-assets -type f \
-              \( -name '*.AppImage' -o -name '*.deb' \
-              -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \)
-          )
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No installable bundles were downloaded."
-            exit 1
-          fi
-
           if [ "$BUILD_TYPE" = "dev" ]; then
             tag="v${VERSION}-dev.${RUN_NUMBER}.${RUN_ATTEMPT}"
+            updater_version="${VERSION}-dev.${RUN_NUMBER}.${RUN_ATTEMPT}"
             title="Basalt ${VERSION} development build"
             channel_args=(--prerelease)
           else
             tag="v${VERSION}"
+            updater_version="${VERSION}"
             title="Basalt ${VERSION}"
             channel_args=(--latest)
+          fi
+
+          node .github/scripts/create-update-manifest.mjs \
+            release-assets "$GITHUB_REPOSITORY" "$tag" "$updater_version" \
+            release-assets/latest.json
+
+          mapfile -t files < <(
+            find release-assets -type f \
+              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' \
+              -o -name '*.msi' -o -name '*.exe' -o -name '*.app.tar.gz' \
+              -o -name '*.sig' -o -name 'latest.json' \)
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No installable bundles were downloaded."
+            exit 1
           fi
 
           gh release create "$tag" "${files[@]}" \

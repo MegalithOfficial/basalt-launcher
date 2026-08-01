@@ -34,6 +34,7 @@ test("renders matching development AUR metadata from a prerelease", async () => 
   assert.match(pkgbuild, /^pkgver=1\.2\.3\.dev\.42\.2$/m);
   assert.match(pkgbuild, /releases\/download\/v1\.2\.3-dev\.42\.2\/Basalt\.Launcher_1\.2\.3_amd64\.deb/);
   assert.match(pkgbuild, /applications\/basalt-launcher\.desktop/);
+  assert.match(pkgbuild, /share\/basalt-launcher\/aur-package/);
   assert.match(srcinfo, /conflicts = basalt-launcher-bin/);
 });
 

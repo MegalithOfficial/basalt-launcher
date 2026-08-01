@@ -1,6 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-env-changed=BASALT_BUILD_CHANNEL");
     println!("cargo:rerun-if-env-changed=BASALT_DEV_BUILD");
+    println!("cargo:rerun-if-env-changed=BASALT_DISTRIBUTION");
     println!("cargo:rerun-if-env-changed=GITHUB_RUN_NUMBER");
     println!("cargo:rerun-if-env-changed=GITHUB_RUN_ATTEMPT");
     let channel = std::env::var("BASALT_BUILD_CHANNEL").unwrap_or_else(|_| "dev".to_string());
@@ -14,5 +15,8 @@ fn main() {
         format!("{run}.{attempt}")
     });
     println!("cargo:rustc-env=BASALT_DEV_BUILD={dev_build}");
+    let distribution =
+        std::env::var("BASALT_DISTRIBUTION").unwrap_or_else(|_| "source".to_string());
+    println!("cargo:rustc-env=BASALT_DISTRIBUTION={distribution}");
     tauri_build::build()
 }

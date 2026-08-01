@@ -16,6 +16,7 @@ import { isInstanceInstalled } from "./lib/loader";
 import { log } from "./lib/log";
 import type {
   AccountView,
+  AppUpdateStatus,
   ContentKind,
   ContentUpdate,
   PendingOperation,
@@ -153,6 +154,7 @@ interface AppStore {
   interrupted: PendingOperation[];
   tasks: Record<string, Task>;
   taskOrder: string[];
+  appUpdateStatus: AppUpdateStatus | null;
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
@@ -233,6 +235,9 @@ interface AppStore {
   refreshUpdates: (instanceId: string, force?: boolean) => Promise<void>;
   clearFinishedTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
+  dismissAppUpdate: (version: string) => Promise<void>;
+  downloadAppUpdate: () => Promise<void>;
+  installAppUpdate: () => Promise<void>;
   beginOptimisticTask: (
     kind: Task["kind"],
     title: string,
@@ -343,6 +348,7 @@ export const useStore = create<AppStore>((set) => ({
   interrupted: [],
   tasks: {},
   taskOrder: [],
+  appUpdateStatus: null,
 
   setView: (view) => set({ view, viewStack: [] }),
 
@@ -455,6 +461,20 @@ export const useStore = create<AppStore>((set) => ({
 
   cancelTask: async (taskId) => {
     await api.cancelTask(taskId);
+  },
+
+  dismissAppUpdate: async (version) => {
+    const appUpdateStatus = await api.dismissAppUpdate(version);
+    set({ appUpdateStatus });
+  },
+
+  downloadAppUpdate: async () => {
+    const appUpdateStatus = await api.downloadAppUpdate();
+    set({ appUpdateStatus });
+  },
+
+  installAppUpdate: async () => {
+    await api.installAppUpdate();
   },
 
   beginOptimisticTask: (kind, title, context = {}) => {
@@ -576,6 +596,9 @@ export const useStore = create<AppStore>((set) => ({
           set({ auth: { status: "error", message: p.message } });
         }
       }));
+      track(await listen<AppUpdateStatus>("app:update-status", (e) => {
+        set({ appUpdateStatus: e.payload });
+      }));
       track(await listen<Task>("task:update", (e) => {
         const task = e.payload;
         const previous = useStore.getState().tasks[task.id];
@@ -584,7 +607,12 @@ export const useStore = create<AppStore>((set) => ({
           previous.state === "running" && task.state !== "running";
 
         const quiet = batching || (installsInFlight > 0 && task.kind === "content_install");
-        if (justFinished && !quiet && task.state === "succeeded") {
+        if (
+          justFinished &&
+          !quiet &&
+          task.kind !== "app_update" &&
+          task.state === "succeeded"
+        ) {
           notifyTaskFinished(task);
         }
         if (justFinished && task.state === "failed") {
@@ -676,6 +704,7 @@ export const useStore = create<AppStore>((set) => ({
         tasks,
         interrupted,
         recoveredRuns,
+        appUpdateStatus,
       ] = await Promise.all([
         api.getSettings(),
         api.listInstances(),
@@ -684,6 +713,7 @@ export const useStore = create<AppStore>((set) => ({
         api.listTasks().catch(() => [] as Task[]),
         api.recoverInterrupted().catch(() => [] as PendingOperation[]),
         api.listRunning().catch(() => [] as RunningInfo[]),
+        api.getAppUpdateStatus().catch(() => null),
       ]);
       const recoveredLogs = await Promise.all(
         recoveredRuns.map(async (run) => [
@@ -731,6 +761,7 @@ export const useStore = create<AppStore>((set) => ({
           running,
           logs,
           activeRunningId,
+          appUpdateStatus,
         };
       });
 

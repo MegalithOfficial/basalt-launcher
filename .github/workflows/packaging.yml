@@ -5,6 +5,9 @@ on:
     paths:
       - ".github/scripts/update-aur-package.mjs"
       - ".github/scripts/update-aur-package.test.mjs"
+      - ".github/scripts/create-update-manifest.mjs"
+      - ".github/scripts/create-update-manifest.test.mjs"
+      - ".github/scripts/write-updater-platform.mjs"
       - ".github/workflows/packaging.yml"
       - "flake.nix"
       - "nix/**"
@@ -26,7 +29,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Test package generator
-        run: node --test .github/scripts/update-aur-package.test.mjs
+        run: node --test .github/scripts/update-aur-package.test.mjs .github/scripts/create-update-manifest.test.mjs
 
       - name: Validate generated PKGBUILD and SRCINFO
         run: |

@@ -101,7 +101,9 @@ pub async fn import(files: &FileManager, db: &Db, source: &str) -> Result<Banner
     files.ensure_dir_async(&library).await?;
     let destination = library.join(&file_name);
     if !files.exists(&destination).unwrap_or(false) {
-        files.write_atomic_async(&destination, bytes.clone()).await?;
+        files
+            .write_atomic_async(&destination, bytes.clone())
+            .await?;
     }
 
     let (width, height, accent) = if kind == "image" {
@@ -212,7 +214,11 @@ pub fn adopt_legacy_banners(files: &FileManager, db: &Db) -> Result<usize> {
     Ok(adopted)
 }
 
-pub fn media_for_instance(files: &FileManager, db: &Db, instance_id: &str) -> Option<crate::meta::media::VersionMedia> {
+pub fn media_for_instance(
+    files: &FileManager,
+    db: &Db,
+    instance_id: &str,
+) -> Option<crate::meta::media::VersionMedia> {
     let id = db.instance_banner_id(instance_id).ok().flatten()?;
     let record = db.banner(&id).ok().flatten()?;
     let path = library_path(files, &record);

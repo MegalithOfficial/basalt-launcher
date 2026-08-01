@@ -9,7 +9,7 @@ use crate::{
     java, launch, logging,
     state::AppState,
     sysinfo_probe::{self, SystemStats, SystemUsage},
-    update::{self, UpdateInfo},
+    update::{self, AppUpdateStatus, UpdateInfo},
 };
 
 #[tauri::command]
@@ -26,6 +26,7 @@ pub struct AppInfo {
     pub default_jvm_args: String,
     pub jvm_placeholders: Vec<String>,
     pub arch: String,
+    pub install_source: update::InstallSource,
 }
 
 #[tauri::command]
@@ -41,6 +42,7 @@ pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
             .map(|p| p.to_string())
             .collect(),
         arch: std::env::consts::ARCH.to_string(),
+        install_source: update::install_source(),
     })
 }
 
@@ -190,8 +192,40 @@ pub fn reset_launcher(app: AppHandle, state: State<AppState>, deep: bool) -> Res
 
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
-pub async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateInfo> {
-    update::check(&state.network).await
+pub async fn check_for_updates(app: AppHandle, state: State<'_, AppState>) -> Result<UpdateInfo> {
+    update::check_and_record(&app, &state.network, &state.updates).await
+}
+
+#[tauri::command]
+pub fn get_app_update_status(state: State<'_, AppState>) -> AppUpdateStatus {
+    state.updates.status()
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn dismiss_app_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    version: String,
+) -> Result<AppUpdateStatus> {
+    let status = state.updates.dismiss(&version)?;
+    update::emit_status(&app, &status);
+    Ok(status)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub async fn download_app_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppUpdateStatus> {
+    update::download(app, &state).await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn install_app_update(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    update::install_ready(app, &state)
 }
 
 #[derive(Serialize)]

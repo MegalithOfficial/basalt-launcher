@@ -26,6 +26,7 @@ tauri = { version = "2", features = ["protocol-asset", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-single-window = "1.2.0"
+tauri-plugin-updater = "2"
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "fs", "io-util", "sync", "time"] }
 tokio-util = { version = "0.7.19", features = ["rt"] }

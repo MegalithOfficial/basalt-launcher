@@ -29,6 +29,7 @@ export interface LauncherSettings {
   danger_color: string;
   show_suggestions: boolean;
   minimize_on_launch: boolean;
+  auto_update_checks: boolean;
 }
 
 export type AccentMode = "banner" | "custom" | "default";
@@ -334,7 +335,8 @@ export type TaskKind =
   | "content_install"
   | "content_update"
   | "world_import"
-  | "instance_import";
+  | "instance_import"
+  | "app_update";
 
 export type WorldStatus = "ok" | "recovered" | "damaged";
 
@@ -498,6 +500,7 @@ export interface AppInfo {
   default_jvm_args: string;
   jvm_placeholders: string[];
   arch: string;
+  install_source: InstallSource;
 }
 
 export interface JavaStatus {
@@ -625,6 +628,25 @@ export interface UpdateInfo {
   notes_url: string | null;
   published_at: string | null;
   update_available: boolean;
+  install_source: InstallSource;
+}
+
+export type UpdatePolicy = "self_managed" | "package_managed" | "manual";
+
+export interface InstallSource {
+  id: string;
+  label: string;
+  policy: UpdatePolicy;
+  update_hint: string;
+}
+
+export type AppUpdatePhase = "idle" | "available" | "downloading" | "ready";
+
+export interface AppUpdateStatus {
+  phase: AppUpdatePhase;
+  info: UpdateInfo | null;
+  dismissed: boolean;
+  last_checked_at: number | null;
 }
 
 export interface AboutLinks {

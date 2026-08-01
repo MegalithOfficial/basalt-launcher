@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { toast } from "sonner";
 import {
   ArrowUpCircle,
   Bug,
@@ -246,6 +247,11 @@ function SystemCard({
           <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
             {appInfo?.arch ?? "\u2026"}
           </span>
+          {appInfo?.install_source && (
+            <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
+              {appInfo.install_source.label}
+            </span>
+          )}
           <span className="ml-auto text-[11px] text-content-faint">{updateNote}</span>
         </div>
         <div className="grid gap-px border-t border-border-soft bg-border-soft sm:grid-cols-2 xl:grid-cols-4">
@@ -293,6 +299,9 @@ export function SettingsView() {
   const logConfig = useStore((s) => s.logConfig);
   const setLogLevel = useStore((s) => s.setLogLevel);
   const setView = useStore((s) => s.setView);
+  const appUpdateStatus = useStore((s) => s.appUpdateStatus);
+  const downloadAppUpdate = useStore((s) => s.downloadAppUpdate);
+  const installAppUpdate = useStore((s) => s.installAppUpdate);
   const bannerAccent = useStore((s) =>
     s.selectedInstanceId ? (s.media[s.selectedInstanceId]?.accent ?? null) : null,
   );
@@ -410,6 +419,35 @@ export function SettingsView() {
       setChecking(false);
     }
   };
+
+  const applyUpdate = async () => {
+    const info = appUpdateStatus?.info ?? update;
+    if (!info?.update_available || !info.latest) return;
+    if (appUpdateStatus?.phase === "downloading") return;
+    if (appUpdateStatus?.phase === "ready") {
+      try {
+        await installAppUpdate();
+      } catch (error) {
+        toast.error("Basalt could not restart for the update", {
+          description: String(error),
+        });
+      }
+      return;
+    }
+    if (info.install_source.policy !== "self_managed") {
+      if (info.notes_url) await openUrl(info.notes_url);
+      return;
+    }
+    try {
+      await downloadAppUpdate();
+    } catch (error) {
+      toast.error("Update download failed", { description: String(error) });
+    }
+  };
+
+  const visibleUpdate = appUpdateStatus?.info ?? update;
+  const updateDownloading = appUpdateStatus?.phase === "downloading";
+  const updateReady = appUpdateStatus?.phase === "ready";
 
   const setEnvVar = (index: number, next: EnvVar) =>
     setDraft({
@@ -538,14 +576,32 @@ export function SettingsView() {
             </div>
 
             <div className="flex shrink-0 flex-col items-start gap-3">
-              {update?.update_available && update.latest ? (
-                <button
-                  onClick={() => update.notes_url && openUrl(update.notes_url)}
-                  className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all active:scale-[0.98] [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
-                >
-                  <ArrowUpCircle className="size-4" />
-                  {update.latest} is available
-                </button>
+              {visibleUpdate?.update_available && visibleUpdate.latest ? (
+                <div className="flex max-w-80 flex-col items-start gap-1.5">
+                  <button
+                    onClick={() => void applyUpdate()}
+                    disabled={updateDownloading}
+                    className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]"
+                  >
+                    {updateDownloading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ArrowUpCircle className="size-4" />
+                    )}
+                    {updateDownloading
+                      ? "Downloading in Activity Center"
+                      : updateReady
+                        ? "Restart and update"
+                        : visibleUpdate.install_source.policy === "self_managed"
+                          ? `Download ${visibleUpdate.latest}`
+                          : `View ${visibleUpdate.latest}`}
+                  </button>
+                  <span className="text-[11px] leading-relaxed text-content-faint">
+                    {updateReady
+                      ? "The signed update is verified and ready to install."
+                      : visibleUpdate.install_source.update_hint}
+                  </span>
+                </div>
               ) : (
                 <div className="inline-flex items-center gap-1.5 text-xs text-content-faint">
                   {checking ? (
@@ -555,10 +611,10 @@ export function SettingsView() {
                     </>
                   ) : checkFailed ? (
                     <span className="text-warn">Could not reach GitHub</span>
-                  ) : update ? (
+                  ) : visibleUpdate ? (
                     <>
                       <CircleCheck className="size-3.5 text-ok" />
-                      {update.latest
+                      {visibleUpdate.latest
                         ? "You are on the latest version"
                         : "No releases published yet"}
                     </>
@@ -605,7 +661,24 @@ export function SettingsView() {
           </div>
         </section>
 
-          <div className="gap-6 [column-fill:balance] lg:columns-2">
+          <div className="grid items-start gap-x-6 lg:grid-cols-2">
+          <div>
+          <Section
+            title="Updates"
+            description="Choose how Basalt looks for new launcher versions."
+          >
+            <Row
+              label="Automatically check for updates"
+              hint="Checks periodically in the background. You can still check manually above."
+            >
+              <Toggle
+                label="Automatically check for updates"
+                checked={draft.auto_update_checks}
+                onChange={(auto_update_checks) => set({ auto_update_checks })}
+              />
+            </Row>
+          </Section>
+
           <Section
             title="Migration"
             description="Bring instances over from another launcher."
@@ -633,7 +706,9 @@ export function SettingsView() {
               </Row>
             )}
           </Section>
+          </div>
 
+          <div>
           <Section
             title="Storage"
             description="Where instances, assets and logs are kept, and how to clear them."
@@ -661,6 +736,7 @@ export function SettingsView() {
               </button>
             </Row>
           </Section>
+          </div>
           </div>
 
           <SystemCard

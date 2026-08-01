@@ -4,6 +4,7 @@ import { log } from "./log";
 import type {
   AboutLinks,
   AccountView,
+  AppUpdateStatus,
   BannerEntry,
   Appearance,
   AppInfo,
@@ -328,6 +329,11 @@ export const api = {
   resetLauncher: (deep: boolean) => call<void>("reset_launcher", { deep }),
   testNetwork: (url?: string) => call<NetworkProbe>("test_network", { url: url ?? null }),
   checkForUpdates: () => call<UpdateInfo>("check_for_updates"),
+  getAppUpdateStatus: () => call<AppUpdateStatus>("get_app_update_status"),
+  dismissAppUpdate: (version: string) =>
+    call<AppUpdateStatus>("dismiss_app_update", { version }),
+  downloadAppUpdate: () => call<AppUpdateStatus>("download_app_update"),
+  installAppUpdate: () => call<void>("install_app_update"),
   getAboutLinks: () => call<AboutLinks>("get_about_links"),
   getSystemStats: () => call<SystemStats>("get_system_stats"),
   getSystemUsage: () => call<SystemUsage>("get_system_usage"),

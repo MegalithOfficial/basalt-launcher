@@ -39,6 +39,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))?;
@@ -108,6 +109,7 @@ pub fn run() {
                 tracing::warn!(error = %e, "could not recover running game processes");
             }
             app.manage(state);
+            update::start_monitor(app.handle().clone());
             tracing::info!("startup complete");
             Ok(())
         })
@@ -195,6 +197,10 @@ pub fn run() {
             commands::app::test_network,
             commands::app::reset_launcher,
             commands::app::check_for_updates,
+            commands::app::get_app_update_status,
+            commands::app::dismiss_app_update,
+            commands::app::download_app_update,
+            commands::app::install_app_update,
             commands::app::get_about_links,
             commands::app::get_system_stats,
             commands::app::get_system_usage,

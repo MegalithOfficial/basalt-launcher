@@ -9,6 +9,7 @@ import { Sidebar } from "./components/Sidebar";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { TitleBar } from "./components/TitleBar";
 import { WindowFrame } from "./components/WindowFrame";
+import { UpdateNotifications } from "./components/UpdateNotifications";
 import { Toaster } from "sonner";
 import { AccountsView } from "./views/AccountsView";
 import { HomeView } from "./views/HomeView";
@@ -93,6 +94,7 @@ function App() {
           },
         }}
       />
+      <UpdateNotifications />
       {!ready ? (
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <TitleBar />

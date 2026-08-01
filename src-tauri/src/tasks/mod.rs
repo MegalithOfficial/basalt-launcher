@@ -23,6 +23,7 @@ pub enum TaskKind {
     ContentUpdate,
     WorldImport,
     InstanceImport,
+    AppUpdate,
 }
 
 impl TaskKind {
@@ -36,6 +37,7 @@ impl TaskKind {
             Self::ContentUpdate => "content_update",
             Self::WorldImport => "world_import",
             Self::InstanceImport => "instance_import",
+            Self::AppUpdate => "app_update",
         }
     }
 
@@ -49,6 +51,7 @@ impl TaskKind {
             "content_update" | "ContentUpdate" => Some(Self::ContentUpdate),
             "world_import" | "WorldImport" => Some(Self::WorldImport),
             "instance_import" | "InstanceImport" => Some(Self::InstanceImport),
+            "app_update" | "AppUpdate" => Some(Self::AppUpdate),
             _ => None,
         }
     }

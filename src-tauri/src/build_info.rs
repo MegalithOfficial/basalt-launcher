@@ -1,6 +1,7 @@
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const CHANNEL: &str = env!("BASALT_BUILD_CHANNEL");
 pub const DEV_BUILD: &str = env!("BASALT_DEV_BUILD");
+pub const DISTRIBUTION: &str = env!("BASALT_DISTRIBUTION");
 
 pub fn display_version() -> String {
     if CHANNEL == "dev" {

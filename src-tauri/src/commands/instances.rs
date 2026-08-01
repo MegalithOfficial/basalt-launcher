@@ -209,7 +209,9 @@ pub async fn set_instance_banner(
 ) -> Result<VersionMedia> {
     find_instance(&state, &instance_id)?;
     let entry = banners::import(&state.files, &state.db, &source_path).await?;
-    state.db.set_instance_banner_id(&instance_id, Some(&entry.id))?;
+    state
+        .db
+        .set_instance_banner_id(&instance_id, Some(&entry.id))?;
     let media = banners::media_for_instance(&state.files, &state.db, &instance_id)
         .ok_or_else(|| crate::error::Error::other("the banner vanished after import"))?;
     state
@@ -254,7 +256,9 @@ pub async fn apply_banner(
     banner_id: String,
 ) -> Result<VersionMedia> {
     find_instance(&state, &instance_id)?;
-    state.db.set_instance_banner_id(&instance_id, Some(&banner_id))?;
+    state
+        .db
+        .set_instance_banner_id(&instance_id, Some(&banner_id))?;
     let media = banners::media_for_instance(&state.files, &state.db, &instance_id)
         .ok_or_else(|| crate::error::Error::other("that banner is no longer in the library"))?;
     state

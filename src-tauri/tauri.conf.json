@@ -31,8 +31,14 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaW5pIHB1YmxpYyBrZXk6IDI2NDIwMUFEMzlFRDVBN0UKUldSK1d1MDVyUUZDSmxtYzgrVUE4cmpLbnE4Q1AwaFNzUnRVa0lQRE81L0lKMlQrMHpoOEhtTmgK"
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": false,
     "targets": "all",
     "publisher": "MegalithOfficial",
     "homepage": "https://github.com/MegalithOfficial/basalt-launcher",

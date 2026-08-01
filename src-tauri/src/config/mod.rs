@@ -56,6 +56,8 @@ pub struct LauncherSettings {
     pub show_suggestions: bool,
     #[serde(default)]
     pub minimize_on_launch: bool,
+    #[serde(default = "default_true")]
+    pub auto_update_checks: bool,
 }
 
 pub fn default_proxy_mode() -> String {
@@ -126,6 +128,7 @@ impl Default for LauncherSettings {
             danger_color: default_danger_color(),
             show_suggestions: true,
             minimize_on_launch: false,
+            auto_update_checks: true,
         }
     }
 }

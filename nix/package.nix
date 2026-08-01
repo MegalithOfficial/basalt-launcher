@@ -62,6 +62,7 @@ rustPlatform.buildRustPackage {
   ];
 
   BASALT_BUILD_CHANNEL = buildChannel;
+  BASALT_DISTRIBUTION = "nix";
 
   preBuild = ''
     npm run build:frontend

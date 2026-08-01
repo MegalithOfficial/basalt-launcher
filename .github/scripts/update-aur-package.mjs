@@ -77,6 +77,7 @@ package() {
   bsdtar -xf data.tar.* -C "\${pkgdir}"
   mv "\${pkgdir}/usr/share/applications/Basalt Launcher.desktop" \\
     "\${pkgdir}/usr/share/applications/basalt-launcher.desktop"
+  install -Dm644 /dev/null "\${pkgdir}/usr/share/basalt-launcher/aur-package"
 }
 `;
 }
