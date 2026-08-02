@@ -58,5 +58,6 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+keyring = "4.1.6"
 
 sysinfo = { version = "0.39", default-features = false, features = ["system", "disk"] }

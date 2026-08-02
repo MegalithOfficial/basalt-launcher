@@ -10,7 +10,7 @@ use crate::{
         microsoft::{self, PollOutcome},
     },
     db::Db,
-    error::{Error, Result},
+    error::Result,
     state::AppState,
 };
 
@@ -24,6 +24,7 @@ pub struct DeviceCodeInfo {
 async fn run_auth_flow(
     network: std::sync::Arc<crate::network::NetworkManager>,
     db: Db,
+    credentials: crate::credentials::CredentialStore,
     device_code: String,
     interval: u64,
 ) -> Result<AccountView> {
@@ -50,15 +51,12 @@ async fn run_auth_flow(
     };
 
     tracing::info!(account = %account.name, uuid = %account.id, "microsoft sign-in completed");
-    let mut store = db.load_accounts()?;
-    store.upsert_active(account);
-    db.save_accounts(&store)?;
-
-    store
-        .views()
-        .into_iter()
-        .find(|v| v.id == mc.uuid)
-        .ok_or_else(|| Error::other("account vanished after save"))
+    db.save_account(&credentials, &account, true)?;
+    Ok(AccountView {
+        id: mc.uuid,
+        name: account.name,
+        active: true,
+    })
 }
 
 #[tauri::command]
@@ -78,11 +76,12 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
 
     let network = state.network.clone();
     let db = state.db.clone();
+    let credentials = state.credentials.clone();
     let device_code = device.device_code.clone();
     let interval = device.interval;
 
     tokio::spawn(async move {
-        match run_auth_flow(network, db, device_code, interval).await {
+        match run_auth_flow(network, db, credentials, device_code, interval).await {
             Ok(view) => {
                 let _ = app.emit(
                     "auth:state",
@@ -105,16 +104,13 @@ pub async fn auth_begin(app: AppHandle, state: State<'_, AppState>) -> Result<De
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn list_accounts(state: State<AppState>) -> Result<Vec<AccountView>> {
-    Ok(state.db.load_accounts()?.views())
+    state.db.list_account_views()
 }
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub fn set_active_account(state: State<AppState>, account_id: String) -> Result<()> {
-    let mut store = state.db.load_accounts()?;
-    if store.accounts.iter().any(|a| a.id == account_id) {
-        store.active_id = Some(account_id);
-        state.db.save_accounts(&store)?;
+    if state.db.set_active_account_id(&account_id)? {
         tracing::info!("active account changed");
     }
     Ok(())
@@ -123,12 +119,10 @@ pub fn set_active_account(state: State<AppState>, account_id: String) -> Result<
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub fn remove_account(state: State<AppState>, account_id: String) -> Result<()> {
-    let mut store = state.db.load_accounts()?;
-    store.accounts.retain(|a| a.id != account_id);
-    if store.active_id.as_deref() == Some(account_id.as_str()) {
-        store.active_id = store.accounts.first().map(|a| a.id.clone());
-    }
-    state.db.save_accounts(&store)?;
-    tracing::info!(remaining = store.accounts.len(), "account removed");
+    let remaining = state.db.remove_account_metadata(&account_id)?;
+    state
+        .db
+        .delete_account_credentials(&state.credentials, &account_id)?;
+    tracing::info!(remaining, "account removed");
     Ok(())
 }

@@ -3,6 +3,7 @@ mod build_info;
 mod commands;
 mod config;
 mod content;
+mod credentials;
 mod db;
 mod download;
 mod error;
@@ -83,8 +84,8 @@ pub fn run() {
                         .unwrap_or(false)
                         || state
                             .db
-                            .load_accounts()
-                            .map(|store| !store.accounts.is_empty())
+                            .list_account_views()
+                            .map(|accounts| !accounts.is_empty())
                             .unwrap_or(false);
                     if has_history {
                         settings.onboarded = true;

@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 10;
+pub(super) const SCHEMA_VERSION: i64 = 11;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -59,8 +59,6 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS accounts(
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            mc_access_token TEXT NOT NULL,
-            refresh_token TEXT NOT NULL,
             expires_at INTEGER NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 0
         );
@@ -148,6 +146,24 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         );",
     )?;
 
+    if column_exists(conn, "accounts", "mc_access_token")?
+        || column_exists(conn, "accounts", "refresh_token")?
+    {
+        conn.execute_batch(
+            "PRAGMA secure_delete = ON;
+             DROP TABLE accounts;
+             CREATE TABLE accounts(
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 0
+             );
+             PRAGMA wal_checkpoint(TRUNCATE);
+             VACUUM;
+             PRAGMA wal_checkpoint(TRUNCATE);",
+        )?;
+    }
+
     for (column, declaration) in [
         ("loader", "TEXT"),
         ("loader_version", "TEXT"),
@@ -204,6 +220,7 @@ mod tests {
         assert!(super::table_exists(&conn, "active_runs").unwrap());
         assert!(super::table_exists(&conn, "instance_groups").unwrap());
         assert!(column_exists(&conn, "instances", "group_id").unwrap());
+        assert!(!column_exists(&conn, "accounts", "mc_access_token").unwrap());
     }
 
     #[test]

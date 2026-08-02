@@ -15,7 +15,7 @@ use crate::{
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn get_settings(state: State<AppState>) -> Result<LauncherSettings> {
-    state.db.load_settings()
+    state.db.load_settings_view(&state.credentials)
 }
 
 #[derive(Serialize)]
@@ -91,8 +91,10 @@ pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Re
     if logging::normalize_level(&settings.log_level) != logging::current_level() {
         logging::set_level(&settings.log_level)?;
     }
-    state.db.save_settings(&settings)?;
-    state.network.reconfigure(&settings)
+    let runtime = state
+        .db
+        .save_settings_secure(&state.credentials, &settings)?;
+    state.network.reconfigure(&runtime)
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -107,7 +109,7 @@ pub struct NetworkProbe {
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub async fn test_network(state: State<'_, AppState>, url: Option<String>) -> Result<NetworkProbe> {
-    let settings = state.db.load_settings()?;
+    let settings = state.runtime_settings()?;
     let target = url
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "https://api.modrinth.com/v2/tag/loader".to_string());

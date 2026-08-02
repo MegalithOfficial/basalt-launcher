@@ -76,7 +76,7 @@ pub fn relation(relation_type: u32) -> Option<&'static str> {
 pub fn key(state: &AppState) -> Result<String> {
     state
         .db
-        .load_settings()?
+        .load_runtime_settings(&state.credentials)?
         .curseforge_api_key
         .filter(|k| !k.trim().is_empty())
         .ok_or_else(|| {

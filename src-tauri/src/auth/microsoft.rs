@@ -16,7 +16,7 @@ const XSTS_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MC_LOGIN_URL: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
 const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct DeviceCode {
     pub user_code: String,
     pub device_code: String,
@@ -25,7 +25,7 @@ pub struct DeviceCode {
     pub message: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MsToken {
     pub access_token: String,
     pub refresh_token: String,
@@ -37,7 +37,7 @@ pub enum PollOutcome {
     Token(MsToken),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct McAuth {
     pub uuid: String,
     pub name: String,

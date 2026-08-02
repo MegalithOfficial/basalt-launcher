@@ -2,13 +2,13 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_JVM_ARGS: &str = "-Xms{{min_ram}}M -Xmx{{max_ram}}M";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct EnvVar {
     pub key: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LauncherSettings {
     pub min_memory_mb: u32,

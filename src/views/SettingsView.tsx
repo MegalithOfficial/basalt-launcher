@@ -236,7 +236,11 @@ export function SettingsView() {
         useStore.setState({ settings: draft });
         setSaved(true);
         setTimeout(() => setSaved(false), 1600);
-      } catch {
+      } catch (error) {
+        toast.error("Could not save settings", {
+          id: "settings-save-error",
+          description: String(error),
+        });
         return;
       }
     }, 500);
@@ -953,6 +957,7 @@ export function SettingsView() {
               <input
                 type="password"
                 value={draft.curseforge_api_key ?? ""}
+                onFocus={(event) => event.currentTarget.select()}
                 onChange={(e) => set({ curseforge_api_key: e.target.value || null })}
                 placeholder="paste your key"
                 className={cn(inputCls, "min-w-0 flex-1")}
@@ -1023,6 +1028,7 @@ export function SettingsView() {
                   <input
                     type="password"
                     value={draft.proxy_password}
+                    onFocus={(event) => event.currentTarget.select()}
                     onChange={(e) => set({ proxy_password: e.target.value })}
                     className={cn(inputCls, "w-56")}
                   />

@@ -19,10 +19,9 @@ fn now() -> i64 {
 
 #[tracing::instrument(skip_all, err)]
 pub(crate) async fn ensure_account(state: &AppState) -> Result<Account> {
-    let mut store = state.db.load_accounts()?;
-    let account = store
-        .active()
-        .cloned()
+    let account = state
+        .db
+        .load_active_account(&state.credentials)?
         .ok_or_else(|| Error::other("No account signed in. Add a Microsoft account first."))?;
 
     if account.expires_at > now() + 60 {
@@ -41,8 +40,7 @@ pub(crate) async fn ensure_account(state: &AppState) -> Result<Account> {
         refresh_token: refreshed.refresh_token,
         expires_at: now() + mc.expires_in,
     };
-    store.upsert_active(updated.clone());
-    state.db.save_accounts(&store)?;
+    state.db.save_account(&state.credentials, &updated, true)?;
     tracing::info!(account = %updated.name, "session refreshed");
     Ok(updated)
 }

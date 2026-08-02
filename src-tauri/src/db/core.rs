@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
 use crate::{
-    auth::account::AccountStore,
     config::{Instance, LauncherSettings},
     error::Result,
     files::FileManager,
@@ -21,6 +20,18 @@ impl Db {
         migrate(&conn)?;
         let db = Db(Arc::new(Mutex::new(conn)));
         db.import_legacy_json(files)?;
+        let discarded = db.discard_insecure_credentials()?;
+        if discarded > 0 {
+            tracing::info!(discarded, "discarded insecure plaintext credentials");
+        }
+        for path in [
+            paths.settings_file(),
+            paths.settings_file().with_extension("json.migrated"),
+            paths.accounts_file(),
+            paths.accounts_file().with_extension("json.migrated"),
+        ] {
+            files.remove_file_if_exists(path)?;
+        }
         Ok(db)
     }
 
@@ -35,13 +46,11 @@ impl Db {
         let paths = files.paths();
         let settings_file = paths.settings_file();
         if let Ok(bytes) = files.read(&settings_file) {
-            if let Ok(settings) = serde_json::from_slice::<LauncherSettings>(&bytes) {
+            if let Ok(mut settings) = serde_json::from_slice::<LauncherSettings>(&bytes) {
+                settings.curseforge_api_key = None;
+                settings.proxy_password.clear();
                 self.save_settings(&settings)?;
             }
-            let _ = files.rename(
-                &settings_file,
-                settings_file.with_extension("json.migrated"),
-            );
         }
 
         let instances_file = paths.instances_file();
@@ -58,17 +67,6 @@ impl Db {
             let _ = files.rename(
                 &instances_file,
                 instances_file.with_extension("json.migrated"),
-            );
-        }
-
-        let accounts_file = paths.accounts_file();
-        if let Ok(bytes) = files.read(&accounts_file) {
-            if let Ok(store) = serde_json::from_slice::<AccountStore>(&bytes) {
-                self.save_accounts(&store)?;
-            }
-            let _ = files.rename(
-                &accounts_file,
-                accounts_file.with_extension("json.migrated"),
             );
         }
 
