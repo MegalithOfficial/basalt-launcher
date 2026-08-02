@@ -183,6 +183,8 @@ pub fn run() {
             commands::content_commands::check_modpack_upgrade,
             commands::content_commands::plan_modpack_upgrade,
             commands::content_commands::upgrade_modpack,
+            commands::content_commands::link_modpack,
+            commands::content_commands::unlink_modpack,
             commands::content_commands::find_curseforge_download,
             commands::content_commands::plan_content_install,
             commands::content_commands::get_filter_taxonomy,

@@ -251,6 +251,14 @@ export const api = {
       manualDownloads,
       snapshotFirst,
     }),
+  linkModpack: (
+    instanceId: string,
+    provider: string,
+    projectId: string,
+    versionId: string,
+  ) => call<Instance>("link_modpack", { instanceId, provider, projectId, versionId }),
+  unlinkModpack: (instanceId: string) =>
+    call<Instance>("unlink_modpack", { instanceId }),
   checkContentUpdates: (instanceId: string, force = false) =>
     call<ContentUpdate[]>("check_content_updates", { instanceId, force }),
   getContentUpdates: (instanceId: string) =>

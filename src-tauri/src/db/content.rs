@@ -420,6 +420,12 @@ impl Db {
         Ok(())
     }
 
+    pub fn clear_all_content_updates(&self) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM content_updates", [])?;
+        Ok(())
+    }
+
     pub fn content_updates(&self, instance_id: &str) -> Result<Vec<ContentUpdate>> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(

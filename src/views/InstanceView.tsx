@@ -612,7 +612,17 @@ export function InstanceView() {
     let live = true;
     api
       .checkModpackUpgrade(instance.id)
-      .then((update) => live && setPackUpgrade(update))
+      .then((update) => {
+        if (!live) return;
+        setPackUpgrade(update);
+        if (!update) return;
+        const key = `pack-update-seen:${instance.id}`;
+        if (localStorage.getItem(key) === update.target_version_id) return;
+        localStorage.setItem(key, update.target_version_id);
+        toast.info(`Modpack update ${update.version_number} is out`, {
+          description: "Open it from the instance to see what changed before applying.",
+        });
+      })
       .catch(() => live && setPackUpgrade(null));
     return () => {
       live = false;
@@ -737,6 +747,11 @@ export function InstanceView() {
     const { plan, sources } = dialog;
     setUpgradingPack(true);
     setDialog(null);
+    toast.info(`Upgrading to ${plan.update.version_number}`, {
+      description: snapshotFirst
+        ? "Taking a snapshot first, then applying the pack."
+        : "Applying the pack without a snapshot.",
+    });
     const optimistic = beginOptimisticTask("modpack_upgrade", `Upgrade ${instance.name}`, {
       subtitle: `Preparing ${plan.update.version_number}`,
       instanceId: instance.id,
@@ -824,21 +839,6 @@ export function InstanceView() {
                 {instance.version_id} · {loaderLabel(instance).toUpperCase()}
                 {instance.pack_project_id && " · MODPACK"}
               </span>
-              {packUpgrade && (
-                <button
-                  onClick={() => void openPackUpgrade(packUpgrade.target_version_id)}
-                  disabled={checkingPackUpgrade || busyWithTask || gameRunning}
-                  title={`Version ${packUpgrade.version_number} was released`}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-(--accent) px-2 py-0.5 text-[11px] font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  {checkingPackUpgrade ? (
-                    <Loader2 className="size-3 animate-spin" />
-                  ) : (
-                    <ArrowUpCircle className="size-3" />
-                  )}
-                  {packUpgrade.version_number} available
-                </button>
-              )}
               {instance.last_played_at && (
                 <span>
                   Played {relativeTime(instance.last_played_at)}
@@ -862,6 +862,21 @@ export function InstanceView() {
                 <MoreVertical className="size-4" />
               )}
             </button>
+            {packUpgrade && (
+              <button
+                onClick={() => void openPackUpgrade(packUpgrade.target_version_id)}
+                disabled={checkingPackUpgrade || busyWithTask || gameRunning}
+                title={`${packUpgrade.target_name} ${packUpgrade.version_number} was released`}
+                className="inline-flex h-10 items-center gap-2 rounded-full px-4 text-xs font-semibold text-black shadow-lg shadow-(color:--accent-glow) transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))]"
+              >
+                {checkingPackUpgrade ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ArrowUpCircle className="size-4" />
+                )}
+                Update to {packUpgrade.version_number}
+              </button>
+            )}
             <div className="ml-1">
               <PlayButton instance={instance} hero onError={setLaunchError} />
             </div>
@@ -1399,6 +1414,8 @@ export function InstanceView() {
         plan={dialog?.kind === "packUpgrade" ? dialog.plan : null}
         busy={upgradingPack}
         onUpgrade={(snapshotFirst) => void confirmPackUpgrade(snapshotFirst)}
+        onPickVersion={(versionId) => void openPackUpgrade(versionId)}
+        replanning={checkingPackUpgrade}
         onClose={close}
       />
       {browserDownloads.modal}

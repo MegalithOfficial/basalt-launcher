@@ -91,6 +91,14 @@ pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Re
     if logging::normalize_level(&settings.log_level) != logging::current_level() {
         logging::set_level(&settings.log_level)?;
     }
+    if state
+        .db
+        .load_settings()
+        .map(|current| current.pack_content_updates != settings.pack_content_updates)
+        .unwrap_or(false)
+    {
+        state.db.clear_all_content_updates()?;
+    }
     let runtime = state
         .db
         .save_settings_secure(&state.credentials, &settings)?;

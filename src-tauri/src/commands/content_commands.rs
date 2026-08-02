@@ -648,6 +648,31 @@ pub async fn plan_modpack_upgrade(
 
 #[tauri::command]
 #[tracing::instrument(skip(app, state), err)]
+pub async fn link_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    provider: String,
+    project_id: String,
+    version_id: String,
+) -> Result<Instance> {
+    let instance = find_instance(&state, &instance_id)?;
+    let provider = crate::search::Provider::parse(&provider)?;
+    crate::modpack::link_modpack(&app, &state, &instance, provider, &project_id, &version_id)
+        .await?;
+    find_instance(&state, &instance_id)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn unlink_modpack(state: State<'_, AppState>, instance_id: String) -> Result<Instance> {
+    find_instance(&state, &instance_id)?;
+    state.db.unlink_instance_pack(&instance_id)?;
+    find_instance(&state, &instance_id)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
 pub async fn upgrade_modpack(
     app: AppHandle,
     state: State<'_, AppState>,

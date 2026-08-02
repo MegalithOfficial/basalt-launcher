@@ -20,8 +20,8 @@ use crate::{
 mod upgrade;
 
 pub use upgrade::{
-    check_modpack_upgrade, plan_modpack_upgrade, recover_interrupted_upgrades, upgrade_modpack,
-    ModpackUpgrade, ModpackUpgradePlan,
+    check_modpack_upgrade, link_modpack, plan_modpack_upgrade, recover_interrupted_upgrades,
+    upgrade_modpack, ModpackUpgrade, ModpackUpgradePlan,
 };
 
 const MODRINTH: &str = "https://api.modrinth.com/v2";

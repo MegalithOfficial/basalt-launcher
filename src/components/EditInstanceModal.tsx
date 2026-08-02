@@ -1,21 +1,36 @@
 import { useEffect, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { motion } from "motion/react";
-import { Boxes, FolderOpen, ImageOff, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
+import {
+  Boxes,
+  FolderOpen,
+  ImageOff,
+  ImagePlus,
+  Link2,
+  Loader2,
+  Package,
+  Plus,
+  Trash2,
+  Unlink,
+  X,
+} from "lucide-react";
 
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { LOADERS, loaderLabel } from "../lib/loader";
 import { logoSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
-import type { EnvVar, Instance, JavaInfo, SystemStats } from "../lib/types";
+import type { EnvVar, Instance, JavaInfo, ProjectSummary, SystemStats } from "../lib/types";
 import { Banner } from "./Banner";
 import { BannerLibraryModal } from "./BannerLibraryModal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { LinkModpackModal } from "./LinkModpackModal";
 import { MemoryRange } from "./MemoryRange";
 import { Modal } from "./Modal";
 import { Select } from "./Select";
 import { SettingGroup, SettingRow } from "./ui";
+import { toast } from "sonner";
+
 import { useStore } from "../store";
 
 const VANILLA = "vanilla";
@@ -153,6 +168,10 @@ export function EditInstanceModal({
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [library, setLibrary] = useState<"banner" | "logo" | null>(null);
+  const [pack, setPack] = useState<ProjectSummary | null>(null);
+  const [packVersion, setPackVersion] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
+  const [linking, setLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const openFor = instance?.id ?? null;
@@ -170,6 +189,36 @@ export function EditInstanceModal({
 
   const loader = draft?.loader ?? VANILLA;
   const gameVersion = draft?.gameVersion ?? "";
+
+  useEffect(() => {
+    const provider = instance?.pack_provider;
+    const project = instance?.pack_project_id;
+    const version = instance?.pack_version_id;
+    if (!provider || !project) {
+      setPack(null);
+      setPackVersion(null);
+      return;
+    }
+    let live = true;
+    setPack(null);
+    setPackVersion(null);
+    api
+      .resolveProjects(provider, [project])
+      .then((list) => live && setPack(list[0] ?? null))
+      .catch(() => {});
+    if (version) {
+      api
+        .listProjectVersions(provider, project, "modpacks", "", null)
+        .then((list) => {
+          const found = list.find((entry) => entry.id === version);
+          if (live) setPackVersion(found?.version_number ?? found?.name ?? null);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      live = false;
+    };
+  }, [instance?.pack_provider, instance?.pack_project_id, instance?.pack_version_id]);
 
   useEffect(() => {
     if (!instance) return;
@@ -452,20 +501,51 @@ export function EditInstanceModal({
 
         {tab === "installation" && (
           <>
-            {instance.pack_project_id && (
-              <SettingGroup title="Modpack">
+            {!instance.pack_project_id && (
+              <SettingGroup
+                title="Modpack"
+                description="Follow a pack so this instance can receive its updates."
+              >
                 <SettingRow
-                  label={instance.pack_provider === "modrinth" ? "Modrinth" : "CurseForge"}
-                  hint={
-                    instance.pack_version_id
-                      ? `Version ${instance.pack_version_id}`
-                      : "Linked project"
-                  }
+                  label="Not following a modpack"
+                  hint="Link one if this instance came from a pack, and Basalt will offer its updates"
+                  stacked
                 >
-                  <span className="rounded-md bg-surface-3 px-2 py-1 font-mono text-[11px] text-content-muted">
-                    {instance.pack_project_id}
-                  </span>
+                  <button onClick={() => setLinking(true)} className={chipCls}>
+                    <Link2 className="size-3.5" />
+                    Link a modpack
+                  </button>
                 </SettingRow>
+              </SettingGroup>
+            )}
+
+            {instance.pack_project_id && (
+              <SettingGroup
+                title="Modpack"
+                description="Where this instance came from and what it follows for updates."
+              >
+                <div className="flex items-center gap-3 p-4">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-3 text-content-faint">
+                    <Package className="size-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-content">
+                      {pack?.title ?? "Reading the pack"}
+                    </div>
+                    <div className="truncate text-[11px] text-content-faint">
+                      {instance.pack_provider === "modrinth" ? "Modrinth" : "CurseForge"}
+                      {packVersion ? ` · ${packVersion}` : ""}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setUnlinking(true)}
+                    className={chipCls}
+                    title="Stop following this modpack"
+                  >
+                    <Unlink className="size-3.5" />
+                    Unlink
+                  </button>
+                </div>
               </SettingGroup>
             )}
 
@@ -829,6 +909,34 @@ export function EditInstanceModal({
           if (library === "logo") await applyLogo(instance.id, entry.id);
           else await applyBanner(instance.id, entry.id);
         }}
+      />
+
+      <LinkModpackModal
+        instance={instance}
+        open={linking}
+        onClose={() => setLinking(false)}
+      />
+
+      <ConfirmDialog
+        open={unlinking}
+        nested
+        tone="warn"
+        title={`Stop following ${pack?.title ?? "this modpack"}?`}
+        description="Its mods and configs stay exactly where they are, but they become yours to manage. Basalt will no longer offer pack updates for this instance."
+        confirmLabel="Unlink"
+        onConfirm={async () => {
+          try {
+            await api.unlinkModpack(instance.id);
+            await useStore.getState().refreshInstances();
+            toast.success(`${instance.name} is no longer following a pack`, {
+              description: "Its content now updates like any other instance.",
+            });
+          } catch (error) {
+            toast.error("Could not unlink the modpack", { description: String(error) });
+          }
+          setUnlinking(false);
+        }}
+        onCancel={() => setUnlinking(false)}
       />
 
       <ConfirmDialog

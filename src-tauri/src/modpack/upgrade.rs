@@ -229,6 +229,65 @@ async fn target_update(
     Ok(Some(upgrade_from_version(current, &latest)?))
 }
 
+pub async fn adopt_pack_state(
+    app: &AppHandle,
+    state: &AppState,
+    instance: &Instance,
+    provider: Provider,
+    project_id: &str,
+    version_id: &str,
+) -> Result<()> {
+    let prepared = match prepare_pack(app, state, provider, project_id, version_id, &[], false)
+        .await?
+    {
+        PreparePackOutcome::Ready(prepared) => prepared,
+        PreparePackOutcome::NeedsDownloads(_) => {
+            return Err(Error::other(
+                "This pack version needs files that CurseForge will not hand over automatically, so Basalt cannot read its baseline.",
+            ))
+        }
+    };
+    let instance_dir = state.paths.instance_dir(&instance.id);
+    write_pack_state(
+        state,
+        &instance_dir,
+        &prepared.target.id,
+        &prepared.index,
+        &prepared.archive_path,
+    )?;
+    Ok(())
+}
+
+pub async fn link_modpack(
+    app: &AppHandle,
+    state: &AppState,
+    instance: &Instance,
+    provider: Provider,
+    project_id: &str,
+    version_id: &str,
+) -> Result<()> {
+    if instance_busy(state, &instance.id) {
+        return Err(Error::other(
+            "Stop the instance and wait for its current task before linking a modpack.",
+        ));
+    }
+    adopt_pack_state(app, state, instance, provider, project_id, version_id).await?;
+    let state_file = read_pack_state(state, instance)?;
+    let owned: Vec<String> = state_file
+        .files
+        .iter()
+        .filter_map(|file| file.path.rsplit('/').next().map(str::to_string))
+        .collect();
+    state.db.link_instance_pack(
+        &instance.id,
+        provider.as_str(),
+        project_id,
+        version_id,
+        &owned,
+    )?;
+    Ok(())
+}
+
 pub async fn check_modpack_upgrade(
     state: &AppState,
     instance: &Instance,

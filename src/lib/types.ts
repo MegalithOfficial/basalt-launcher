@@ -28,6 +28,7 @@ export interface LauncherSettings {
   warn_color: string;
   danger_color: string;
   show_suggestions: boolean;
+  pack_content_updates: boolean;
   minimize_on_launch: boolean;
   auto_update_checks: boolean;
 }

@@ -51,6 +51,56 @@ impl Db {
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
+    pub fn link_instance_pack(
+        &self,
+        instance_id: &str,
+        provider: &str,
+        project_id: &str,
+        version_id: &str,
+        pack_files: &[String],
+    ) -> Result<()> {
+        let mut conn = self.0.lock().unwrap();
+        let transaction = conn.transaction()?;
+        transaction.execute(
+            "UPDATE instances
+             SET pack_provider = ?2, pack_project_id = ?3, pack_version_id = ?4
+             WHERE id = ?1",
+            params![instance_id, provider, project_id, version_id],
+        )?;
+        transaction.execute(
+            "UPDATE content_files SET origin = 'user'
+             WHERE instance_id = ?1 AND origin = 'pack'",
+            params![instance_id],
+        )?;
+        {
+            let mut mark = transaction.prepare(
+                "UPDATE content_files SET origin = 'pack'
+                 WHERE instance_id = ?1 AND file_name = ?2",
+            )?;
+            for file_name in pack_files {
+                mark.execute(params![instance_id, file_name])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn unlink_instance_pack(&self, instance_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE instances
+             SET pack_provider = NULL, pack_project_id = NULL, pack_version_id = NULL
+             WHERE id = ?1",
+            params![instance_id],
+        )?;
+        conn.execute(
+            "UPDATE content_files SET origin = 'user'
+             WHERE instance_id = ?1 AND origin = 'pack'",
+            params![instance_id],
+        )?;
+        Ok(())
+    }
+
     pub fn insert_instance(&self, instance: &Instance) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(

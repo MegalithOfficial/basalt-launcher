@@ -55,6 +55,8 @@ pub struct LauncherSettings {
     #[serde(default = "default_true")]
     pub show_suggestions: bool,
     #[serde(default)]
+    pub pack_content_updates: bool,
+    #[serde(default)]
     pub minimize_on_launch: bool,
     #[serde(default = "default_true")]
     pub auto_update_checks: bool,
@@ -127,6 +129,7 @@ impl Default for LauncherSettings {
             warn_color: default_warn_color(),
             danger_color: default_danger_color(),
             show_suggestions: true,
+            pack_content_updates: false,
             minimize_on_launch: false,
             auto_update_checks: true,
         }

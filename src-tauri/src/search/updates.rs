@@ -20,6 +20,7 @@ async fn modrinth_updates(
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
+    include_pack: bool,
 ) -> Vec<ContentUpdate> {
     let files = state
         .db
@@ -27,6 +28,7 @@ async fn modrinth_updates(
         .unwrap_or_default();
     let candidates: Vec<(String, String, String)> = files
         .iter()
+        .filter(|f| include_pack || f.origin != "pack")
         .filter(|f| f.provider.as_deref() == Some("modrinth"))
         .filter_map(|f| {
             let sha1 = f.sha1.clone()?;
@@ -87,6 +89,7 @@ async fn curseforge_updates(
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
+    include_pack: bool,
 ) -> Vec<ContentUpdate> {
     if curseforge::key(state).is_err() {
         return Vec::new();
@@ -101,6 +104,7 @@ async fn curseforge_updates(
         .unwrap_or_default();
     let tracked: Vec<(String, String, Option<String>)> = files
         .iter()
+        .filter(|f| include_pack || f.origin != "pack")
         .filter(|f| f.provider.as_deref() == Some("curseforge"))
         .filter_map(|f| {
             let project_id = f.project_id.clone()?;
@@ -155,10 +159,19 @@ pub async fn check(
     game_version: &str,
     loader: Option<&str>,
 ) -> Result<Vec<ContentUpdate>> {
+    let include_pack = state
+        .db
+        .load_settings()
+        .map(|settings| settings.pack_content_updates)
+        .unwrap_or(false);
     let mut all = Vec::new();
     for kind in KINDS {
-        all.extend(modrinth_updates(state, instance_id, kind, game_version, loader).await);
-        all.extend(curseforge_updates(state, instance_id, kind, game_version, loader).await);
+        all.extend(
+            modrinth_updates(state, instance_id, kind, game_version, loader, include_pack).await,
+        );
+        all.extend(
+            curseforge_updates(state, instance_id, kind, game_version, loader, include_pack).await,
+        );
     }
     state
         .db

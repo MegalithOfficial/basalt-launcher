@@ -1228,6 +1228,16 @@ export function SettingsView() {
               />
             </Row>
             <Row
+              label="Update pack content too"
+              hint="Modpack instances normally only offer updates for content you added yourself, since the pack replaces its own files on the next upgrade"
+            >
+              <Toggle
+                label="Update pack content too"
+                checked={draft.pack_content_updates}
+                onChange={(pack_content_updates) => set({ pack_content_updates })}
+              />
+            </Row>
+            <Row
               label="Minimize while the game runs"
               hint="Gets Basalt out of the way on launch and brings it back when the last instance closes"
             >
