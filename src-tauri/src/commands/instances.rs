@@ -182,6 +182,11 @@ pub fn update_instance(
     let needs_reset = existing.loader != loader
         || existing.loader_version != loader_version
         || existing.version_id != version_id;
+    if needs_reset && existing.pack_project_id.is_some() {
+        return Err(Error::other(
+            "This instance follows a modpack, which decides its game version and loader. Unlink it first.",
+        ));
+    }
     state.db.update_instance_settings(
         &instance_id,
         &name,

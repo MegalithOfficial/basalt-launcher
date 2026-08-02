@@ -8,6 +8,7 @@ import {
   ImagePlus,
   Link2,
   Loader2,
+  Lock,
   Package,
   Plus,
   Trash2,
@@ -59,6 +60,18 @@ function serializeEnv(entries: EnvVar[]): string {
     .filter((entry) => entry.key.trim())
     .map((entry) => `${entry.key.trim()}=${entry.value}`)
     .join("\n");
+}
+
+function Locked({ value }: { value: string }) {
+  return (
+    <div
+      title="The modpack decides this"
+      className="flex items-center gap-2 rounded-lg border border-border-soft bg-surface-3 px-3 py-2 text-sm text-content-muted"
+    >
+      <Lock className="size-3.5 shrink-0 text-content-faint" />
+      <span className="truncate">{value}</span>
+    </div>
+  );
 }
 
 interface Draft {
@@ -282,6 +295,7 @@ export function EditInstanceModal({
   const groupLabels = ["No group", ...organization.groups.map((group) => group.name)];
   const groupLabel =
     organization.groups.find((group) => group.id === placedIn)?.name ?? "No group";
+  const packLocked = !!instance.pack_project_id;
   const media = mediaMap[instance.id] ?? null;
   const logo = logoSrc(instance.logo);
 
@@ -601,38 +615,59 @@ export function EditInstanceModal({
 
             <SettingGroup
               title="Version and loader"
-              description="Changing either one needs a reinstall before the next launch."
+              description={
+                packLocked
+                  ? "The modpack decides these. Unlink it above to set them yourself."
+                  : "Changing either one needs a reinstall before the next launch."
+              }
             >
               <SettingRow label="Game version">
                 <div className="w-56">
-                  <Select
-                    value={gameVersion || null}
-                    options={gameVersions.length > 0 ? gameVersions : [instance.version_id]}
-                    onChange={(value) => set({ gameVersion: value })}
-                    placeholder="Pick a version"
-                  />
+                  {packLocked ? (
+                    <Locked value={instance.version_id} />
+                  ) : (
+                    <Select
+                      value={gameVersion || null}
+                      options={gameVersions.length > 0 ? gameVersions : [instance.version_id]}
+                      onChange={(value) => set({ gameVersion: value })}
+                      placeholder="Pick a version"
+                    />
+                  )}
                 </div>
               </SettingRow>
               <SettingRow label="Loader">
                 <div className="w-56">
-                  <Select
-                    value={
-                      loader === VANILLA
-                        ? "Vanilla"
-                        : (LOADERS.find((l) => l.id === loader)?.label ?? loader)
-                    }
-                    options={["Vanilla", ...LOADERS.map((l) => l.label)]}
-                    onChange={(label) => {
-                      const picked = LOADERS.find((l) => l.label === label);
-                      set({ loader: picked?.id ?? VANILLA });
-                      if (!picked) set({ loaderVersion: null });
-                    }}
-                  />
+                  {packLocked ? (
+                    <Locked
+                      value={
+                        instance.loader
+                          ? (LOADERS.find((l) => l.id === instance.loader)?.label ??
+                            instance.loader)
+                          : "Vanilla"
+                      }
+                    />
+                  ) : (
+                    <Select
+                      value={
+                        loader === VANILLA
+                          ? "Vanilla"
+                          : (LOADERS.find((l) => l.id === loader)?.label ?? loader)
+                      }
+                      options={["Vanilla", ...LOADERS.map((l) => l.label)]}
+                      onChange={(label) => {
+                        const picked = LOADERS.find((l) => l.label === label);
+                        set({ loader: picked?.id ?? VANILLA });
+                        if (!picked) set({ loaderVersion: null });
+                      }}
+                    />
+                  )}
                 </div>
               </SettingRow>
               <SettingRow label="Loader version">
                 <div className="w-56">
-                  {loader === VANILLA ? (
+                  {packLocked ? (
+                    <Locked value={instance.loader_version ?? "Not applicable"} />
+                  ) : loader === VANILLA ? (
                     <div className="rounded-lg border border-border-soft bg-surface-3 px-3 py-2 text-sm text-content-faint">
                       Not applicable
                     </div>
