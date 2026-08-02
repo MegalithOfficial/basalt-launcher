@@ -192,6 +192,8 @@ interface AppStore {
     envVarsMode?: string | null,
   ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
+  pins: string[];
+  togglePin: (id: string) => void;
   repairInstance: (id: string) => Promise<RepairReport>;
   duplicateInstance: (id: string) => Promise<Instance>;
   installInstance: (id: string) => Promise<void>;
@@ -1165,6 +1167,25 @@ export const useStore = create<AppStore>((set) => ({
     });
     void useStore.getState().loadMedia(id);
   },
+
+  pins: (() => {
+    try {
+      const raw = localStorage.getItem("sidebar-pins");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+    } catch {
+      return [];
+    }
+  })(),
+
+  togglePin: (id) =>
+    set((s) => {
+      const pins = s.pins.includes(id)
+        ? s.pins.filter((value) => value !== id)
+        : [...s.pins, id];
+      localStorage.setItem("sidebar-pins", JSON.stringify(pins));
+      return { pins };
+    }),
 
   deleteInstance: async (id) => {
     const name = useStore.getState().instances.find((i) => i.id === id)?.name;

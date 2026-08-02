@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
   Check,
   DatabaseBackup,
   FileBox,
   HardDriveUpload,
+  Compass,
+  Copy,
+  FolderOpen,
   Loader2,
   MoreVertical,
+  Pin,
+  PinOff,
+  Settings,
   Package,
-  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -81,6 +87,7 @@ const ALL_KINDS = ["mods", "resourcepacks", "shaderpacks", "schematics"];
 
 type Dialog =
   | { kind: "edit" }
+  | { kind: "delete" }
   | { kind: "export" }
   | { kind: "snapshots" }
   | { kind: "worldImport" }
@@ -198,6 +205,11 @@ export function InstanceView() {
   const updates = storedUpdates ?? NO_UPDATES;
   const activeProjects = useActiveProjectIds();
   const suggestionsEnabled = useStore((s) => s.settings?.show_suggestions !== false);
+  const duplicateInstance = useStore((s) => s.duplicateInstance);
+  const openDiscover = useStore((s) => s.openDiscover);
+  const deleteInstance = useStore((s) => s.deleteInstance);
+  const togglePin = useStore((s) => s.togglePin);
+  const pinned = useStore((s) => s.pins.includes(s.detailInstanceId ?? ""));
   const busyWithTask = !!useInstanceTask(instance?.id);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
@@ -586,12 +598,23 @@ export function InstanceView() {
 
   const heroMenu = (): MenuItem[] => [
     {
+      label: instance.loader ? "Find mods" : "Find mods (requires loader)",
+      icon: Compass,
+      disabled: !instance.loader,
+      onSelect: () => openDiscover("mods", instance.id),
+    },
+    {
+      label: "Open folder",
+      icon: FolderOpen,
+      onSelect: () => void openPath(instance.dir),
+    },
+    {
       label: "Snapshots and restore (experimental)",
       icon: DatabaseBackup,
       onSelect: () => setDialog({ kind: "snapshots" }),
     },
     {
-      label: gameRunning ? "Repair (stop the game first)" : "Repair and verify",
+      label: "Repair and verify",
       icon: Wrench,
       disabled: repairing || busyWithTask || gameRunning,
       onSelect: () => void repair(),
@@ -599,8 +622,35 @@ export function InstanceView() {
     {
       label: "Export as pack",
       icon: Share,
-      separated: true,
       onSelect: () => setDialog({ kind: "export" }),
+    },
+    {
+      label: "Duplicate instance",
+      icon: Copy,
+      disabled: gameRunning || busyWithTask,
+      onSelect: () => {
+        duplicateInstance(instance.id).catch((error) =>
+          toast.error(`Could not duplicate ${instance.name}`, { description: String(error) }),
+        );
+      },
+    },
+    {
+      label: "Settings",
+      icon: Settings,
+      separated: true,
+      onSelect: () => setDialog({ kind: "edit" }),
+    },
+    {
+      label: pinned ? "Unpin from sidebar" : "Pin to sidebar",
+      icon: pinned ? PinOff : Pin,
+      onSelect: () => togglePin(instance.id),
+    },
+    {
+      label: "Delete instance",
+      icon: Trash2,
+      danger: true,
+      separated: true,
+      onSelect: () => setDialog({ kind: "delete" }),
     },
   ];
 
@@ -673,17 +723,9 @@ export function InstanceView() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
-              onClick={() => setDialog({ kind: "edit" })}
-              aria-label="Instance settings"
-              title="Instance settings"
-              className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
-            >
-              <Pencil className="size-4" />
-            </button>
-            <button
               onClick={(event) => openMenu(event, heroMenu(), instance.name)}
-              aria-label="More actions"
-              title="More actions"
+              aria-label="Instance actions"
+              title="Instance actions"
               className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
             >
               {repairing ? (
@@ -1202,6 +1244,19 @@ export function InstanceView() {
         onClose={close}
       />
       <ContextMenu menu={menu} onClose={closeMenu} />
+
+      <ConfirmDialog
+        open={dialog?.kind === "delete"}
+        title={`Delete ${instance.name}?`}
+        description="The whole instance folder is removed from disk, including its worlds, mods, configs, screenshots and every snapshot taken of it. This cannot be undone."
+        confirmLabel="Delete instance"
+        requireText={instance.name}
+        onConfirm={async () => {
+          close();
+          await deleteInstance(instance.id);
+        }}
+        onCancel={close}
+      />
 
       <SnapshotsModal
         instance={instance}

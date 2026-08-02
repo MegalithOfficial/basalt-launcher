@@ -34,17 +34,6 @@ const MAX_TILES = 5;
 const TILE_SIZE = 44;
 const TILE_GAP = 6;
 const DOCK_HEADING = 25;
-const PIN_KEY = "sidebar-pins";
-
-function readPins(): string[] {
-  try {
-    const raw = localStorage.getItem(PIN_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
-}
 
 const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
   { id: "home", label: "Play", icon: Play },
@@ -214,7 +203,8 @@ export function Sidebar() {
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const [pins, setPins] = useState<string[]>(readPins);
+  const pins = useStore((s) => s.pins);
+  const togglePin = useStore((s) => s.togglePin);
   const [editing, setEditing] = useState<Instance | null>(null);
   const [exporting, setExporting] = useState<Instance | null>(null);
   const [removing, setRemoving] = useState<Instance | null>(null);
@@ -222,15 +212,6 @@ export function Sidebar() {
   const anyRunning = Object.values(running).some((r) => r.state === "running");
   const liveRuns = Object.values(running).filter((r) => r.state === "running");
   const runningIds = new Set(liveRuns.map((r) => r.instance_id));
-
-  const togglePin = (id: string) =>
-    setPins((current) => {
-      const next = current.includes(id)
-        ? current.filter((v) => v !== id)
-        : [...current, id];
-      localStorage.setItem(PIN_KEY, JSON.stringify(next));
-      return next;
-    });
 
   const dock = useMemo(() => {
     const byId = new Map(instances.map((i) => [i.id, i]));
