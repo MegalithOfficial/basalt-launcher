@@ -156,6 +156,7 @@ interface AppStore {
   searchKind: ContentKind | null;
   discoverKind: ContentKind;
   discoverTargetId: string | null;
+  discoverWorld: string | null;
   discoverBrowse: DiscoverBrowse;
   projectRef: { provider: SearchProvider; id: string; title?: string } | null;
   contentSources: Record<string, Record<string, { file_name: string; version_id: string | null }>>;
@@ -228,11 +229,16 @@ interface AppStore {
     kind?: ContentKind,
     title?: string,
   ) => void;
-  openDiscover: (kind?: ContentKind, targetInstanceId?: string | null) => void;
+  openDiscover: (
+    kind?: ContentKind,
+    targetInstanceId?: string | null,
+    world?: string | null,
+  ) => void;
   setDiscoverKind: (kind: ContentKind) => void;
   setDiscoverBrowse: (patch: Partial<DiscoverBrowse>) => void;
   resetDiscoverBrowse: (patch: Partial<DiscoverBrowse>) => void;
   setDiscoverTarget: (instanceId: string | null) => void;
+  setDiscoverWorld: (world: string | null) => void;
   installModpack: (
     provider: SearchProvider,
     projectId: string,
@@ -369,6 +375,7 @@ export const useStore = create<AppStore>((set) => ({
   searchKind: null,
   discoverKind: "mods",
   discoverTargetId: null,
+  discoverWorld: null,
   discoverBrowse: emptyBrowse,
   projectRef: null,
   contentSources: {},
@@ -401,11 +408,12 @@ export const useStore = create<AppStore>((set) => ({
       viewStack: pushStack(s.viewStack, s.view, "discover"),
     })),
 
-  openDiscover: (kind, targetInstanceId) =>
+  openDiscover: (kind, targetInstanceId, world) =>
     set((s) => ({
       discoverKind: kind ?? s.discoverKind,
       searchKind: kind ?? s.discoverKind,
       discoverTargetId: targetInstanceId !== undefined ? targetInstanceId : s.discoverTargetId,
+      discoverWorld: world !== undefined ? world : s.discoverWorld,
       view: "discover",
       viewStack: pushStack(s.viewStack, s.view, "discover"),
     })),
@@ -417,7 +425,9 @@ export const useStore = create<AppStore>((set) => ({
 
   resetDiscoverBrowse: (patch) => set({ discoverBrowse: { ...emptyBrowse, ...patch } }),
 
-  setDiscoverTarget: (instanceId) => set({ discoverTargetId: instanceId }),
+  setDiscoverTarget: (instanceId) => set({ discoverTargetId: instanceId, discoverWorld: null }),
+
+  setDiscoverWorld: (world) => set({ discoverWorld: world }),
 
   installModpack: async (provider, projectId, versionId, manualDownloads = []) => {
     const instance = await api.installModpack(

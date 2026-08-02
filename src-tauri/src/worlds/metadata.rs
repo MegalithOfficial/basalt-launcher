@@ -66,6 +66,8 @@ pub(super) struct WorldMetadata {
     pub game_type: Option<i32>,
     pub hardcore: bool,
     pub difficulty: Option<i8>,
+    pub enabled_packs: Vec<String>,
+    pub disabled_packs: Vec<String>,
 }
 
 struct NbtReader<'a> {
@@ -235,6 +237,42 @@ impl<'a> NbtReader<'a> {
         }
     }
 
+    fn read_string_list(&mut self) -> Result<Vec<String>> {
+        let element = self.byte()?;
+        let length = self.collection_length()?;
+        if element != TAG_STRING {
+            for _ in 0..length {
+                self.skip_payload(element, MAX_NBT_DEPTH)?;
+            }
+            return Ok(Vec::new());
+        }
+        let mut names = Vec::with_capacity(length.min(256));
+        for _ in 0..length {
+            self.count_tag()?;
+            names.push(self.string()?);
+        }
+        Ok(names)
+    }
+
+    fn read_data_packs(&mut self, depth: usize, metadata: &mut WorldMetadata) -> Result<()> {
+        if depth > MAX_NBT_DEPTH {
+            return Err(Error::other("NBT nesting exceeds the safety limit"));
+        }
+        loop {
+            let tag = self.byte()?;
+            if tag == TAG_END {
+                return Ok(());
+            }
+            self.count_tag()?;
+            let name = self.string()?;
+            match (name.as_str(), tag) {
+                ("Enabled", TAG_LIST) => metadata.enabled_packs = self.read_string_list()?,
+                ("Disabled", TAG_LIST) => metadata.disabled_packs = self.read_string_list()?,
+                _ => self.skip_payload(tag, depth)?,
+            }
+        }
+    }
+
     fn read_data(&mut self, depth: usize, metadata: &mut WorldMetadata) -> Result<()> {
         if depth > MAX_NBT_DEPTH {
             return Err(Error::other("NBT nesting exceeds the safety limit"));
@@ -254,6 +292,7 @@ impl<'a> NbtReader<'a> {
                 ("hardcore", TAG_BYTE) => metadata.hardcore = self.i8()? != 0,
                 ("Difficulty", TAG_BYTE) => metadata.difficulty = Some(self.i8()?),
                 ("Version", TAG_COMPOUND) => self.read_version(depth + 1, metadata)?,
+                ("DataPacks", TAG_COMPOUND) => self.read_data_packs(depth + 1, metadata)?,
                 _ => self.skip_payload(tag, depth)?,
             }
         }
@@ -339,6 +378,15 @@ fn world_icon(files: &FileManager, world_dir: &Path) -> Option<String> {
         "data:image/png;base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
+}
+
+pub fn pack_state(files: &FileManager, world_dir: &Path) -> (Vec<String>, Vec<String>) {
+    let metadata = read_level_metadata(files, &world_dir.join("level.dat"))
+        .or_else(|_| read_level_metadata(files, &world_dir.join("level.dat_old")));
+    match metadata {
+        Ok(metadata) => (metadata.enabled_packs, metadata.disabled_packs),
+        Err(_) => (Vec::new(), Vec::new()),
+    }
 }
 
 pub(super) fn world_from_dir(files: &FileManager, world_dir: PathBuf) -> Option<WorldSummary> {

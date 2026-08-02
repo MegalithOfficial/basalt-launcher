@@ -46,6 +46,7 @@ import type {
   RepairReport,
   SnapshotSummary,
   Screenshot,
+  WorldPacks,
   PathKind,
   StorageReport,
   ReclaimOutcome,
@@ -117,6 +118,32 @@ export const api = {
     call<string[]>("list_loader_versions", { loader, gameVersion }),
   listInstanceContent: (instanceId: string, kind: string, reconcile = false) =>
     call<ContentItem[]>("list_instance_content", { instanceId, kind, reconcile }),
+  listInstanceDatapacks: (instanceId: string) =>
+    call<WorldPacks[]>("list_instance_datapacks", { instanceId }),
+  toggleDatapack: (instanceId: string, world: string, fileName: string) =>
+    call<boolean>("toggle_datapack", { instanceId, world, fileName }),
+  deleteDatapack: (instanceId: string, world: string, fileName: string) =>
+    call<void>("delete_datapack", { instanceId, world, fileName }),
+  addDatapacks: (instanceId: string, world: string, sources: string[]) =>
+    call<number>("add_datapacks", { instanceId, world, sources }),
+  installDatapack: (
+    provider: string,
+    projectId: string,
+    instanceId: string,
+    world: string,
+    versionId: string | null = null,
+  ) =>
+    call<string[]>("install_datapack", {
+      provider,
+      projectId,
+      instanceId,
+      world,
+      versionId,
+    }),
+  checkDatapackUpdates: (instanceId: string) =>
+    call<number>("check_datapack_updates", { instanceId }),
+  applyDatapackUpdate: (instanceId: string, world: string, fileName: string) =>
+    call<string[]>("apply_datapack_update", { instanceId, world, fileName }),
   listInstanceWorlds: (instanceId: string) =>
     call<WorldSummary[]>("list_instance_worlds", { instanceId }),
   inspectWorldSource: (sourcePath: string) =>

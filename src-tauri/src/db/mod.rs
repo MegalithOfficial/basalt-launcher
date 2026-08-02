@@ -10,6 +10,7 @@ mod banners;
 mod cache;
 mod content;
 mod core;
+mod datapacks;
 mod groups;
 mod instances;
 mod migrations;
@@ -19,6 +20,7 @@ mod runs;
 mod settings;
 mod skins;
 
+pub use datapacks::DatapackRecord;
 pub use models::{
     ActiveRun, BannerRecord, CachedResponse, ContentFile, ContentUpdate, InstanceGroup,
     InstanceOrganization, InstancePlacement, PendingOperation, SkinRecord,

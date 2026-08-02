@@ -100,6 +100,7 @@ export type ContentKind =
   | "resourcepacks"
   | "shaderpacks"
   | "schematics"
+  | "datapacks"
   | "modpacks";
 
 export type ContentOrigin = "user" | "dependency" | "pack" | "manual";
@@ -387,7 +388,8 @@ export type TaskKind =
   | "instance_duplicate"
   | "snapshot_create"
   | "snapshot_restore"
-  | "storage_scan";
+  | "storage_scan"
+  | "datapack_install";
 
 export interface RepairReport {
   checked_content: number;
@@ -847,4 +849,34 @@ export interface PathKind {
   path: string;
   directory: boolean;
   usable: boolean;
+}
+
+export type PackCompatibility =
+  | { state: "fits" }
+  | { state: "unknown" }
+  | { state: "mismatch"; needs: number; has: number };
+
+export interface Datapack {
+  file_name: string;
+  enabled: boolean;
+  off_in_game: boolean;
+  directory: boolean;
+  size: number;
+  title: string | null;
+  min_format: number | null;
+  max_format: number | null;
+  compatibility: PackCompatibility;
+  provider: string | null;
+  project_id: string | null;
+  version_id: string | null;
+  icon_url: string | null;
+  latest_version_id: string | null;
+  latest_file_name: string | null;
+}
+
+export interface WorldPacks {
+  world: string;
+  display_name: string;
+  loose: boolean;
+  packs: Datapack[];
 }

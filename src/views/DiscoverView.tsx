@@ -24,6 +24,7 @@ import type {
   SearchPage,
   SearchProvider,
   SortOrder,
+  WorldSummary,
 } from "../lib/types";
 import {
   ContentResults,
@@ -38,6 +39,8 @@ import {
 } from "../components/FilterRail";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
 import { useModpackInstaller } from "../components/CurseForgeDownloadModal";
+import { Modal, ModalHeader } from "../components/Modal";
+import { WorldTargetPicker } from "../components/WorldTargetPicker";
 import { InstanceTargetPicker } from "../components/InstanceTargetPicker";
 import { Select } from "../components/Select";
 import {
@@ -53,6 +56,7 @@ const KINDS: Array<{ id: ContentKind; label: string }> = [
   { id: "modpacks", label: "Modpacks" },
   { id: "resourcepacks", label: "Resource Packs" },
   { id: "shaderpacks", label: "Shaders" },
+  { id: "datapacks", label: "Datapacks" },
 ];
 
 const PROVIDERS: Array<{ id: SearchProvider; label: string }> = [
@@ -123,6 +127,15 @@ export function DiscoverView() {
   const [resultView, setResultView] = useResultView("discover-view");
   const [pending, setPending] = useState<PendingInstall | null>(null);
   const [planning, setPlanning] = useState<string | null>(null);
+  const [pickingWorld, setPickingWorld] = useState<{
+    project: ProjectSummary;
+    destination: Instance;
+    worlds: WorldSummary[];
+  } | null>(null);
+  const [worldFilter, setWorldFilter] = useState("");
+  const pinnedWorld = useStore((s) => s.discoverWorld);
+  const setPinnedWorld = useStore((s) => s.setDiscoverWorld);
+  const [targetWorlds, setTargetWorlds] = useState<WorldSummary[]>([]);
   const [installingPack, setInstallingPack] = useState<string | null>(null);
   const [needsTarget, setNeedsTarget] = useState<ProjectSummary | null>(null);
   const modpackInstaller = useModpackInstaller({
@@ -314,6 +327,34 @@ export function DiscoverView() {
       return;
     }
 
+    if (kind === "datapacks") {
+      if (pinnedWorld) {
+        setError(null);
+        try {
+          await api.installDatapack(provider, project.id, destination.id, pinnedWorld);
+          setNotice(`Installed ${project.title} into ${pinnedWorld}`);
+        } catch (e) {
+          setError(String(e));
+        }
+        return;
+      }
+      setPlanning(project.id);
+      try {
+        const worlds = await api.listInstanceWorlds(destination.id);
+        if (worlds.length === 0) {
+          setError(`${destination.name} has no worlds yet, so a datapack has nowhere to go.`);
+          return;
+        }
+        setWorldFilter("");
+        setPickingWorld({ project, destination, worlds });
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setPlanning(null);
+      }
+      return;
+    }
+
     setPlanning(project.id);
     setError(null);
     setNotice(null);
@@ -375,6 +416,45 @@ export function DiscoverView() {
     }
   };
 
+  useEffect(() => {
+    if (kind !== "datapacks" || !target) {
+      setTargetWorlds([]);
+      return;
+    }
+    let live = true;
+    api
+      .listInstanceWorlds(target.id)
+      .then((worlds) => live && setTargetWorlds(worlds))
+      .catch(() => live && setTargetWorlds([]));
+    return () => {
+      live = false;
+    };
+  }, [kind, target]);
+
+  const matchingWorlds = useMemo(() => {
+    const needle = worldFilter.trim().toLowerCase();
+    const worlds = pickingWorld?.worlds ?? [];
+    if (!needle) return worlds;
+    return worlds.filter(
+      (world) =>
+        world.name.toLowerCase().includes(needle) ||
+        world.folder_name.toLowerCase().includes(needle),
+    );
+  }, [pickingWorld, worldFilter]);
+
+  const installIntoWorld = async (world: string) => {
+    const request = pickingWorld;
+    if (!request) return;
+    setPickingWorld(null);
+    setError(null);
+    try {
+      await api.installDatapack(provider, request.project.id, request.destination.id, world);
+      setNotice(`Installed ${request.project.title} into ${world}`);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const hits = page?.hits ?? [];
   const total = page?.total ?? 0;
   const activeFilters = countActive(filters);
@@ -409,7 +489,14 @@ export function DiscoverView() {
             );
           })}
         </div>
-        <div className="ml-auto pb-2">
+        <div className="ml-auto flex items-center gap-2 pb-2">
+          {kind === "datapacks" && target && (
+            <WorldTargetPicker
+              worlds={targetWorlds}
+              selected={pinnedWorld}
+              onSelect={setPinnedWorld}
+            />
+          )}
           {!isPack && (
             <InstanceTargetPicker
               instances={
@@ -738,6 +825,57 @@ export function DiscoverView() {
             if (instance) void beginInstall(project, instance);
           }}
         />
+      )}
+      {pickingWorld && (
+        <Modal
+          open
+          onClose={() => setPickingWorld(null)}
+          size="md"
+          className="h-[min(560px,calc(100vh-48px))]"
+          labelledBy="datapack-world-title"
+        >
+          <ModalHeader
+            id="datapack-world-title"
+            title="Which world?"
+            subtitle={`${pickingWorld.project.title} goes into one world, not the whole instance`}
+            onClose={() => setPickingWorld(null)}
+          />
+          {pickingWorld.worlds.length > 6 && (
+            <div className="shrink-0 border-b border-border-soft px-5 py-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-content-faint" />
+                <input
+                  autoFocus
+                  value={worldFilter}
+                  onChange={(event) => setWorldFilter(event.target.value)}
+                  placeholder="Filter worlds"
+                  className="h-9 w-full rounded-lg border border-border bg-base pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+                />
+              </div>
+            </div>
+          )}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 py-4">
+            {matchingWorlds.length === 0 && (
+              <p className="py-6 text-sm text-content-faint">Nothing matches that.</p>
+            )}
+            {matchingWorlds.map((world) => (
+              <button
+                key={world.folder_name}
+                onClick={() => void installIntoWorld(world.folder_name)}
+                className="flex items-center gap-3 rounded-xl border border-border-soft bg-surface-2/50 px-3.5 py-3 text-left transition-colors hover:border-border hover:bg-surface-2"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-content">
+                    {world.name}
+                  </span>
+                  <span className="block truncate font-mono text-[11px] text-content-faint">
+                    {world.folder_name}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
       {modpackInstaller.modal}
     </div>

@@ -4,6 +4,7 @@ mod commands;
 mod config;
 mod content;
 mod credentials;
+mod datapacks;
 mod db;
 mod diagnose;
 mod download;
@@ -219,6 +220,13 @@ pub fn run() {
             commands::launch_commands::get_logs,
             commands::launch_commands::close_running,
             commands::instances::set_instance_notes,
+            commands::datapacks::list_instance_datapacks,
+            commands::datapacks::toggle_datapack,
+            commands::datapacks::delete_datapack,
+            commands::datapacks::add_datapacks,
+            commands::datapacks::install_datapack,
+            commands::datapacks::check_datapack_updates,
+            commands::datapacks::apply_datapack_update,
             commands::storage::scan_storage,
             commands::storage::reclaim_storage,
             commands::captures::list_screenshots,

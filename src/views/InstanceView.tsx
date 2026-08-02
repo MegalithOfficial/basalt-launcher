@@ -38,6 +38,7 @@ import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
 import { ScreenshotsPanel } from "../components/captures/ScreenshotsPanel";
+import { DatapacksPanel } from "../components/datapacks/DatapacksPanel";
 import { UploadModal } from "../components/UploadModal";
 import { ContextMenu, useContextMenu, type MenuItem } from "../components/ContextMenu";
 import { SnapshotsModal } from "../components/SnapshotsModal";
@@ -86,6 +87,12 @@ const WORLDS_TAB = {
   extensions: [],
 };
 
+const DATAPACKS_TAB = {
+  kind: "datapacks" as ContentKind,
+  label: "Datapacks",
+  extensions: ["zip"],
+};
+
 const SCREENSHOTS_TAB = {
   kind: "screenshots" as const,
   label: "Screenshots",
@@ -93,6 +100,10 @@ const SCREENSHOTS_TAB = {
 };
 
 const SCHEMATIC_MOD_MARKERS = ["litematica", "worldedit", "schematica", "axiom", "schematic"];
+
+function isContentTab(tab: InstanceTab): tab is ContentKind {
+  return tab !== "worlds" && tab !== "screenshots" && tab !== "datapacks";
+}
 
 const NO_UPDATES: ContentUpdate[] = [];
 const EMPTY_ITEMS: ContentItem[] = [];
@@ -233,6 +244,7 @@ export function InstanceView() {
   const [worldsLoading, setWorldsLoading] = useState(false);
   const [addingFiles, setAddingFiles] = useState(false);
   const [addingBusy, setAddingBusy] = useState(false);
+  const [datapackAdd, setDatapackAdd] = useState(0);
   const [addingError, setAddingError] = useState<string | null>(null);
   const [itemsByTab, setItemsByTab] = useState<Record<string, ContentItem[]>>({});
   const [loadingTab, setLoadingTab] = useState<string | null>(null);
@@ -260,7 +272,7 @@ export function InstanceView() {
 
   const refresh = useCallback(
     async (reconcile = false) => {
-      if (!instance || tab === "worlds" || tab === "screenshots") return;
+      if (!instance || !isContentTab(tab)) return;
       const target = tab;
       setLoadingTab(target);
       try {
@@ -387,8 +399,8 @@ export function InstanceView() {
     ? TABS
     : TABS.filter((t) => t.kind === "resourcepacks");
   const contentTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
-  const allTabs = [...contentTabs, WORLDS_TAB, SCREENSHOTS_TAB];
-  const isContent = tab !== "worlds" && tab !== "screenshots";
+  const allTabs = [...contentTabs, DATAPACKS_TAB, WORLDS_TAB, SCREENSHOTS_TAB];
+  const isContent = tab !== "worlds" && tab !== "screenshots" && tab !== "datapacks";
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
   const tabUpdates = isContent ? updates.filter((u) => u.kind === tab) : NO_UPDATES;
   const items = itemsByTab[tab] ?? EMPTY_ITEMS;
@@ -423,7 +435,7 @@ export function InstanceView() {
   };
 
   const addContent = (event: React.MouseEvent) => {
-    if (tab === "worlds" || tab === "screenshots") return;
+    if (!isContentTab(tab)) return;
     if (tab === "schematics") {
       setAddingFiles(true);
       return;
@@ -448,7 +460,7 @@ export function InstanceView() {
   };
 
   const addFiles = async (sources: string[]) => {
-    if (tab === "worlds" || tab === "screenshots") return;
+    if (!isContentTab(tab)) return;
     setAddingBusy(true);
     setAddingError(null);
     try {
@@ -463,13 +475,13 @@ export function InstanceView() {
   };
 
   const toggle = async (item: ContentItem) => {
-    if (tab === "worlds" || tab === "screenshots") return;
+    if (!isContentTab(tab)) return;
     await api.toggleInstanceContent(instance.id, tab, item.file_name);
     await refresh();
   };
 
   const askRemove = async (item: ContentItem) => {
-    if (tab === "worlds" || tab === "screenshots") return;
+    if (!isContentTab(tab)) return;
     const plan = await api
       .planContentRemoval(instance.id, tab, item.file_name)
       .catch(() => ({ dependents: [], from_pack: false, orphans: [] }) as RemovalPlan);
@@ -486,7 +498,7 @@ export function InstanceView() {
   };
 
   const remove = async (item: ContentItem, alsoRemove: string[]) => {
-    if (tab === "worlds" || tab === "screenshots") return;
+    if (!isContentTab(tab)) return;
     close();
     await api.deleteInstanceContent(instance.id, tab, item.file_name);
     let extra = 0;
@@ -512,7 +524,7 @@ export function InstanceView() {
     withDependencies = true,
     plan?: InstallPlan,
   ) => {
-    if (tab === "worlds" || tab === "screenshots") return;
+    if (!isContentTab(tab)) return;
     setSuggestBusy(project.id);
     try {
       if (!plan) {
@@ -625,7 +637,7 @@ export function InstanceView() {
   };
 
   const updateOne = async (item: ContentItem) => {
-    if (tab === "worlds" || tab === "screenshots" || !item.update) return;
+    if (!isContentTab(tab) || !item.update) return;
     setUpdatingFile(item.file_name);
     try {
       await applyAvailableUpdate(item.update);
@@ -979,17 +991,17 @@ export function InstanceView() {
             <>
               <button
                 onClick={() =>
-                  tab === "worlds" ? setWorldRefresh((v) => v + 1) : void checkUpdates()
+                  isContentTab(tab) ? void checkUpdates() : setWorldRefresh((v) => v + 1)
                 }
-                disabled={tab === "worlds" ? worldsLoading : checkingUpdates || busyWithTask}
-                title={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
-                aria-label={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
+                disabled={isContentTab(tab) ? checkingUpdates || busyWithTask : worldsLoading}
+                title={isContentTab(tab) ? "Check for updates" : "Refresh"}
+                aria-label={isContentTab(tab) ? "Check for updates" : "Refresh"}
                 className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <RefreshCw
                   className={cn(
                     "size-3.5",
-                    (tab === "worlds" ? worldsLoading : checkingUpdates) && "animate-spin",
+                    (isContentTab(tab) ? checkingUpdates : worldsLoading) && "animate-spin",
                   )}
                 />
               </button>
@@ -1017,7 +1029,14 @@ export function InstanceView() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {tab === "screenshots" ? (
+        {tab === "datapacks" ? (
+          <DatapacksPanel
+            instance={instance}
+            refreshToken={worldRefresh}
+            addFor={datapackAdd}
+            onAddHandled={() => setDatapackAdd(0)}
+          />
+        ) : tab === "screenshots" ? (
           <ScreenshotsPanel instance={instance} />
         ) : tab === "worlds" ? (
           <WorldsPanel

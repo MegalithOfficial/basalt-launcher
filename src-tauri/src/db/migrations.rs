@@ -95,6 +95,21 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             checked_at INTEGER NOT NULL,
             PRIMARY KEY (instance_id, kind, file_name)
         );
+        CREATE TABLE IF NOT EXISTS world_datapacks(
+            instance_id TEXT NOT NULL,
+            world TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            sha1 TEXT,
+            provider TEXT,
+            project_id TEXT,
+            version_id TEXT,
+            title TEXT,
+            icon_url TEXT,
+            installed_at INTEGER NOT NULL DEFAULT 0,
+            latest_version_id TEXT,
+            latest_file_name TEXT,
+            PRIMARY KEY (instance_id, world, file_name)
+        );
         CREATE TABLE IF NOT EXISTS pending_operations(
             id TEXT PRIMARY KEY,
             kind TEXT NOT NULL,
