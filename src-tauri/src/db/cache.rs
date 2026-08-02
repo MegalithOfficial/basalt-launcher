@@ -42,6 +42,23 @@ impl Db {
         Ok(())
     }
 
+    pub fn api_cache_bytes(&self) -> Result<u64> {
+        let conn = self.0.lock().unwrap();
+        let bytes: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(LENGTH(body)), 0) FROM api_cache",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(bytes.max(0) as u64)
+    }
+
+    pub fn clear_api_cache(&self) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM api_cache", [])?;
+        conn.execute_batch("VACUUM")?;
+        Ok(())
+    }
+
     pub fn cache_touch(&self, key: &str, fetched_at: i64) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(

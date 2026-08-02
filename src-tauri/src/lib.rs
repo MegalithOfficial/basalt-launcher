@@ -25,6 +25,7 @@ mod search;
 mod skin;
 mod snapshots;
 mod state;
+mod storage;
 mod sysinfo_probe;
 mod tasks;
 mod update;
@@ -217,6 +218,9 @@ pub fn run() {
             commands::launch_commands::list_running,
             commands::launch_commands::get_logs,
             commands::launch_commands::close_running,
+            commands::instances::set_instance_notes,
+            commands::storage::scan_storage,
+            commands::storage::reclaim_storage,
             commands::captures::list_screenshots,
             commands::captures::delete_screenshots,
             commands::captures::copy_screenshot,

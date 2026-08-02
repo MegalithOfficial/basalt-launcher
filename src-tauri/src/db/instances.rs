@@ -13,7 +13,7 @@ impl Db {
                     java_path, last_played_at, playtime_secs, loader, loader_version,
                     launch_version_id, pack_provider, pack_project_id, pack_version_id,
                     jvm_args, jvm_args_mode, env_vars, env_vars_mode,
-                    import_source, import_source_id, banner_id
+                    import_source, import_source_id, banner_id, notes
              FROM instances ORDER BY created_at",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -46,9 +46,19 @@ impl Db {
                 import_source: row.get(19)?,
                 import_source_id: row.get(20)?,
                 banner_id: row.get(21)?,
+                notes: row.get(22)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    pub fn set_instance_notes(&self, instance_id: &str, notes: Option<&str>) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE instances SET notes = ?2 WHERE id = ?1",
+            params![instance_id, notes],
+        )?;
+        Ok(())
     }
 
     pub fn link_instance_pack(
@@ -109,9 +119,9 @@ impl Db {
                  java_path, last_played_at, playtime_secs, loader, loader_version,
                  launch_version_id, pack_provider, pack_project_id, pack_version_id,
                  jvm_args, jvm_args_mode, env_vars, env_vars_mode,
-                 import_source, import_source_id, banner_id)
+                 import_source, import_source_id, banner_id, notes)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                     ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+                     ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
             params![
                 instance.id,
                 instance.name,
@@ -135,6 +145,7 @@ impl Db {
                 instance.import_source,
                 instance.import_source_id,
                 instance.banner_id,
+                instance.notes,
             ],
         )?;
         Ok(())

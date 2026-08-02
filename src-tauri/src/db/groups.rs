@@ -242,6 +242,7 @@ mod tests {
             import_source: None,
             import_source_id: None,
             banner_id: None,
+            notes: None,
         }
     }
 

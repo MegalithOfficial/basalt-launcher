@@ -514,6 +514,7 @@ pub async fn prepare_import(
         import_source: None,
         import_source_id: None,
         banner_id: None,
+        notes: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,

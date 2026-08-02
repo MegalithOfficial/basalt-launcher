@@ -967,6 +967,7 @@ mod tests {
             import_source: None,
             import_source_id: None,
             banner_id: None,
+            notes: None,
         };
         store.db.insert_instance(&instance).unwrap();
         instance

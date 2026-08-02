@@ -179,4 +179,6 @@ pub struct Instance {
     pub import_source_id: Option<String>,
     #[serde(default)]
     pub banner_id: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
 }

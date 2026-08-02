@@ -180,6 +180,7 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         ("banner_id", "TEXT"),
         ("group_id", "TEXT"),
         ("group_order", "INTEGER NOT NULL DEFAULT 0"),
+        ("notes", "TEXT"),
     ] {
         add_column_if_missing(conn, "instances", column, declaration)?;
     }

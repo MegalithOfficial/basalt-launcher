@@ -113,6 +113,7 @@ pub fn create_instance(
         import_source: None,
         import_source_id: None,
         banner_id: None,
+        notes: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,
@@ -205,6 +206,19 @@ pub fn update_instance(
     }
     tracing::info!(needs_reset, "instance updated");
     find_instance(&state, &instance_id)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state, notes), err)]
+pub fn set_instance_notes(
+    state: State<AppState>,
+    instance_id: String,
+    notes: String,
+) -> Result<()> {
+    let trimmed = notes.trim();
+    state
+        .db
+        .set_instance_notes(&instance_id, (!trimmed.is_empty()).then_some(trimmed))
 }
 
 #[tauri::command]

@@ -73,6 +73,7 @@ export interface Instance {
   env_vars: string | null;
   env_vars_mode: string | null;
   banner_id: string | null;
+  notes: string | null;
 }
 
 export interface InstanceGroup {
@@ -385,7 +386,8 @@ export type TaskKind =
   | "instance_repair"
   | "instance_duplicate"
   | "snapshot_create"
-  | "snapshot_restore";
+  | "snapshot_restore"
+  | "storage_scan";
 
 export interface RepairReport {
   checked_content: number;
@@ -801,4 +803,42 @@ export interface Diagnosis {
   detail: string;
   subjects: string[];
   fix: DiagnosisFix;
+}
+
+export interface StorageEntry {
+  id: string;
+  label: string;
+  bytes: number;
+  path: string | null;
+  children: StorageEntry[];
+}
+
+export type StorageTier = "cache" | "shared" | "spare";
+
+export interface Reclaimable {
+  id: string;
+  label: string;
+  detail: string;
+  bytes: number;
+  count: number;
+  tier: StorageTier;
+  items: string[];
+}
+
+export interface StorageReport {
+  scanned_at: number;
+  root: string;
+  total_bytes: number;
+  free_bytes: number | null;
+  disk_total_bytes: number | null;
+  buckets: StorageEntry[];
+  reclaimable: Reclaimable[];
+  unresolved: string | null;
+  shared_dedupe: boolean;
+}
+
+export interface ReclaimOutcome {
+  freed_bytes: number;
+  cleared: string[];
+  failures: string[];
 }

@@ -716,6 +716,7 @@ pub fn import(
                 import_source: Some("atlauncher".to_string()),
                 import_source_id: Some(id.clone()),
                 banner_id: None,
+                notes: None,
                 jvm_args: None,
                 jvm_args_mode: None,
                 env_vars: None,

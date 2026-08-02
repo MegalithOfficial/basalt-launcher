@@ -46,6 +46,8 @@ import type {
   RepairReport,
   SnapshotSummary,
   Screenshot,
+  StorageReport,
+  ReclaimOutcome,
   Thumbnail,
   ProjectSummary,
   ProjectVersion,
@@ -95,6 +97,8 @@ export const api = {
     call<InstanceGroup>("rename_instance_group", { groupId, name }),
   deleteInstanceGroup: (groupId: string) =>
     call<void>("delete_instance_group", { groupId }),
+  setInstanceNotes: (instanceId: string, notes: string) =>
+    call<void>("set_instance_notes", { instanceId, notes }),
   moveInstanceToGroup: (instanceId: string, groupId: string | null) =>
     call<void>("move_instance_to_group", { instanceId, groupId }),
   reorderInstanceGroups: (groupIds: string[]) =>
@@ -431,6 +435,9 @@ export const api = {
   downloadAppUpdate: () => call<AppUpdateStatus>("download_app_update"),
   installAppUpdate: () => call<void>("install_app_update"),
   getAboutLinks: () => call<AboutLinks>("get_about_links"),
+  scanStorage: (force = false) => call<StorageReport>("scan_storage", { force }),
+  reclaimStorage: (targets: string[]) =>
+    call<ReclaimOutcome>("reclaim_storage", { targets }),
   getSystemStats: () => call<SystemStats>("get_system_stats"),
   getSystemUsage: () => call<SystemUsage>("get_system_usage"),
   previewLaunchArgs: (settings: LauncherSettings) =>

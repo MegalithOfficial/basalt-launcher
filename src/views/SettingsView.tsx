@@ -44,6 +44,7 @@ import type {
   SystemStats,
   UpdateInfo,
 } from "../lib/types";
+import { StoragePanel } from "../components/storage/StoragePanel";
 import { useStore } from "../store";
 
 const TABS = [
@@ -54,6 +55,7 @@ const TABS = [
   { id: "network", label: "Network" },
   { id: "appearance", label: "Look and feel" },
   { id: "resources", label: "Resources" },
+  { id: "storage", label: "Storage" },
 ];
 
 const ACCENT_MODES: Array<{ id: AccentMode; label: string; hint: string }> = [
@@ -538,7 +540,9 @@ export function SettingsView() {
               />
             </Row>
           </Section>
+          </div>
 
+          <div>
           <Section
             title="Migration"
             description="Bring instances over from another launcher."
@@ -567,38 +571,7 @@ export function SettingsView() {
             )}
           </Section>
           </div>
-
-          <div>
-          <Section
-            title="Storage"
-            description="Where instances, assets and logs are kept, and how to clear them."
-          >
-            <Row label="Data directory" hint={appInfo?.data_dir ?? "resolving"} stacked>
-              <button
-                onClick={() => appInfo && openPath(appInfo.data_dir)}
-                className={actionCls}
-              >
-                <FolderOpen className="size-3.5" />
-                Open folder
-              </button>
-            </Row>
-            <Row
-              label="Reset everything"
-              hint="Removes every instance with its worlds, the accounts, the skins and all settings, then restarts into setup"
-              stacked
-            >
-              <button
-                onClick={() => setResetting(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger transition-colors hover:bg-danger/20"
-              >
-                <TriangleAlert className="size-3.5" />
-                Reset Basalt
-              </button>
-            </Row>
-          </Section>
           </div>
-          </div>
-
           </div>
         )}
 
@@ -1302,6 +1275,38 @@ export function SettingsView() {
               </button>
             </Row>
           </Section>
+          </div>
+        )}
+
+        {tab === "storage" && (
+          <div>
+            <StoragePanel />
+            <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-border-soft bg-surface-2/60 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-content-faint">
+                  Data directory
+                </p>
+                <p className="selectable mt-0.5 break-all font-mono text-[11px] text-content-muted">
+                  {appInfo?.data_dir ?? "resolving"}
+                </p>
+              </div>
+              <button
+                onClick={() => appInfo && openPath(appInfo.data_dir)}
+                className={actionCls}
+              >
+                <FolderOpen className="size-3.5" />
+                Open folder
+              </button>
+              <span className="h-6 w-px shrink-0 bg-border-soft" />
+              <button
+                onClick={() => setResetting(true)}
+                title="Removes every instance with its worlds, the accounts, the skins and all settings, then restarts into setup"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-content-faint transition-colors hover:bg-danger/10 hover:text-danger"
+              >
+                <TriangleAlert className="size-3.5" />
+                Reset Basalt
+              </button>
+            </div>
           </div>
         )}
 

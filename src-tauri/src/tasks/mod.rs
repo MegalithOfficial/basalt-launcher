@@ -29,6 +29,7 @@ pub enum TaskKind {
     InstanceDuplicate,
     SnapshotCreate,
     SnapshotRestore,
+    StorageScan,
 }
 
 impl TaskKind {
@@ -48,6 +49,7 @@ impl TaskKind {
             Self::InstanceDuplicate => "instance_duplicate",
             Self::SnapshotCreate => "snapshot_create",
             Self::SnapshotRestore => "snapshot_restore",
+            Self::StorageScan => "storage_scan",
         }
     }
 
@@ -67,6 +69,7 @@ impl TaskKind {
             "instance_duplicate" | "InstanceDuplicate" => Some(Self::InstanceDuplicate),
             "snapshot_create" | "SnapshotCreate" => Some(Self::SnapshotCreate),
             "snapshot_restore" | "SnapshotRestore" => Some(Self::SnapshotRestore),
+            "storage_scan" | "StorageScan" => Some(Self::StorageScan),
             _ => None,
         }
     }

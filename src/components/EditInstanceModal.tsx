@@ -74,6 +74,8 @@ interface Draft {
   jvmArgsMode: string;
   envVars: EnvVar[];
   envVarsMode: string;
+  notes: string;
+  groupId: string | null;
 }
 
 function draftFrom(instance: Instance): Draft {
@@ -90,6 +92,8 @@ function draftFrom(instance: Instance): Draft {
     jvmArgsMode: instance.jvm_args_mode ?? "append",
     envVars: parseEnv(instance.env_vars),
     envVarsMode: instance.env_vars_mode ?? "append",
+    notes: instance.notes ?? "",
+    groupId: null,
   };
 }
 
@@ -156,6 +160,9 @@ export function EditInstanceModal({
   const applyLogo = useStore((s) => s.applyLogo);
   const updateInstance = useStore((s) => s.updateInstance);
   const deleteInstance = useStore((s) => s.deleteInstance);
+  const organization = useStore((s) => s.instanceOrganization);
+  const moveInstanceToGroup = useStore((s) => s.moveInstanceToGroup);
+  const refreshInstances = useStore((s) => s.refreshInstances);
 
   const [tab, setTab] = useState<Tab>("general");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -267,7 +274,14 @@ export function EditInstanceModal({
   }, [loader, gameVersion, instance?.id]);
 
   if (!instance || !draft) return null;
-  const { name, minMem, maxMem, javaPath, javaCustom, loaderVersion, jvmArgs, jvmArgsMode, envVars, envVarsMode } = draft;
+  const { name, minMem, maxMem, javaPath, javaCustom, loaderVersion, jvmArgs, jvmArgsMode, envVars, envVarsMode, notes } = draft;
+  const placedIn =
+    draft.groupId !== null
+      ? draft.groupId
+      : (organization.placements.find((p) => p.instance_id === instance.id)?.group_id ?? "");
+  const groupLabels = ["No group", ...organization.groups.map((group) => group.name)];
+  const groupLabel =
+    organization.groups.find((group) => group.id === placedIn)?.name ?? "No group";
   const media = mediaMap[instance.id] ?? null;
   const logo = logoSrc(instance.logo);
 
@@ -319,6 +333,13 @@ export function EditInstanceModal({
         serializeEnv(envVars) || null,
         envVarsMode,
       );
+      await api.setInstanceNotes(instance.id, notes);
+      const current =
+        organization.placements.find((p) => p.instance_id === instance.id)?.group_id ?? null;
+      if (draft.groupId !== null && draft.groupId !== current) {
+        await moveInstanceToGroup(instance.id, draft.groupId || null);
+      }
+      await refreshInstances();
       onClose();
     } catch (e) {
       setError(String(e));
@@ -430,12 +451,41 @@ export function EditInstanceModal({
                   className={cn(inputCls, "w-64")}
                 />
               </SettingRow>
+              <SettingRow label="Group" hint="Where this instance sits on the instances page">
+                <div className="w-64">
+                  <Select
+                    value={groupLabel}
+                    options={groupLabels}
+                    onChange={(label) =>
+                      set({
+                        groupId:
+                          organization.groups.find((group) => group.name === label)?.id ?? "",
+                      })
+                    }
+                  />
+                </div>
+              </SettingRow>
               <SettingRow label="Instance folder" hint={instance.dir} stacked>
                 <button onClick={() => openPath(instance.dir)} className={chipCls}>
                   <FolderOpen className="size-3.5" />
                   Open folder
                 </button>
               </SettingRow>
+            </SettingGroup>
+
+            <SettingGroup
+              title="Notes"
+              description="Only you see this. Server addresses, what the world is for, what not to update."
+            >
+              <div className="p-4">
+                <textarea
+                  value={notes}
+                  onChange={(e) => set({ notes: e.target.value })}
+                  rows={6}
+                  placeholder="Nothing noted yet"
+                  className="selectable w-full resize-y rounded-lg border border-border bg-base px-3 py-2 text-sm leading-relaxed text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+                />
+              </div>
             </SettingGroup>
           </>
         )}
