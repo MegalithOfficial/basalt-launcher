@@ -46,6 +46,7 @@ import type {
   RepairReport,
   SnapshotSummary,
   Screenshot,
+  PathKind,
   StorageReport,
   ReclaimOutcome,
   Thumbnail,
@@ -438,6 +439,7 @@ export const api = {
   scanStorage: (force = false) => call<StorageReport>("scan_storage", { force }),
   reclaimStorage: (targets: string[]) =>
     call<ReclaimOutcome>("reclaim_storage", { targets }),
+  inspectPaths: (paths: string[]) => call<PathKind[]>("inspect_paths", { paths }),
   getSystemStats: () => call<SystemStats>("get_system_stats"),
   getSystemUsage: () => call<SystemUsage>("get_system_usage"),
   previewLaunchArgs: (settings: LauncherSettings) =>

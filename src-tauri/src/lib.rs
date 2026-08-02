@@ -245,6 +245,7 @@ pub fn run() {
             commands::app::download_app_update,
             commands::app::install_app_update,
             commands::app::get_about_links,
+            commands::app::inspect_paths,
             commands::app::get_system_stats,
             commands::app::get_system_usage,
             commands::app::preview_launch_args,

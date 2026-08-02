@@ -116,13 +116,18 @@ export function useContextMenu() {
       e: React.MouseEvent,
       items: MenuItem[],
       header?: string,
-      opts?: { fromElement?: boolean },
+      opts?: { fromElement?: boolean; below?: boolean },
     ) => {
       e.preventDefault();
       e.stopPropagation();
-      const rect = opts?.fromElement
+      const anchored = opts?.fromElement || opts?.below;
+      const rect = anchored
         ? (e.currentTarget as HTMLElement).getBoundingClientRect()
         : null;
+      if (rect && opts?.below) {
+        setMenu({ x: rect.right, y: rect.bottom + 6, items, header });
+        return;
+      }
       setMenu({
         x: rect ? rect.right + 10 : e.clientX,
         y: rect ? rect.top - 6 : e.clientY,

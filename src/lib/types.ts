@@ -842,3 +842,9 @@ export interface ReclaimOutcome {
   cleared: string[];
   failures: string[];
 }
+
+export interface PathKind {
+  path: string;
+  directory: boolean;
+  usable: boolean;
+}

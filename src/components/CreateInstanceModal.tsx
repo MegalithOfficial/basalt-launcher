@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Loader2, Search } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, FileArchive, Loader2, Package, Search, Wrench } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
@@ -8,6 +8,38 @@ import { Modal, ModalHeader } from "./Modal";
 import { Select } from "./Select";
 import type { LoaderKind, VersionEntry } from "../lib/types";
 import { useStore } from "../store";
+
+type Mode = "blank" | null;
+
+function Choice({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: typeof Package;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex w-full items-center gap-3.5 rounded-xl border border-border-soft bg-surface-2/50 px-4 py-3.5 text-left transition-colors hover:border-border hover:bg-surface-2"
+    >
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-border-soft bg-surface-3 text-content-muted transition-colors group-hover:text-(--accent)">
+        <Icon className="size-4.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-content">{title}</span>
+        <span className="mt-0.5 block text-[11px] leading-relaxed text-content-muted">
+          {description}
+        </span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-content-faint transition-transform group-hover:translate-x-0.5" />
+    </button>
+  );
+}
 
 export function CreateInstanceModal({
   open,
@@ -22,6 +54,8 @@ export function CreateInstanceModal({
 }) {
   const createInstance = useStore((s) => s.createInstance);
 
+  const [mode, setMode] = useState<Mode>(null);
+
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [includeSnapshots, setIncludeSnapshots] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -35,13 +69,17 @@ export function CreateInstanceModal({
   const [loaderLoading, setLoaderLoading] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (open) setMode(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || mode !== "blank") return;
     setLoading(true);
     api
       .listVersions(includeSnapshots)
       .then((v) => setVersions(v))
       .finally(() => setLoading(false));
-  }, [open, includeSnapshots]);
+  }, [open, mode, includeSnapshots]);
 
   useEffect(() => {
     setLoaderVersions([]);
@@ -93,7 +131,46 @@ export function CreateInstanceModal({
 
   return (
     <Modal open={open} onClose={onClose} size="lg" labelledBy="new-instance-title">
-      <ModalHeader id="new-instance-title" title="New instance" onClose={onClose} />
+      <ModalHeader
+        id="new-instance-title"
+        title="New instance"
+        subtitle={mode === "blank" ? "Pick a game version and a loader" : "Where should it come from?"}
+        onClose={onClose}
+      />
+
+      {mode === null && (
+        <div className="flex flex-col gap-2.5 px-5 py-5">
+          <Choice
+            icon={Package}
+            title="Browse modpacks"
+            description="Search Modrinth and CurseForge, then install a pack with everything set up."
+            onClick={() => {
+              onClose();
+              useStore.getState().openDiscover("modpacks", null);
+            }}
+          />
+          {onImportFile && (
+            <Choice
+              icon={FileArchive}
+              title="Import a pack file"
+              description="Open an .mrpack or a CurseForge zip you already have on disk."
+              onClick={() => {
+                onClose();
+                onImportFile();
+              }}
+            />
+          )}
+          <Choice
+            icon={Wrench}
+            title="Start from nothing"
+            description="Choose a Minecraft version and a mod loader, then add content yourself."
+            onClick={() => setMode("blank")}
+          />
+        </div>
+      )}
+
+      {mode === "blank" && (
+        <>
 
             <div className="flex flex-col gap-3 px-5 py-4">
               <input
@@ -214,28 +291,13 @@ export function CreateInstanceModal({
             </div>
 
             <div className="flex items-center gap-2 border-t border-border-soft px-5 py-4">
-              <div className="mr-auto flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    onClose();
-                    useStore.getState().openDiscover("modpacks", null);
-                  }}
-                  className="text-xs font-medium text-content-muted transition-colors hover:text-content"
-                >
-                  Browse modpacks instead
-                </button>
-                {onImportFile && (
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onImportFile();
-                    }}
-                    className="text-xs font-medium text-content-muted transition-colors hover:text-content"
-                  >
-                    Import a pack file
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={() => setMode(null)}
+                className="mr-auto inline-flex items-center gap-1.5 text-xs font-medium text-content-muted transition-colors hover:text-content"
+              >
+                <ArrowLeft className="size-3.5" />
+                Back
+              </button>
               <button
                 onClick={onClose}
                 className="rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-content hover:bg-surface-3"
@@ -251,6 +313,8 @@ export function CreateInstanceModal({
                 Create
               </button>
             </div>
+        </>
+      )}
     </Modal>
   );
 }

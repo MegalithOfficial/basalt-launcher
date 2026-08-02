@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
@@ -7,7 +6,9 @@ import {
   DatabaseBackup,
   FileBox,
   HardDriveUpload,
+  ChevronDown,
   Compass,
+  FileUp,
   Copy,
   FolderOpen,
   Loader2,
@@ -37,6 +38,7 @@ import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
 import { ScreenshotsPanel } from "../components/captures/ScreenshotsPanel";
+import { UploadModal } from "../components/UploadModal";
 import { ContextMenu, useContextMenu, type MenuItem } from "../components/ContextMenu";
 import { SnapshotsModal } from "../components/SnapshotsModal";
 import { ModpackUpgradeModal } from "../components/ModpackUpgradeModal";
@@ -229,6 +231,9 @@ export function InstanceView() {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [worldRefresh, setWorldRefresh] = useState(0);
   const [worldsLoading, setWorldsLoading] = useState(false);
+  const [addingFiles, setAddingFiles] = useState(false);
+  const [addingBusy, setAddingBusy] = useState(false);
+  const [addingError, setAddingError] = useState<string | null>(null);
   const [itemsByTab, setItemsByTab] = useState<Record<string, ContentItem[]>>({});
   const [loadingTab, setLoadingTab] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -417,21 +422,44 @@ export function InstanceView() {
     unlinked: items.filter((i) => !i.source).length,
   };
 
-  const addContent = async () => {
+  const addContent = (event: React.MouseEvent) => {
     if (tab === "worlds" || tab === "screenshots") return;
-    if (tab !== "schematics") {
-      openSearch(tab);
+    if (tab === "schematics") {
+      setAddingFiles(true);
       return;
     }
-    const files = await openFileDialog({
-      multiple: true,
-      directory: false,
-      filters: [{ name: tabMeta.label, extensions: tabMeta.extensions }],
-    });
-    if (!files) return;
-    const sources = Array.isArray(files) ? files : [files];
-    await api.addInstanceContent(instance.id, tab, sources);
-    await refresh();
+    openMenu(
+      event,
+      [
+        {
+          label: `Browse ${tabMeta.label.toLowerCase()}`,
+          icon: Compass,
+          onSelect: () => openSearch(tab),
+        },
+        {
+          label: "Add files from disk",
+          icon: FileUp,
+          onSelect: () => setAddingFiles(true),
+        },
+      ],
+      undefined,
+      { below: true },
+    );
+  };
+
+  const addFiles = async (sources: string[]) => {
+    if (tab === "worlds" || tab === "screenshots") return;
+    setAddingBusy(true);
+    setAddingError(null);
+    try {
+      await api.addInstanceContent(instance.id, tab, sources);
+      setAddingFiles(false);
+      await refresh();
+    } catch (cause) {
+      setAddingError(String(cause));
+    } finally {
+      setAddingBusy(false);
+    }
   };
 
   const toggle = async (item: ContentItem) => {
@@ -966,8 +994,8 @@ export function InstanceView() {
                 />
               </button>
               <button
-                onClick={() =>
-                  tab === "worlds" ? setDialog({ kind: "worldImport" }) : void addContent()
+                onClick={(event) =>
+                  tab === "worlds" ? setDialog({ kind: "worldImport" }) : addContent(event)
                 }
                 disabled={busyWithTask}
                 title={busyWithTask ? "Wait for the current download to finish" : undefined}
@@ -979,6 +1007,9 @@ export function InstanceView() {
                   <Plus className="size-3.5" />
                 )}
                 {tab === "worlds" ? "Import world" : "Add content"}
+                {tab !== "worlds" && tab !== "schematics" && (
+                  <ChevronDown className="size-3.5 opacity-70" />
+                )}
               </button>
             </>
           )}
@@ -1420,6 +1451,22 @@ export function InstanceView() {
         onClose={close}
         onRestored={refreshInstances}
       />
+      <UploadModal
+        open={addingFiles}
+        onClose={() => {
+          setAddingFiles(false);
+          setAddingError(null);
+        }}
+        error={addingError}
+        title={`Add ${tabMeta.label.toLowerCase()}`}
+        subtitle={`Copied into ${instance.name}`}
+        extensions={tabMeta.extensions}
+        filterName={tabMeta.label}
+        multiple
+        busy={addingBusy}
+        onConfirm={(paths) => void addFiles(paths)}
+      />
+
       <ModpackUpgradeModal
         instance={instance}
         plan={dialog?.kind === "packUpgrade" ? dialog.plan : null}

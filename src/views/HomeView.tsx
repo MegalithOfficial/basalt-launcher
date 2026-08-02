@@ -19,9 +19,9 @@ import { formatPlaytime, relativeTime } from "../lib/time";
 import { useUptime } from "../lib/useUptime";
 import type { JavaStatus, VersionMedia } from "../lib/types";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { UploadModal } from "../components/UploadModal";
 import { ImportPackModal } from "../components/ImportPackModal";
 import { InstanceSheet } from "../components/InstanceSheet";
-import { pickPackFile } from "../lib/packs";
 import { instanceTaskLabel, taskFraction, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
@@ -100,6 +100,7 @@ export function HomeView() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [packPath, setPackPath] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [java, setJava] = useState<JavaStatus | null>(null);
   const [installingJava, setInstallingJava] = useState(false);
@@ -387,8 +388,19 @@ export function HomeView() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={(id) => selectInstance(id)}
-        onImportFile={() => {
-          void pickPackFile().then((chosen) => chosen && setPackPath(chosen));
+        onImportFile={() => setPicking(true)}
+      />
+      <UploadModal
+        open={picking}
+        onClose={() => setPicking(false)}
+        title="Import a modpack"
+        subtitle="An .mrpack from Modrinth, or a CurseForge pack zip"
+        extensions={["mrpack", "zip"]}
+        filterName="Modpack"
+        confirmLabel="Import"
+        onConfirm={(paths) => {
+          setPicking(false);
+          setPackPath(paths[0]);
         }}
       />
       <ImportPackModal

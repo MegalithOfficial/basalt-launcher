@@ -22,6 +22,7 @@ import { log } from "../../lib/log";
 import { notifyRemoved } from "../../lib/notify";
 import type { Instance, Screenshot } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { Button, EmptyState } from "../ui";
 
 const GAP = 12;
 const MIN_CARD = 230;
@@ -38,6 +39,33 @@ function takenAt(shot: Screenshot): string {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function Shimmer({ className }: { className?: string }) {
+  return <div className={cn("animate-pulse rounded bg-surface-3/50", className)} />;
+}
+
+function ScreenshotsSkeleton() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" aria-busy="true" aria-label="Reading the folder">
+      <div className="flex items-center gap-2 px-6 py-3">
+        <Shimmer className="h-3.5 w-28" />
+        <span className="flex-1" />
+        <Shimmer className="h-7 w-20 rounded-lg" />
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3 px-6">
+        {Array.from({ length: 8 }, (_, index) => (
+          <div key={index} className="overflow-hidden rounded-xl border border-border-soft">
+            <div className="aspect-video w-full animate-pulse bg-surface-3/50" />
+            <div className="flex items-center gap-2 px-3 py-2">
+              <Shimmer className="h-3 flex-1" />
+              <Shimmer className="h-3 w-10" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function ScreenshotsPanel({ instance }: { instance: Instance }) {
@@ -194,27 +222,22 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
   };
 
   if (loading) {
-    return <div className="px-6 py-10 text-sm text-content-faint">Reading the folder</div>;
+    return <ScreenshotsSkeleton />;
   }
 
   if (shots.length === 0) {
     return (
-      <div className="px-6 py-14">
-        <Camera className="size-8 text-content-faint/50" />
-        <p className="mt-3 font-display text-base font-semibold text-content">
-          No screenshots yet
-        </p>
-        <p className="mt-1 max-w-md text-sm text-content-muted">
-          Press F2 in game and every shot lands here, ready to copy or share.
-        </p>
-        <button
-          onClick={() => void openPath(`${instance.dir}/screenshots`)}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
-        >
-          <FolderOpen className="size-3.5" />
-          Open the folder
-        </button>
-      </div>
+      <EmptyState
+        icon={<Camera className="size-6" />}
+        title="No screenshots yet"
+        description="Press F2 in game and every shot lands here, ready to copy, open or delete."
+        action={
+          <Button variant="ghost" onClick={() => void openPath(`${instance.dir}/screenshots`)}>
+            <FolderOpen className="size-4" />
+            Open the folder
+          </Button>
+        }
+      />
     );
   }
 

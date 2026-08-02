@@ -24,10 +24,10 @@ import { Select } from "../components/Select";
 import { Banner } from "../components/Banner";
 import { ContextMenu, useContextMenu, type MenuItem } from "../components/ContextMenu";
 import { CreateInstanceModal } from "../components/CreateInstanceModal";
+import { UploadModal } from "../components/UploadModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { ImportPackModal } from "../components/ImportPackModal";
-import { pickPackFile } from "../lib/packs";
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc } from "../lib/media";
@@ -158,6 +158,7 @@ export function InstancesView() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [packPath, setPackPath] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
   const [removing, setRemoving] = useState<Instance | null>(null);
   const [removingGroup, setRemovingGroup] = useState<InstanceGroup | null>(null);
@@ -357,10 +358,7 @@ export function InstancesView() {
     }
   };
 
-  const choosePack = async () => {
-    const chosen = await pickPackFile();
-    if (chosen) setPackPath(chosen);
-  };
+  const choosePack = () => setPicking(true);
 
   const switchSort = (mode: SortMode) => {
     setSort(mode);
@@ -442,7 +440,7 @@ export function InstancesView() {
             ))}
           </div>
           <button
-            onClick={() => void choosePack()}
+            onClick={choosePack}
             aria-label="Import a pack file"
             title="Import a .mrpack or CurseForge pack"
             className="grid size-8 place-items-center rounded-lg border border-border-soft bg-surface-2/60 text-content-faint transition-colors hover:text-content"
@@ -742,8 +740,22 @@ export function InstancesView() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={() => {}}
-        onImportFile={() => void choosePack()}
+        onImportFile={choosePack}
       />
+      <UploadModal
+        open={picking}
+        onClose={() => setPicking(false)}
+        title="Import a modpack"
+        subtitle="An .mrpack from Modrinth, or a CurseForge pack zip"
+        extensions={["mrpack", "zip"]}
+        filterName="Modpack"
+        confirmLabel="Import"
+        onConfirm={(paths) => {
+          setPicking(false);
+          setPackPath(paths[0]);
+        }}
+      />
+
       <ImportPackModal path={packPath} onClose={() => setPackPath(null)} />
       <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
 

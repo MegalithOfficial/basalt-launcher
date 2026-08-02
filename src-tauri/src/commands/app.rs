@@ -253,6 +253,40 @@ pub fn get_about_links() -> AboutLinks {
         releases: format!("{}/releases", update::REPO_URL),
     }
 }
+const MAX_INSPECTED_PATHS: usize = 256;
+
+#[derive(Serialize)]
+pub struct PathKind {
+    pub path: String,
+    pub directory: bool,
+    pub usable: bool,
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub fn inspect_paths(paths: Vec<String>) -> Result<Vec<PathKind>> {
+    if paths.len() > MAX_INSPECTED_PATHS {
+        return Err(Error::other(format!(
+            "That is more than {MAX_INSPECTED_PATHS} paths at once."
+        )));
+    }
+
+    Ok(paths
+        .into_iter()
+        .map(|path| {
+            let metadata = (!path.trim().is_empty())
+                .then(|| std::fs::symlink_metadata(&path).ok())
+                .flatten()
+                .filter(|meta| !meta.file_type().is_symlink());
+            PathKind {
+                directory: metadata.as_ref().is_some_and(|meta| meta.is_dir()),
+                usable: metadata.is_some_and(|meta| meta.is_dir() || meta.is_file()),
+                path,
+            }
+        })
+        .collect())
+}
+
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn get_system_stats(state: State<AppState>) -> Result<SystemStats> {

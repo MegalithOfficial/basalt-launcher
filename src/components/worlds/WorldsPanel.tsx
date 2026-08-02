@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
-  Archive,
   Check,
   FolderOpen,
   Globe2,
@@ -27,6 +25,7 @@ import type {
 } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Modal, ModalHeader } from "../Modal";
+import { UploadModal } from "../UploadModal";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -150,16 +149,7 @@ function ImportDialog({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const choose = async (kind: "directory" | "zip") => {
-    const picked = await openFileDialog({
-      multiple: false,
-      directory: kind === "directory",
-      ...(kind === "zip"
-        ? { filters: [{ name: "World backup", extensions: ["zip"] }] }
-        : {}),
-    });
-    if (!picked || Array.isArray(picked)) return;
-
+  const choose = async (picked: string) => {
     setError(null);
     setInspecting(true);
     setSourcePath(picked);
@@ -208,6 +198,25 @@ function ImportDialog({
 
   const busy = inspecting || importing;
 
+  if (!inspection && !inspecting) {
+    return (
+      <UploadModal
+        open
+        nested
+        error={error}
+        onClose={onClose}
+        title="Import worlds"
+        subtitle={`A save folder with level.dat in it, or a zip holding one or more worlds. Basalt copies them straight into ${instance.name}.`}
+        extensions={["zip"]}
+        filterName="World backup"
+        allowDirectories
+        directoryLabel="Select a world folder"
+        confirmLabel="Inspect"
+        onConfirm={(paths) => void choose(paths[0])}
+      />
+    );
+  }
+
   return (
     <Modal
       open
@@ -230,35 +239,6 @@ function ImportDialog({
       />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          {!inspection && !inspecting && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                onClick={() => choose("directory")}
-                className="group rounded-xl border border-border-soft bg-base/50 p-4 text-left transition-colors hover:border-(--accent)/50 hover:bg-surface-2"
-              >
-                <FolderOpen className="size-5 text-(--accent)" />
-                <div className="mt-5 text-sm font-semibold text-content">
-                  World folder
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-content-faint">
-                  Choose an extracted save containing level.dat.
-                </p>
-              </button>
-              <button
-                onClick={() => choose("zip")}
-                className="group rounded-xl border border-border-soft bg-base/50 p-4 text-left transition-colors hover:border-(--accent)/50 hover:bg-surface-2"
-              >
-                <Archive className="size-5 text-(--accent)" />
-                <div className="mt-5 text-sm font-semibold text-content">
-                  ZIP backup
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-content-faint">
-                  Nested folders and backups with multiple worlds are supported.
-                </p>
-              </button>
-            </div>
-          )}
-
           {inspecting && (
             <div className="flex flex-col items-center gap-3 py-14 text-center">
               <Loader2 className="size-5 animate-spin text-(--accent)" />
