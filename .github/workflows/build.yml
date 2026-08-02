@@ -211,7 +211,7 @@ jobs:
           if [ "$BUILD_TYPE" = "dev" ]; then
             tag="v${VERSION}-dev.${RUN_NUMBER}.${RUN_ATTEMPT}"
             updater_version="${VERSION}-dev.${RUN_NUMBER}.${RUN_ATTEMPT}"
-            title="Basalt ${VERSION} development build"
+            title="Basalt ${VERSION} dev.${RUN_NUMBER}.${RUN_ATTEMPT}"
             channel_args=(--prerelease)
           else
             tag="v${VERSION}"
@@ -219,6 +219,8 @@ jobs:
             title="Basalt ${VERSION}"
             channel_args=(--latest)
           fi
+
+          node .github/scripts/release-notes.mjs "$GITHUB_REPOSITORY" "$tag" > release-notes.md
 
           node .github/scripts/create-update-manifest.mjs \
             release-assets "$GITHUB_REPOSITORY" "$tag" "$updater_version" \
@@ -239,7 +241,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$TARGET" \
             --title "$title" \
-            --generate-notes \
+            --notes-file release-notes.md \
             "${channel_args[@]}"
 
   publish-aur:
