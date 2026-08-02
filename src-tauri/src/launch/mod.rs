@@ -1,8 +1,8 @@
 pub mod process;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::{
     auth::{account::Account, microsoft},
@@ -19,19 +19,35 @@ fn now() -> i64 {
 
 #[tracing::instrument(skip_all, err)]
 pub(crate) async fn ensure_account(state: &AppState) -> Result<Account> {
-    let account = state
-        .db
-        .load_active_account(&state.credentials)?
-        .ok_or_else(|| Error::other("No account signed in. Add a Microsoft account first."))?;
+    let account = active_account(state)?;
 
     if account.expires_at > now() + 60 {
         tracing::debug!(account = %account.name, "using cached session token");
         return Ok(account);
     }
 
+    refresh_account(state, account).await
+}
+
+fn active_account(state: &AppState) -> Result<Account> {
+    state
+        .db
+        .load_active_account(&state.credentials)?
+        .ok_or_else(|| Error::other("No account signed in. Add a Microsoft account first."))
+}
+
+async fn refresh_account(state: &AppState, account: Account) -> Result<Account> {
     tracing::info!(account = %account.name, "session expired, refreshing with microsoft");
 
     let refreshed = microsoft::refresh(&state.network, &account.refresh_token).await?;
+    let refreshed_credentials = Account {
+        refresh_token: refreshed.refresh_token.clone(),
+        ..account.clone()
+    };
+    state
+        .db
+        .save_account(&state.credentials, &refreshed_credentials, true)?;
+
     let mc = microsoft::authenticate_minecraft(&state.network, &refreshed.access_token).await?;
     let updated = Account {
         id: account.id,
@@ -43,6 +59,76 @@ pub(crate) async fn ensure_account(state: &AppState) -> Result<Account> {
     state.db.save_account(&state.credentials, &updated, true)?;
     tracing::info!(account = %updated.name, "session refreshed");
     Ok(updated)
+}
+
+fn can_launch_offline(error: &Error) -> bool {
+    match error {
+        Error::Http(error) => error.is_connect() || error.is_timeout() || error.is_body(),
+        Error::HttpStatus(status) => {
+            *status == reqwest::StatusCode::REQUEST_TIMEOUT
+                || *status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || status.is_server_error()
+        }
+        _ => false,
+    }
+}
+
+struct LaunchAccount {
+    account: Account,
+    offline: bool,
+}
+
+async fn ensure_launch_account(state: &AppState) -> Result<LaunchAccount> {
+    let account = active_account(state)?;
+    if account.expires_at > now() + 60 {
+        tracing::debug!(account = %account.name, "using cached session token");
+        return Ok(LaunchAccount {
+            account,
+            offline: false,
+        });
+    }
+
+    resolve_expired_launch_account(account.clone(), refresh_account(state, account)).await
+}
+
+async fn resolve_expired_launch_account(
+    account: Account,
+    refresh: impl std::future::Future<Output = Result<Account>>,
+) -> Result<LaunchAccount> {
+    match tokio::time::timeout(Duration::from_secs(15), refresh).await {
+        Ok(Ok(account)) => Ok(LaunchAccount {
+            account,
+            offline: false,
+        }),
+        Ok(Err(error)) if can_launch_offline(&error) => {
+            tracing::warn!(
+                account = %account.name,
+                %error,
+                "microsoft services are unavailable; launching with the cached profile"
+            );
+            Ok(LaunchAccount {
+                account,
+                offline: true,
+            })
+        }
+        Ok(Err(error)) => Err(error),
+        Err(_) => {
+            tracing::warn!(
+                account = %account.name,
+                "microsoft session refresh timed out; launching with the cached profile"
+            );
+            Ok(LaunchAccount {
+                account,
+                offline: true,
+            })
+        }
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+struct OfflineLaunchEvent {
+    instance_id: String,
+    account_name: String,
 }
 
 fn substitute(token: &str, subs: &HashMap<&str, String>) -> String {
@@ -292,7 +378,8 @@ pub async fn launch_instance(
         .unwrap_or_else(|| instance.version_id.clone());
     let version: VersionJson = install::load_merged_version(state, &launch_version_id).await?;
     let launch_jar = install::ensure_launch_jar(state, &version).await?;
-    let account = ensure_account(state).await?;
+    let launch_account = ensure_launch_account(state).await?;
+    let account = &launch_account.account;
 
     let settings = state.db.load_settings()?;
     let explicit = instance.java_path.clone().or(settings.java_path.clone());
@@ -451,6 +538,16 @@ pub async fn launch_instance(
         },
     )?;
 
+    if launch_account.offline {
+        let _ = app.emit(
+            "launch:offline",
+            OfflineLaunchEvent {
+                instance_id: instance.id.clone(),
+                account_name: account.name.clone(),
+            },
+        );
+    }
+
     Ok(running_id)
 }
 
@@ -458,7 +555,9 @@ pub async fn launch_instance(
 mod tests {
     use std::collections::HashMap;
 
-    use super::{render_placeholders, split_args};
+    use super::{
+        can_launch_offline, render_placeholders, resolve_expired_launch_account, split_args,
+    };
 
     fn values() -> HashMap<&'static str, String> {
         HashMap::from([
@@ -520,5 +619,68 @@ mod tests {
             split_args("-XX:+UnlockExperimentalVMOptions\n  -XX:+UseG1GC\t-Xss2M"),
             vec!["-XX:+UnlockExperimentalVMOptions", "-XX:+UseG1GC", "-Xss2M"]
         );
+    }
+
+    #[test]
+    fn offline_launch_only_accepts_temporary_service_failures() {
+        assert!(can_launch_offline(&crate::error::Error::HttpStatus(
+            reqwest::StatusCode::SERVICE_UNAVAILABLE
+        )));
+        assert!(can_launch_offline(&crate::error::Error::HttpStatus(
+            reqwest::StatusCode::TOO_MANY_REQUESTS
+        )));
+        assert!(!can_launch_offline(&crate::error::Error::HttpStatus(
+            reqwest::StatusCode::UNAUTHORIZED
+        )));
+        assert!(!can_launch_offline(&crate::error::Error::other(
+            "This account does not own Minecraft"
+        )));
+    }
+
+    #[tokio::test]
+    async fn expired_accounts_fall_back_to_the_cached_profile_during_an_outage() {
+        let account = crate::auth::account::Account {
+            id: "uuid".to_string(),
+            name: "Player".to_string(),
+            mc_access_token: "cached-token".to_string(),
+            refresh_token: "refresh-token".to_string(),
+            expires_at: 0,
+        };
+        let session = resolve_expired_launch_account(account, async {
+            Err(crate::error::Error::HttpStatus(
+                reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            ))
+        })
+        .await
+        .unwrap();
+
+        assert!(session.offline);
+        assert_eq!(session.account.id, "uuid");
+        assert_eq!(session.account.name, "Player");
+        assert_eq!(session.account.mc_access_token, "cached-token");
+    }
+
+    #[tokio::test]
+    async fn expired_accounts_do_not_hide_authentication_failures() {
+        let account = crate::auth::account::Account {
+            id: "uuid".to_string(),
+            name: "Player".to_string(),
+            mc_access_token: "cached-token".to_string(),
+            refresh_token: "refresh-token".to_string(),
+            expires_at: 0,
+        };
+        let result = resolve_expired_launch_account(account, async {
+            Err(crate::error::Error::HttpStatus(
+                reqwest::StatusCode::UNAUTHORIZED,
+            ))
+        })
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::HttpStatus(
+                reqwest::StatusCode::UNAUTHORIZED
+            ))
+        ));
     }
 }

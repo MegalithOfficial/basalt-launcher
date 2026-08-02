@@ -217,7 +217,14 @@ pub async fn authenticate_minecraft(
     let xsts_resp = client.send(xsts_request).await?;
 
     if !xsts_resp.status().is_success() {
+        let status = xsts_resp.status();
         let text = xsts_resp.text().await?;
+        if status == reqwest::StatusCode::REQUEST_TIMEOUT
+            || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+            || status.is_server_error()
+        {
+            return Err(Error::HttpStatus(status));
+        }
         if let Ok(err) = serde_json::from_str::<XstsErr>(&text) {
             tracing::error!(xerr = err.xerr, "xsts authorization refused");
             return Err(Error::other(xsts_error_message(err.xerr)));

@@ -85,6 +85,11 @@ interface LogPayload {
   lines: string[];
 }
 
+interface OfflineLaunchPayload {
+  instance_id: string;
+  account_name: string;
+}
+
 function pruneSupersededSessions(
   sessions: Record<string, RunningInfo>,
 ): Record<string, RunningInfo> {
@@ -331,6 +336,13 @@ function enqueueProcessLog(payload: LogPayload) {
   processLogTimer ??= setTimeout(flushProcessLogs, PROCESS_LOG_FLUSH_MS);
 }
 
+function pushStack(stack: View[], current: View, target: View): View[] {
+  if (current === target) return stack;
+  const seen = stack.indexOf(target);
+  if (seen >= 0) return stack.slice(0, seen);
+  return [...stack.filter((view) => view !== current), current].slice(-3);
+}
+
 export const useStore = create<AppStore>((set) => ({
   view: "home",
   ready: false,
@@ -386,7 +398,7 @@ export const useStore = create<AppStore>((set) => ({
       discoverKind: kind,
       discoverTargetId: s.detailInstanceId,
       view: "discover",
-      viewStack: s.view !== "discover" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      viewStack: pushStack(s.viewStack, s.view, "discover"),
     })),
 
   openDiscover: (kind, targetInstanceId) =>
@@ -395,7 +407,7 @@ export const useStore = create<AppStore>((set) => ({
       searchKind: kind ?? s.discoverKind,
       discoverTargetId: targetInstanceId !== undefined ? targetInstanceId : s.discoverTargetId,
       view: "discover",
-      viewStack: s.view !== "discover" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      viewStack: pushStack(s.viewStack, s.view, "discover"),
     })),
 
   setDiscoverKind: (kind) => set({ discoverKind: kind, searchKind: kind }),
@@ -594,7 +606,7 @@ export const useStore = create<AppStore>((set) => ({
       projectRef: { provider, id, title },
       searchKind: kind ?? s.searchKind,
       view: "project",
-      viewStack: s.view !== "project" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      viewStack: pushStack(s.viewStack, s.view, "project"),
     })),
 
   init: async () => {
@@ -615,6 +627,15 @@ export const useStore = create<AppStore>((set) => ({
       }));
       track(await listen<AppUpdateStatus>("app:update-status", (e) => {
         set({ appUpdateStatus: e.payload });
+      }));
+      track(await listen<OfflineLaunchPayload>("launch:offline", (e) => {
+        const instance = useStore
+          .getState()
+          .instances.find((candidate) => candidate.id === e.payload.instance_id);
+        toast.warning("Started in offline mode", {
+          description: `Microsoft services could not be reached. ${instance?.name ?? "Minecraft"} is using the cached ${e.payload.account_name} profile; online servers and account services may be unavailable.`,
+          duration: 8_000,
+        });
       }));
       track(await listen<Task>("task:update", (e) => {
         const task = e.payload;
@@ -911,7 +932,7 @@ export const useStore = create<AppStore>((set) => ({
       activeRunningId: runningId,
       logsTab: "game",
       view: "logs",
-      viewStack: s.view !== "logs" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      viewStack: pushStack(s.viewStack, s.view, "logs"),
     }));
     if (useStore.getState().settings?.minimize_on_launch) {
       minimizedForPlay = true;
@@ -951,7 +972,7 @@ export const useStore = create<AppStore>((set) => ({
       activeRunningId: runningId,
       logsTab: "game",
       view: "logs",
-      viewStack: s.view !== "logs" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      viewStack: pushStack(s.viewStack, s.view, "logs"),
     })),
 
   setLogsTab: (tab) => set({ logsTab: tab }),
@@ -962,7 +983,7 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       detailInstanceId: id,
       view: "instance",
-      viewStack: s.view !== "instance" ? [...s.viewStack.slice(-19), s.view] : s.viewStack,
+      viewStack: s.view === "instance" ? s.viewStack : ["instances"],
     })),
 
   loadMedia: async (instanceId) => {
