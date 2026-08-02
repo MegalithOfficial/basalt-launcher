@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Check, CircleStop, Copy, FolderOpen, Search, Trash2, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  CircleStop,
+  Copy,
+  FolderOpen,
+  Search,
+  Share2,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 
+import { DiagnosisPanel } from "../components/logs/DiagnosisPanel";
 import { FileLogPanel } from "../components/logs/FileLogPanel";
 import { GameLogPanel } from "../components/logs/GameLogPanel";
 import {
@@ -10,6 +20,7 @@ import {
   recordsToText,
 } from "../components/logs/LauncherLogPanel";
 import { LogSourceTree, type LogSelection } from "../components/logs/LogSourceTree";
+import { ShareLogModal } from "../components/ShareLogModal";
 import type { LineLevel } from "../components/logs/lines";
 import { api } from "../lib/api";
 import { useUptime } from "../lib/useUptime";
@@ -94,6 +105,7 @@ export function LogsView() {
   const [query, setQuery] = useState("");
   const [autoscroll, setAutoscroll] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     if (!config) void refreshLogs();
@@ -184,6 +196,23 @@ export function LogsView() {
       log.warn("logs", `could not delete the log file: ${String(e)}`);
     }
   };
+
+  const shareTitle =
+    selection.kind === "file"
+      ? selection.name
+      : selection.kind === "run"
+        ? `${runInstance?.name ?? "This run"} output`
+        : "The launcher log";
+
+  const loadShareText = useCallback(() => {
+    if (selection.kind === "file")
+      return api.redactInstanceLog(selection.instanceId, selection.name);
+    const text =
+      selection.kind === "run"
+        ? (logsMap[selection.runningId] ?? []).map((entry) => entry.line).join("\n")
+        : recordsToText(records);
+    return api.redactText(text);
+  }, [selection, logsMap, records]);
 
   const onFileResult = useCallback((search: LogSearch | null) => setFileResult(search), []);
 
@@ -292,6 +321,11 @@ export function LogsView() {
           </button>
         )}
 
+        <ToolButton onClick={() => setSharing(true)} title="Upload a redacted copy to mclo.gs">
+          <Share2 className="size-3.5" />
+          Share
+        </ToolButton>
+
         <ToolButton
           onClick={copy}
           title={
@@ -374,6 +408,14 @@ export function LogsView() {
         )}
         </div>
 
+        {selection.kind === "run" && runInstance && run?.state === "crashed" && (
+          <DiagnosisPanel instance={runInstance} />
+        )}
+
+        {selection.kind === "file" && fileInstance && (
+          <DiagnosisPanel instance={fileInstance} logName={selection.name} />
+        )}
+
         {selection.kind === "launcher" && config?.env_override && (
           <div className="border-b border-border-soft bg-warn/5 px-4 py-1.5 text-[11px] text-warn">
             BASALT_LOG={config.env_override} overrides the capture level for this session.
@@ -422,6 +464,13 @@ export function LogsView() {
           />
         )}
       </div>
+
+      <ShareLogModal
+        open={sharing}
+        onClose={() => setSharing(false)}
+        title={shareTitle}
+        load={loadShareText}
+      />
     </div>
   );
 }

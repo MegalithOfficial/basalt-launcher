@@ -5,6 +5,7 @@ mod config;
 mod content;
 mod credentials;
 mod db;
+mod diagnose;
 mod download;
 mod error;
 mod files;
@@ -215,6 +216,10 @@ pub fn run() {
             commands::launch_commands::list_running,
             commands::launch_commands::get_logs,
             commands::launch_commands::close_running,
+            commands::logging_commands::diagnose_instance,
+            commands::logging_commands::redact_instance_log,
+            commands::logging_commands::redact_text,
+            commands::logging_commands::share_log,
             commands::logging_commands::get_log_records,
             commands::logging_commands::clear_log_records,
             commands::logging_commands::get_log_config,

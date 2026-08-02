@@ -773,3 +773,18 @@ export interface SystemUsage {
   data_dir_free_mb: number | null;
   data_dir_total_mb: number | null;
 }
+
+export type DiagnosisFix =
+  | "none"
+  | "open_mods_folder"
+  | { install_java: { major: number } }
+  | { find_content: { query: string } }
+  | { raise_memory: { megabytes: number } };
+
+export interface Diagnosis {
+  id: string;
+  title: string;
+  detail: string;
+  subjects: string[];
+  fix: DiagnosisFix;
+}

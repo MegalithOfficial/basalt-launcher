@@ -169,6 +169,61 @@ pub fn list_instance_logs(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
+pub fn diagnose_instance(
+    state: State<AppState>,
+    instance_id: String,
+    name: Option<String>,
+) -> Result<Vec<crate::diagnose::Diagnosis>> {
+    let instance = super::find_instance(&state, &instance_id)?;
+    let settings = state.db.load_settings()?;
+    let context = crate::diagnose::Context {
+        max_memory_mb: instance.max_memory_mb.unwrap_or(settings.max_memory_mb),
+    };
+
+    if let Some(name) = name {
+        let text = read_instance_log(state, instance_id, name)?;
+        return Ok(crate::diagnose::analyze(&text, &context));
+    }
+
+    let root = PathBuf::from(&instance.dir);
+    let mut text = String::new();
+    for (directory, wanted) in [(root.join("crash-reports"), "txt"), (root.join("logs"), "log")] {
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            continue;
+        };
+        let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            if !name.ends_with(wanted) {
+                continue;
+            }
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            if !metadata.is_file() {
+                continue;
+            }
+            let Ok(modified) = metadata.modified() else {
+                continue;
+            };
+            if newest.as_ref().is_none_or(|(best, _)| modified > *best) {
+                newest = Some((modified, path));
+            }
+        }
+        if let Some((_, path)) = newest {
+            if let Ok(bytes) = std::fs::read(&path) {
+                text.push_str(&tail_text(&bytes));
+                text.push('\n');
+            }
+        }
+    }
+
+    Ok(crate::diagnose::analyze(&text, &context))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub fn search_instance_log(
     state: State<AppState>,
     instance_id: String,
@@ -294,6 +349,82 @@ pub fn delete_instance_log(
     std::fs::remove_file(&path)?;
     tracing::info!(file = %name, "instance log deleted");
     Ok(())
+}
+
+fn known_secrets(state: &AppState) -> Vec<String> {
+    let mut secrets = Vec::new();
+    for key in [
+        crate::credentials::CURSEFORGE_API_KEY.to_string(),
+        crate::credentials::PROXY_PASSWORD.to_string(),
+    ] {
+        if let Ok(Some(value)) = state.credentials.get(&key) {
+            secrets.push(value);
+        }
+    }
+    for account in state.db.list_account_views().unwrap_or_default() {
+        for key in [
+            crate::credentials::microsoft_access_token(&account.id),
+            crate::credentials::microsoft_refresh_token(&account.id),
+        ] {
+            if let Ok(Some(value)) = state.credentials.get(&key) {
+                secrets.push(value);
+            }
+        }
+        secrets.push(account.id);
+    }
+    secrets
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn redact_instance_log(
+    state: State<AppState>,
+    instance_id: String,
+    name: String,
+) -> Result<String> {
+    let secrets = known_secrets(&state);
+    let text = read_instance_log(state, instance_id, name)?;
+    Ok(crate::diagnose::redact::redact(&text, &secrets))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state, text), err)]
+pub fn redact_text(state: State<AppState>, text: String) -> Result<String> {
+    Ok(crate::diagnose::redact::redact(&text, &known_secrets(&state)))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state, text), err)]
+pub async fn share_log(state: State<'_, AppState>, text: String) -> Result<String> {
+    if text.trim().is_empty() {
+        return Err(Error::other("There is nothing in this log to share."));
+    }
+
+    let response = state
+        .network
+        .post("https://api.mclo.gs/1/log")
+        .form(&[("content", text.as_str())])
+        .send()
+        .await
+        .map_err(|error| Error::other(format!("mclo.gs could not be reached: {error}")))?;
+
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|error| Error::other(format!("mclo.gs answered oddly: {error}")))?;
+
+    if !status.is_success() || body["success"] != serde_json::Value::Bool(true) {
+        let reason = body["error"]
+            .as_str()
+            .unwrap_or("mclo.gs refused the upload");
+        return Err(Error::other(reason.to_string()));
+    }
+
+    body["url"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| Error::other("mclo.gs did not return a link"))
 }
 
 fn log_path(state: &AppState, instance_id: &str, name: &str) -> Result<PathBuf> {

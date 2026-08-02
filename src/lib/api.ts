@@ -12,6 +12,7 @@ import type {
   ContentItem,
   ContentUpdate,
   DeviceCodeInfo,
+  Diagnosis,
   FilterTaxonomy,
   InstallPlan,
   InstalledFile,
@@ -394,6 +395,12 @@ export const api = {
     minLevel: string | null = null,
   ) =>
     call<LogSearch>("search_instance_log", { instanceId, name, query, minLevel, limit: 1500 }),
+  diagnoseInstance: (instanceId: string, name: string | null = null) =>
+    call<Diagnosis[]>("diagnose_instance", { instanceId, name }),
+  redactInstanceLog: (instanceId: string, name: string) =>
+    call<string>("redact_instance_log", { instanceId, name }),
+  redactText: (text: string) => call<string>("redact_text", { text }),
+  shareLog: (text: string) => call<string>("share_log", { text }),
   deleteInstanceLog: (instanceId: string, name: string) =>
     call<void>("delete_instance_log", { instanceId, name }),
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
