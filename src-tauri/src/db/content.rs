@@ -1,10 +1,125 @@
 use rusqlite::{params, OptionalExtension};
 
-use crate::error::Result;
+use crate::{
+    config::Instance,
+    error::{Error, Result},
+};
 
 use super::{ContentFile, ContentUpdate, Db};
 
 impl Db {
+    pub fn all_content_files(&self, instance_id: &str) -> Result<Vec<(String, ContentFile)>> {
+        let conn = self.0.lock().unwrap();
+        let mut statement = conn.prepare(
+            "SELECT kind, file_name, sha1, sha512, murmur2, provider, project_id, version_id,
+                    title, icon_url, mod_id, mod_version, dependencies, origin,
+                    pack_version_id, installed_at
+             FROM content_files WHERE instance_id = ?1 ORDER BY kind, file_name",
+        )?;
+        let rows = statement.query_map([instance_id], |row| {
+            Ok((
+                row.get(0)?,
+                ContentFile {
+                    file_name: row.get(1)?,
+                    sha1: row.get(2)?,
+                    sha512: row.get(3)?,
+                    murmur2: row.get(4)?,
+                    provider: row.get(5)?,
+                    project_id: row.get(6)?,
+                    version_id: row.get(7)?,
+                    title: row.get(8)?,
+                    icon_url: row.get(9)?,
+                    mod_id: row.get(10)?,
+                    mod_version: row.get(11)?,
+                    dependencies: row.get(12)?,
+                    origin: row.get(13)?,
+                    pack_version_id: row.get(14)?,
+                    installed_at: row.get(15)?,
+                },
+            ))
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    pub fn restore_instance_snapshot(
+        &self,
+        instance_id: &str,
+        snapshot: &Instance,
+        content: &[(String, ContentFile)],
+    ) -> Result<()> {
+        let mut conn = self.0.lock().unwrap();
+        let transaction = conn.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE instances SET
+                version_id = ?2, min_memory_mb = ?3, max_memory_mb = ?4, java_path = ?5,
+                loader = ?6, loader_version = ?7, launch_version_id = ?8,
+                pack_provider = ?9, pack_project_id = ?10, pack_version_id = ?11,
+                jvm_args = ?12, jvm_args_mode = ?13, env_vars = ?14, env_vars_mode = ?15
+             WHERE id = ?1",
+            params![
+                instance_id,
+                snapshot.version_id,
+                snapshot.min_memory_mb,
+                snapshot.max_memory_mb,
+                snapshot.java_path,
+                snapshot.loader,
+                snapshot.loader_version,
+                snapshot.launch_version_id,
+                snapshot.pack_provider,
+                snapshot.pack_project_id,
+                snapshot.pack_version_id,
+                snapshot.jvm_args,
+                snapshot.jvm_args_mode,
+                snapshot.env_vars,
+                snapshot.env_vars_mode,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(Error::NotFound("instance".to_string()));
+        }
+        transaction.execute(
+            "DELETE FROM content_files WHERE instance_id = ?1",
+            [instance_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM content_updates WHERE instance_id = ?1",
+            [instance_id],
+        )?;
+        {
+            let mut insert = transaction.prepare(
+                "INSERT INTO content_files
+                    (instance_id, kind, file_name, sha1, sha512, murmur2, provider, project_id,
+                     version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
+                     pack_version_id, installed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+                         ?15, ?16, ?17)",
+            )?;
+            for (kind, file) in content {
+                insert.execute(params![
+                    instance_id,
+                    kind,
+                    file.file_name,
+                    file.sha1,
+                    file.sha512,
+                    file.murmur2,
+                    file.provider,
+                    file.project_id,
+                    file.version_id,
+                    file.title,
+                    file.icon_url,
+                    file.mod_id,
+                    file.mod_version,
+                    file.dependencies,
+                    file.origin,
+                    file.pack_version_id,
+                    file.installed_at,
+                ])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn record_content_file(
         &self,
         instance_id: &str,
@@ -327,6 +442,35 @@ impl Db {
 mod tests {
     use super::*;
 
+    fn instance(version: &str) -> Instance {
+        Instance {
+            id: "instance".into(),
+            name: "Current name".into(),
+            version_id: version.into(),
+            created_at: chrono::Utc::now(),
+            min_memory_mb: Some(1024),
+            max_memory_mb: Some(4096),
+            java_path: None,
+            last_played_at: Some(10),
+            playtime_secs: 20,
+            dir: String::new(),
+            logo: None,
+            loader: Some("fabric".into()),
+            loader_version: Some("1".into()),
+            launch_version_id: Some(format!("fabric-{version}")),
+            pack_provider: Some("modrinth".into()),
+            pack_project_id: Some("pack".into()),
+            pack_version_id: Some("old-pack".into()),
+            jvm_args: None,
+            jvm_args_mode: None,
+            env_vars: None,
+            env_vars_mode: None,
+            import_source: None,
+            import_source_id: None,
+            banner_id: None,
+        }
+    }
+
     #[test]
     fn clone_instance_content_keeps_identity_and_updates() {
         let db = Db::open_in_memory().unwrap();
@@ -370,6 +514,64 @@ mod tests {
         assert_eq!(
             db.content_updates("copy").unwrap()[0].latest_version_id,
             "next"
+        );
+    }
+
+    #[test]
+    fn restoring_snapshot_metadata_is_transactional_and_preserves_identity() {
+        let db = Db::open_in_memory().unwrap();
+        let mut current = instance("1.21.1");
+        current.name = "Do not rename me".into();
+        current.loader = Some("neoforge".into());
+        current.pack_version_id = Some("new-pack".into());
+        db.insert_instance(&current).unwrap();
+        let group = db.create_instance_group("Grouped").unwrap();
+        db.move_instance_to_group(&current.id, Some(&group.id))
+            .unwrap();
+        db.record_content_file(
+            &current.id,
+            "mods",
+            &ContentFile {
+                file_name: "new.jar".into(),
+                origin: "user".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let snapshot = instance("1.20.1");
+        let old_content = vec![(
+            "mods".into(),
+            ContentFile {
+                file_name: "old.jar".into(),
+                origin: "pack".into(),
+                ..Default::default()
+            },
+        )];
+        db.restore_instance_snapshot(&current.id, &snapshot, &old_content)
+            .unwrap();
+
+        let restored: (String, String, Option<String>) =
+            db.0.lock()
+                .unwrap()
+                .query_row(
+                    "SELECT name, version_id, loader FROM instances WHERE id = 'instance'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
+        assert_eq!(restored.0, "Do not rename me");
+        assert_eq!(restored.1, "1.20.1");
+        assert_eq!(restored.2.as_deref(), Some("fabric"));
+        assert_eq!(
+            db.content_files(&current.id, "mods").unwrap()[0].file_name,
+            "old.jar"
+        );
+        assert_eq!(
+            db.instance_organization().unwrap().placements[0]
+                .group_id
+                .as_deref(),
+            Some(group.id.as_str())
         );
     }
 }

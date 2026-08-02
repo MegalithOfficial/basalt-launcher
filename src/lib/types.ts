@@ -355,12 +355,25 @@ export type TaskKind =
   | "instance_import"
   | "app_update"
   | "instance_repair"
-  | "instance_duplicate";
+  | "instance_duplicate"
+  | "snapshot_create"
+  | "snapshot_restore";
 
 export interface RepairReport {
   checked_content: number;
   repaired_content: number;
   unresolved: string[];
+}
+
+export interface SnapshotSummary {
+  id: string;
+  name: string;
+  kind: "manual" | "automatic";
+  created_at: number;
+  file_count: number;
+  size_bytes: number;
+  stored_size_bytes: number;
+  new_size_bytes: number | null;
 }
 
 export type WorldStatus = "ok" | "recovered" | "damaged";

@@ -210,8 +210,10 @@ pub fn update_instance(
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub async fn delete_instance(state: State<'_, AppState>, instance_id: String) -> Result<()> {
+    crate::snapshots::ensure_no_pending_restore(&state, &instance_id)?;
     state.db.delete_instance(&instance_id)?;
     state.files.remove_instance_dir(&instance_id)?;
+    crate::snapshots::delete_instance_data(&state, &instance_id).await?;
     media::clear_custom_banner(&state.files, &instance_id).await;
     state.media_cache.lock().unwrap().remove(&instance_id);
     state.db.delete_instance_content_files(&instance_id)?;

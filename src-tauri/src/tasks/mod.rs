@@ -26,6 +26,8 @@ pub enum TaskKind {
     AppUpdate,
     InstanceRepair,
     InstanceDuplicate,
+    SnapshotCreate,
+    SnapshotRestore,
 }
 
 impl TaskKind {
@@ -42,6 +44,8 @@ impl TaskKind {
             Self::AppUpdate => "app_update",
             Self::InstanceRepair => "instance_repair",
             Self::InstanceDuplicate => "instance_duplicate",
+            Self::SnapshotCreate => "snapshot_create",
+            Self::SnapshotRestore => "snapshot_restore",
         }
     }
 
@@ -58,6 +62,8 @@ impl TaskKind {
             "app_update" | "AppUpdate" => Some(Self::AppUpdate),
             "instance_repair" | "InstanceRepair" => Some(Self::InstanceRepair),
             "instance_duplicate" | "InstanceDuplicate" => Some(Self::InstanceDuplicate),
+            "snapshot_create" | "SnapshotCreate" => Some(Self::SnapshotCreate),
+            "snapshot_restore" | "SnapshotRestore" => Some(Self::SnapshotRestore),
             _ => None,
         }
     }
@@ -454,6 +460,10 @@ mod tests {
         assert_eq!(
             TaskKind::parse("InstanceDuplicate"),
             Some(TaskKind::InstanceDuplicate)
+        );
+        assert_eq!(
+            TaskKind::parse("snapshot_restore"),
+            Some(TaskKind::SnapshotRestore)
         );
         assert_eq!(TaskKind::parse("unknown"), None);
     }

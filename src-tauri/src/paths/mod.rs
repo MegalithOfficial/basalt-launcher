@@ -51,6 +51,39 @@ impl Paths {
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")
     }
+    pub fn snapshots(&self) -> PathBuf {
+        self.root.join("snapshots")
+    }
+    pub fn snapshot_blobs(&self) -> PathBuf {
+        self.snapshots().join("blobs")
+    }
+    pub fn snapshot_instances(&self) -> PathBuf {
+        self.snapshots().join("instances")
+    }
+    pub fn snapshot_restore_journals(&self) -> PathBuf {
+        self.snapshots().join("restore-journals")
+    }
+    pub fn instance_snapshots(&self, instance_id: &str) -> PathBuf {
+        self.snapshot_instances().join(instance_id)
+    }
+    pub fn snapshot_dir(&self, instance_id: &str, snapshot_id: &str) -> PathBuf {
+        self.instance_snapshots(instance_id)
+            .join(format!("{snapshot_id}.json"))
+    }
+    pub fn snapshot_blob(&self, sha256: &str) -> Option<PathBuf> {
+        if sha256.len() != 64
+            || !sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return None;
+        }
+        Some(
+            self.snapshot_blobs()
+                .join(&sha256[..2])
+                .join(format!("{sha256}.zst")),
+        )
+    }
     pub fn logs(&self) -> PathBuf {
         self.root.join("logs")
     }
@@ -88,6 +121,28 @@ impl Paths {
 
     pub fn instance_saves_dir_checked(&self, id: &str) -> Option<PathBuf> {
         self.instance_dir_checked(id).map(|dir| dir.join("saves"))
+    }
+
+    pub fn snapshot_dir_checked(&self, instance_id: &str, snapshot_id: &str) -> Option<PathBuf> {
+        self.instance_dir_checked(instance_id)?;
+        let snapshot_id = snapshot_id.trim();
+        if snapshot_id.is_empty()
+            || snapshot_id.contains('/')
+            || snapshot_id.contains('\\')
+            || snapshot_id.contains("..")
+        {
+            return None;
+        }
+        let parent = self.instance_snapshots(instance_id);
+        let path = parent.join(format!("{snapshot_id}.json"));
+        (path.parent() == Some(parent.as_path())).then_some(path)
+    }
+
+    pub fn snapshot_restore_journal_checked(&self, instance_id: &str) -> Option<PathBuf> {
+        self.instance_dir_checked(instance_id)?;
+        let parent = self.snapshot_restore_journals();
+        let path = parent.join(format!("{instance_id}.json"));
+        (path.parent() == Some(parent.as_path())).then_some(path)
     }
 
     pub fn manifest_cache(&self) -> PathBuf {
@@ -133,5 +188,15 @@ mod tests {
             .instance_dir_checked("c4dbff5d-a385-47fb-9710-7d33bd154c3f")
             .unwrap();
         assert_eq!(dir.parent().unwrap(), p.instances());
+    }
+
+    #[test]
+    fn snapshot_ids_cannot_escape_their_instance() {
+        let p = paths();
+        assert!(p.snapshot_dir_checked("instance", "snapshot").is_some());
+        assert!(p.snapshot_dir_checked("instance", "../other").is_none());
+        assert!(p.snapshot_dir_checked("../instance", "snapshot").is_none());
+        assert!(p.snapshot_blob(&"a".repeat(64)).is_some());
+        assert!(p.snapshot_blob("not-a-hash").is_none());
     }
 }

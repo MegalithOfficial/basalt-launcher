@@ -41,6 +41,7 @@ import type {
   ProjectDetails,
   RemovalPlan,
   RepairReport,
+  SnapshotSummary,
   ProjectSummary,
   ProjectVersion,
   RunningInfo,
@@ -275,6 +276,18 @@ export const api = {
     call<RepairReport>("repair_instance", { instanceId }),
   duplicateInstance: (instanceId: string) =>
     call<Instance>("duplicate_instance", { instanceId }),
+  instanceSnapshotUsage: (instanceId: string) =>
+    call<number>("instance_snapshot_usage", { instanceId }),
+  listInstanceSnapshots: (instanceId: string) =>
+    call<SnapshotSummary[]>("list_instance_snapshots", { instanceId }),
+  createInstanceSnapshot: (instanceId: string, name: string | null = null) =>
+    call<SnapshotSummary>("create_instance_snapshot", { instanceId, name }),
+  renameInstanceSnapshot: (instanceId: string, snapshotId: string, name: string) =>
+    call<SnapshotSummary>("rename_instance_snapshot", { instanceId, snapshotId, name }),
+  deleteInstanceSnapshot: (instanceId: string, snapshotId: string) =>
+    call<void>("delete_instance_snapshot", { instanceId, snapshotId }),
+  restoreInstanceSnapshot: (instanceId: string, snapshotId: string) =>
+    call<SnapshotSummary>("restore_instance_snapshot", { instanceId, snapshotId }),
   listVersions: (includeSnapshots = false) =>
     call<VersionEntry[]>("list_versions", { includeSnapshots }),
   listInstalledVersions: () => call<string[]>("list_installed_versions"),

@@ -54,7 +54,7 @@ pub struct SkinRecord {
     pub added_at: i64,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ContentFile {
     pub file_name: String,
     pub sha1: Option<String>,

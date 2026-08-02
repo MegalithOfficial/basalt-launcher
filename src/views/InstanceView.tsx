@@ -3,9 +3,11 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowUpCircle,
   Check,
+  DatabaseBackup,
   FileBox,
   HardDriveUpload,
   Loader2,
+  MoreVertical,
   Package,
   Pencil,
   Plus,
@@ -28,6 +30,8 @@ import { useCurseforgeDownloads } from "../components/CurseForgeDownloadModal";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
+import { ContextMenu, useContextMenu, type MenuItem } from "../components/ContextMenu";
+import { SnapshotsModal } from "../components/SnapshotsModal";
 import { toast } from "sonner";
 
 import { cn } from "../lib/cn";
@@ -78,6 +82,7 @@ const ALL_KINDS = ["mods", "resourcepacks", "shaderpacks", "schematics"];
 type Dialog =
   | { kind: "edit" }
   | { kind: "export" }
+  | { kind: "snapshots" }
   | { kind: "worldImport" }
   | { kind: "remove"; item: ContentItem; plan: RemovalPlan; orphans: string[] }
   | {
@@ -178,6 +183,7 @@ export function InstanceView() {
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const refreshUpdates = useStore((s) => s.refreshUpdates);
   const repairInstance = useStore((s) => s.repairInstance);
+  const refreshInstances = useStore((s) => s.refreshInstances);
   const applyUpdate = useStore((s) => s.applyUpdate);
   const beginOptimisticTask = useStore((s) => s.beginOptimisticTask);
   const endOptimisticTask = useStore((s) => s.endOptimisticTask);
@@ -193,6 +199,7 @@ export function InstanceView() {
   const activeProjects = useActiveProjectIds();
   const suggestionsEnabled = useStore((s) => s.settings?.show_suggestions !== false);
   const busyWithTask = !!useInstanceTask(instance?.id);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const [tab, setTab] = useState<InstanceTab>("mods");
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -577,6 +584,26 @@ export function InstanceView() {
     }
   };
 
+  const heroMenu = (): MenuItem[] => [
+    {
+      label: "Snapshots and restore (experimental)",
+      icon: DatabaseBackup,
+      onSelect: () => setDialog({ kind: "snapshots" }),
+    },
+    {
+      label: gameRunning ? "Repair (stop the game first)" : "Repair and verify",
+      icon: Wrench,
+      disabled: repairing || busyWithTask || gameRunning,
+      onSelect: () => void repair(),
+    },
+    {
+      label: "Export as pack",
+      icon: Share,
+      separated: true,
+      onSelect: () => setDialog({ kind: "export" }),
+    },
+  ];
+
   const repair = async () => {
     setRepairing(true);
     try {
@@ -646,37 +673,24 @@ export function InstanceView() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
-              onClick={() => void repair()}
-              disabled={repairing || busyWithTask || gameRunning}
-              aria-label="Repair and verify instance"
-              title={
-                gameRunning
-                  ? "Stop the instance before repairing it"
-                  : "Repair and verify instance"
-              }
-              className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {repairing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Wrench className="size-4" />
-              )}
-            </button>
-            <button
-              onClick={() => setDialog({ kind: "export" })}
-              aria-label="Export as pack"
-              title="Export as pack"
-              className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
-            >
-              <Share className="size-4" />
-            </button>
-            <button
               onClick={() => setDialog({ kind: "edit" })}
-              aria-label="Edit instance"
+              aria-label="Instance settings"
               title="Instance settings"
               className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
             >
               <Pencil className="size-4" />
+            </button>
+            <button
+              onClick={(event) => openMenu(event, heroMenu(), instance.name)}
+              aria-label="More actions"
+              title="More actions"
+              className="grid size-10 place-items-center rounded-full border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+            >
+              {repairing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <MoreVertical className="size-4" />
+              )}
             </button>
             <div className="ml-1">
               <PlayButton instance={instance} hero onError={setLaunchError} />
@@ -1186,6 +1200,16 @@ export function InstanceView() {
       <EditInstanceModal
         instance={dialog?.kind === "edit" ? instance : null}
         onClose={close}
+      />
+      <ContextMenu menu={menu} onClose={closeMenu} />
+
+      <SnapshotsModal
+        instance={instance}
+        open={dialog?.kind === "snapshots"}
+        running={gameRunning}
+        busyWithTask={busyWithTask}
+        onClose={close}
+        onRestored={refreshInstances}
       />
       {browserDownloads.modal}
     </div>

@@ -21,6 +21,7 @@ mod packs;
 mod paths;
 mod search;
 mod skin;
+mod snapshots;
 mod state;
 mod sysinfo_probe;
 mod tasks;
@@ -70,6 +71,9 @@ pub fn run() {
             }
 
             let state = AppState::new(files, db);
+            if let Err(e) = snapshots::recover_interrupted(&state) {
+                tracing::warn!(error = %e, "could not recover interrupted snapshot restores");
+            }
             match state.db.load_settings() {
                 Ok(mut settings) if !settings.onboarded => {
                     let has_history = state
@@ -147,6 +151,12 @@ pub fn run() {
             commands::instances::set_instance_logo,
             commands::instances::clear_instance_logo,
             commands::instances::backfill_pack_logos,
+            commands::snapshots::list_instance_snapshots,
+            commands::snapshots::instance_snapshot_usage,
+            commands::snapshots::create_instance_snapshot,
+            commands::snapshots::rename_instance_snapshot,
+            commands::snapshots::delete_instance_snapshot,
+            commands::snapshots::restore_instance_snapshot,
             commands::tasks::list_tasks,
             commands::tasks::clear_finished_tasks,
             commands::tasks::cancel_task,

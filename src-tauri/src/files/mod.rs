@@ -42,6 +42,10 @@ impl FileManager {
             self.paths.natives(),
             self.paths.runtimes(),
             self.paths.instances(),
+            self.paths.snapshots(),
+            self.paths.snapshot_blobs(),
+            self.paths.snapshot_instances(),
+            self.paths.snapshot_restore_journals(),
             self.paths.logs(),
             self.paths.skins(),
         ] {

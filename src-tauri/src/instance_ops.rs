@@ -28,7 +28,7 @@ pub struct RepairReport {
     pub unresolved: Vec<String>,
 }
 
-fn instance_busy(state: &AppState, instance_id: &str) -> bool {
+pub(crate) fn instance_busy(state: &AppState, instance_id: &str) -> bool {
     state.tasks.list().iter().any(|task| {
         task.instance_id.as_deref() == Some(instance_id)
             && task.state == crate::tasks::TaskState::Running

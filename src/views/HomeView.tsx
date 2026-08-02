@@ -193,13 +193,18 @@ export function HomeView() {
     actionIcon = <Plus className="size-4" />;
   } else if (installing) {
     const taskLabel =
-      install.kind === "instance_repair" || install.kind === "instance_duplicate"
+      install.kind === "instance_repair" ||
+      install.kind === "instance_duplicate" ||
+      install.kind === "snapshot_create" ||
+      install.kind === "snapshot_restore"
         ? instanceTaskLabel(install)
         : (STAGE_LABEL[install.stage] ?? instanceTaskLabel(install));
     const showProgress =
       install.stage === "downloading" ||
       install.kind === "instance_repair" ||
-      install.kind === "instance_duplicate";
+      install.kind === "instance_duplicate" ||
+      install.kind === "snapshot_create" ||
+      install.kind === "snapshot_restore";
     actionLabel = `${taskLabel}${
       showProgress && taskFraction(install) != null ? ` ${percent}%` : ""
     }`;

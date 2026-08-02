@@ -13,6 +13,7 @@ pub(crate) mod logging_commands;
 pub(crate) mod migrate_commands;
 pub(crate) mod pack_commands;
 pub(crate) mod skins;
+pub(crate) mod snapshots;
 pub(crate) mod tasks;
 pub(crate) mod worlds;
 

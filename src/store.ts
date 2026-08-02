@@ -627,6 +627,8 @@ export const useStore = create<AppStore>((set) => ({
           !quiet &&
           task.kind !== "app_update" &&
           task.kind !== "instance_repair" &&
+          task.kind !== "snapshot_create" &&
+          task.kind !== "snapshot_restore" &&
           task.state === "succeeded"
         ) {
           notifyTaskFinished(task);
