@@ -143,6 +143,9 @@ fn write_pack(
         let Some(relative) = relative_string(root, &path) else {
             continue;
         };
+        if relative == ".basalt" || relative.starts_with(".basalt/") {
+            continue;
+        }
         let file_name = path
             .file_name()
             .and_then(|name| name.to_str())

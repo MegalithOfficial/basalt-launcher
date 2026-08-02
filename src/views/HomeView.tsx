@@ -195,6 +195,7 @@ export function HomeView() {
     const taskLabel =
       install.kind === "instance_repair" ||
       install.kind === "instance_duplicate" ||
+      install.kind === "modpack_upgrade" ||
       install.kind === "snapshot_create" ||
       install.kind === "snapshot_restore"
         ? instanceTaskLabel(install)
@@ -203,6 +204,7 @@ export function HomeView() {
       install.stage === "downloading" ||
       install.kind === "instance_repair" ||
       install.kind === "instance_duplicate" ||
+      install.kind === "modpack_upgrade" ||
       install.kind === "snapshot_create" ||
       install.kind === "snapshot_restore";
     actionLabel = `${taskLabel}${

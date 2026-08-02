@@ -75,6 +75,9 @@ pub fn run() {
             if let Err(e) = snapshots::recover_interrupted(&state) {
                 tracing::warn!(error = %e, "could not recover interrupted snapshot restores");
             }
+            if let Err(e) = modpack::recover_interrupted_upgrades(&state) {
+                tracing::warn!(error = %e, "could not recover interrupted modpack upgrades");
+            }
             match state.db.load_settings() {
                 Ok(mut settings) if !settings.onboarded => {
                     let has_history = state
@@ -177,6 +180,9 @@ pub fn run() {
             commands::content_commands::install_content,
             commands::content_commands::install_modpack,
             commands::content_commands::plan_modpack_install,
+            commands::content_commands::check_modpack_upgrade,
+            commands::content_commands::plan_modpack_upgrade,
+            commands::content_commands::upgrade_modpack,
             commands::content_commands::find_curseforge_download,
             commands::content_commands::plan_content_install,
             commands::content_commands::get_filter_taxonomy,

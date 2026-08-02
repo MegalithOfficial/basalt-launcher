@@ -196,6 +196,32 @@ impl Db {
         Ok(())
     }
 
+    pub fn set_modpack_version(&self, instance: &Instance, launch_version_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE instances SET version_id = ?2, loader = ?3, loader_version = ?4,
+                    launch_version_id = ?5, pack_provider = ?6, pack_project_id = ?7,
+                    pack_version_id = ?8 WHERE id = ?1",
+            params![
+                instance.id,
+                instance.version_id,
+                instance.loader,
+                instance.loader_version,
+                launch_version_id,
+                instance.pack_provider,
+                instance.pack_project_id,
+                instance.pack_version_id,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(crate::error::Error::NotFound(format!(
+                "instance {}",
+                instance.id
+            )));
+        }
+        Ok(())
+    }
+
     pub fn record_playtime(
         &self,
         instance_id: &str,

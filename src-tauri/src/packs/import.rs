@@ -578,20 +578,37 @@ pub async fn finish_import(app: &AppHandle, state: &AppState, prepared: Prepared
 
     let _ = state.files.remove_file_if_exists(&staged);
 
-    if let Err(error) = outcome {
+    let artifacts = match outcome {
+        Ok(artifacts) => artifacts,
+        Err(error) => {
+            let _ = state.db.delete_instance_content_files(&instance.id);
+            let _ = state.db.delete_instance(&instance.id);
+            let _ = state.files.remove_instance_dir(&instance.id);
+            match &error {
+                Error::Cancelled => task.cancelled(),
+                other => task.fail(other),
+            }
+            return;
+        }
+    };
+
+    let persist = (|| {
+        state
+            .db
+            .set_launch_version(&instance.id, &artifacts.launch_id)?;
+        for (kind, _, file) in &links {
+            state.db.record_content_file(&instance.id, kind, file)?;
+        }
+        Result::<()>::Ok(())
+    })();
+    if let Err(error) = persist {
         let _ = state.db.delete_instance_content_files(&instance.id);
         let _ = state.db.delete_instance(&instance.id);
         let _ = state.files.remove_instance_dir(&instance.id);
-        match &error {
-            Error::Cancelled => task.cancelled(),
-            other => task.fail(other),
-        }
+        task.fail(&error);
         return;
     }
-
-    for (kind, _, file) in &links {
-        let _ = state.db.record_content_file(&instance.id, kind, file);
-    }
+    modpack::link_pack_files(state, &instance.id, &artifacts.linkable).await;
     if !skipped.is_empty() {
         tracing::warn!(count = skipped.len(), "pack files without a download url");
     }

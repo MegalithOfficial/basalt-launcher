@@ -347,6 +347,19 @@ impl Db {
         Ok(())
     }
 
+    pub fn delete_pack_content_files(&self, instance_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "DELETE FROM content_files WHERE instance_id = ?1 AND origin = 'pack'",
+            params![instance_id],
+        )?;
+        conn.execute(
+            "DELETE FROM content_updates WHERE instance_id = ?1",
+            params![instance_id],
+        )?;
+        Ok(())
+    }
+
     pub fn clone_instance_content(&self, source_id: &str, destination_id: &str) -> Result<()> {
         let mut guard = self.0.lock().unwrap();
         let transaction = guard.transaction()?;

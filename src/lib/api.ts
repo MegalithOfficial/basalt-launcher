@@ -35,6 +35,8 @@ import type {
   ManualDownload,
   ManualDownloadSource,
   ModpackInstallPlan,
+  ModpackUpgrade,
+  ModpackUpgradePlan,
   PackExport,
   PackFormat,
   PackPreview,
@@ -225,6 +227,30 @@ export const api = {
       versionId,
       manualDownloads,
     }),
+  checkModpackUpgrade: (instanceId: string) =>
+    call<ModpackUpgrade | null>("check_modpack_upgrade", { instanceId }),
+  planModpackUpgrade: (
+    instanceId: string,
+    targetVersionId: string,
+    manualDownloads: ManualDownloadSource[] = [],
+  ) =>
+    call<ModpackUpgradePlan>("plan_modpack_upgrade", {
+      instanceId,
+      targetVersionId,
+      manualDownloads,
+    }),
+  upgradeModpack: (
+    instanceId: string,
+    targetVersionId: string,
+    manualDownloads: ManualDownloadSource[] = [],
+    snapshotFirst = true,
+  ) =>
+    call<Instance>("upgrade_modpack", {
+      instanceId,
+      targetVersionId,
+      manualDownloads,
+      snapshotFirst,
+    }),
   checkContentUpdates: (instanceId: string, force = false) =>
     call<ContentUpdate[]>("check_content_updates", { instanceId, force }),
   getContentUpdates: (instanceId: string) =>
@@ -280,8 +306,11 @@ export const api = {
     call<number>("instance_snapshot_usage", { instanceId }),
   listInstanceSnapshots: (instanceId: string) =>
     call<SnapshotSummary[]>("list_instance_snapshots", { instanceId }),
-  createInstanceSnapshot: (instanceId: string, name: string | null = null) =>
-    call<SnapshotSummary>("create_instance_snapshot", { instanceId, name }),
+  createInstanceSnapshot: (
+    instanceId: string,
+    name: string | null = null,
+    excluded: string[] = [],
+  ) => call<SnapshotSummary>("create_instance_snapshot", { instanceId, name, excluded }),
   renameInstanceSnapshot: (instanceId: string, snapshotId: string, name: string) =>
     call<SnapshotSummary>("rename_instance_snapshot", { instanceId, snapshotId, name }),
   deleteInstanceSnapshot: (instanceId: string, snapshotId: string) =>

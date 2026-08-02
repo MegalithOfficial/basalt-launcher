@@ -123,6 +123,32 @@ export interface ModpackInstallPlan {
   manual_downloads: ManualDownload[];
 }
 
+export interface ModpackUpgrade {
+  current_version_id: string;
+  target_version_id: string;
+  target_name: string;
+  version_number: string;
+  channel: string;
+  date: string;
+  game_version: string;
+  loader: string | null;
+  loader_version: string | null;
+}
+
+export interface ModpackUpgradeChanges {
+  added: string[];
+  removed: string[];
+  changed: string[];
+  preserved: string[];
+  unchanged: number;
+}
+
+export interface ModpackUpgradePlan {
+  update: ModpackUpgrade;
+  manual_downloads: ManualDownload[];
+  changes: ModpackUpgradeChanges | null;
+}
+
 export interface ContentFile {
   file_name: string;
   sha1: string | null;
@@ -349,6 +375,7 @@ export type TaskKind =
   | "java_install"
   | "loader_install"
   | "modpack_install"
+  | "modpack_upgrade"
   | "content_install"
   | "content_update"
   | "world_import"
@@ -374,6 +401,7 @@ export interface SnapshotSummary {
   size_bytes: number;
   stored_size_bytes: number;
   new_size_bytes: number | null;
+  excluded: string[];
 }
 
 export type WorldStatus = "ok" | "recovered" | "damaged";

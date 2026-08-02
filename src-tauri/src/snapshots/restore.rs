@@ -54,8 +54,14 @@ fn collect_volatile_entries(
     files: &FileManager,
     root: &Path,
     output: &mut Vec<SourceEntry>,
+    also_preserve: &[String],
 ) -> Result<()> {
-    for name in EXCLUDED_TOP_LEVEL {
+    let names: Vec<&str> = EXCLUDED_TOP_LEVEL
+        .iter()
+        .copied()
+        .chain(also_preserve.iter().map(|value| value.as_str()))
+        .collect();
+    for name in names {
         let path = root.join(name);
         if !files.exists(&path)? {
             continue;
@@ -175,7 +181,7 @@ pub(super) fn stage_restore(
     task: Option<&TaskHandle>,
 ) -> Result<()> {
     let mut volatile = Vec::new();
-    collect_volatile_entries(&state.files, live, &mut volatile)?;
+    collect_volatile_entries(&state.files, live, &mut volatile, &manifest.excluded)?;
     let mut totals = manifest
         .files
         .iter()
@@ -409,6 +415,7 @@ pub(crate) async fn restore(
                 &instance,
                 clean_name(&safety_name)?,
                 SnapshotKind::Automatic,
+                &manifest.excluded,
                 Some(&task),
             ) {
                 Ok(safety) => safety,
@@ -484,7 +491,7 @@ pub(crate) async fn restore(
             match store.files.remove_managed_dir_all_if_exists(&backup) {
                 Ok(_) => {
                     store.files.remove_file_if_exists(&journal_path)?;
-                    if let Err(error) = prune_automatic(&store, &instance.id) {
+                    if let Err(error) = prune_automatic(&store, &instance.id, None) {
                         tracing::warn!(%error, "could not prune automatic snapshots");
                     }
                 }

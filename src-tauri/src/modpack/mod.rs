@@ -17,6 +17,13 @@ use crate::{
     state::AppState,
 };
 
+mod upgrade;
+
+pub use upgrade::{
+    check_modpack_upgrade, plan_modpack_upgrade, recover_interrupted_upgrades, upgrade_modpack,
+    ModpackUpgrade, ModpackUpgradePlan,
+};
+
 const MODRINTH: &str = "https://api.modrinth.com/v2";
 
 #[derive(Deserialize)]
@@ -291,7 +298,11 @@ struct HashVersion {
 }
 
 #[tracing::instrument(skip_all, fields(files = files.len()))]
-async fn link_pack_files(state: &AppState, instance_id: &str, files: &[(String, String)]) {
+pub(crate) async fn link_pack_files(
+    state: &AppState,
+    instance_id: &str,
+    files: &[(String, String)],
+) {
     let hashes: Vec<String> = files.iter().map(|(_, sha1)| sha1.clone()).collect();
     if hashes.is_empty() {
         return;
@@ -352,15 +363,15 @@ async fn link_pack_files(state: &AppState, instance_id: &str, files: &[(String, 
     }
 }
 
-struct PreparedPack {
-    target: search::ProjectVersion,
-    archive_path: PathBuf,
-    index: MrIndex,
-    curseforge_links: Vec<(String, String, ContentFile)>,
-    consumed_sources: Vec<PathBuf>,
+pub(super) struct PreparedPack {
+    pub(super) target: search::ProjectVersion,
+    pub(super) archive_path: PathBuf,
+    pub(super) index: MrIndex,
+    pub(super) curseforge_links: Vec<(String, String, ContentFile)>,
+    pub(super) consumed_sources: Vec<PathBuf>,
 }
 
-enum PreparePackOutcome {
+pub(super) enum PreparePackOutcome {
     Ready(Box<PreparedPack>),
     NeedsDownloads(Vec<ManualDownload>),
 }
@@ -387,7 +398,7 @@ async fn archive_requirement(
     })
 }
 
-async fn prepare_pack(
+pub(super) async fn prepare_pack(
     app: &AppHandle,
     state: &AppState,
     provider: Provider,
@@ -492,23 +503,23 @@ async fn prepare_pack(
     }
 
     let mut index = index;
-    if stage_manual_files {
-        for requirement in &manual_downloads {
-            let source = by_key
-                .get(&manual_key(&requirement.project_id, &requirement.file_id))
-                .expect("manual source checked above");
-            let source_path = PathBuf::from(&source.path);
-            validate_manual_download(&downloads_dir, requirement, &source_path)?;
-            index.files.push(MrFile {
-                path: requirement.instance_path.clone(),
-                hashes: MrHashes {
-                    sha1: requirement.sha1.clone(),
-                },
-                downloads: Vec::new(),
-                file_size: requirement.size,
-                env: None,
-                local_source: Some(source_path.clone()),
-            });
+    for requirement in &manual_downloads {
+        let source = by_key
+            .get(&manual_key(&requirement.project_id, &requirement.file_id))
+            .expect("manual source checked above");
+        let source_path = PathBuf::from(&source.path);
+        validate_manual_download(&downloads_dir, requirement, &source_path)?;
+        index.files.push(MrFile {
+            path: requirement.instance_path.clone(),
+            hashes: MrHashes {
+                sha1: requirement.sha1.clone(),
+            },
+            downloads: Vec::new(),
+            file_size: requirement.size,
+            env: None,
+            local_source: stage_manual_files.then(|| source_path.clone()),
+        });
+        if stage_manual_files {
             consumed_sources.push(source_path);
         }
     }
@@ -706,22 +717,39 @@ pub async fn install_modpack(
     )
     .await;
 
-    if let Err(e) = outcome {
+    let artifacts = match outcome {
+        Ok(artifacts) => artifacts,
+        Err(e) => {
+            let _ = state.db.delete_instance_content_files(&instance.id);
+            let _ = state.db.delete_instance(&instance.id);
+            let _ = state.files.remove_instance_dir(&instance.id);
+            match &e {
+                Error::Cancelled => task.cancelled(),
+                other => task.fail(other),
+            }
+            return Err(e);
+        }
+    };
+
+    let persist = (|| {
+        state
+            .db
+            .set_launch_version(&instance.id, &artifacts.launch_id)?;
+        upgrade::write_pack_state(state, &instance_dir, &target.id, &index, &archive_path)?;
+        for (kind, _, file) in &curseforge_links {
+            state.db.record_content_file(&instance.id, kind, file)?;
+        }
+        Result::<()>::Ok(())
+    })();
+    if let Err(error) = persist {
         let _ = state.db.delete_instance_content_files(&instance.id);
         let _ = state.db.delete_instance(&instance.id);
         let _ = state.files.remove_instance_dir(&instance.id);
-        match &e {
-            Error::Cancelled => task.cancelled(),
-            other => task.fail(other),
-        }
-        return Err(e);
+        task.fail(&error);
+        return Err(error);
     }
-
+    link_pack_files(state, &instance.id, &artifacts.linkable).await;
     task.succeed();
-
-    for (kind, _, file) in &curseforge_links {
-        let _ = state.db.record_content_file(&instance.id, kind, file);
-    }
     for source in consumed_sources {
         if let Err(error) = std::fs::remove_file(&source) {
             tracing::warn!(
@@ -755,6 +783,11 @@ pub(crate) fn unique_instance_name(state: &AppState, base: &str) -> Result<Strin
     Ok(name)
 }
 
+pub(crate) struct PackInstallArtifacts {
+    pub(crate) launch_id: String,
+    pub(crate) linkable: Vec<(String, String)>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn install_pack_body(
     app: &AppHandle,
@@ -765,10 +798,9 @@ pub(crate) async fn install_pack_body(
     archive_path: &Path,
     index: &MrIndex,
     task: &crate::tasks::TaskHandle,
-) -> Result<()> {
+) -> Result<PackInstallArtifacts> {
     let launch_id = if instance.loader.is_some() {
         let launch_id = loaders::install_loader(app, state, instance, task).await?;
-        state.db.set_launch_version(&instance.id, &launch_id)?;
         launch_id
     } else {
         instance.version_id.clone()
@@ -870,8 +902,6 @@ pub(crate) async fn install_pack_body(
             .map_err(|e| Error::other(format!("override extraction task failed: {e}")))??;
     }
 
-    link_pack_files(state, &instance.id, &linkable).await;
-
     if let Some((provider, project_id)) = icon_source {
         if let Some(icon_url) = search::resolve_projects(state, provider, &[project_id.to_string()])
             .await
@@ -889,7 +919,10 @@ pub(crate) async fn install_pack_body(
         }
     }
 
-    Ok(())
+    Ok(PackInstallArtifacts {
+        launch_id,
+        linkable,
+    })
 }
 
 #[cfg(test)]

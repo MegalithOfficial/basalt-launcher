@@ -93,6 +93,7 @@ export function taskFraction(task: Task): number | null {
 export function instanceTaskLabel(task: Task): string {
   if (task.kind === "instance_repair") return "Repairing";
   if (task.kind === "instance_duplicate") return "Duplicating";
+  if (task.kind === "modpack_upgrade") return "Upgrading modpack";
   if (task.kind === "snapshot_create") return "Creating snapshot";
   if (task.kind === "snapshot_restore") return "Restoring snapshot";
   return task.stage.replace(/-/g, " ");

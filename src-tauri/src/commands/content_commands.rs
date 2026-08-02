@@ -617,6 +617,58 @@ pub async fn plan_modpack_install(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn check_modpack_upgrade(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<Option<crate::modpack::ModpackUpgrade>> {
+    let instance = find_instance(&state, &instance_id)?;
+    crate::modpack::check_modpack_upgrade(&state, &instance).await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub async fn plan_modpack_upgrade(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    target_version_id: String,
+    manual_downloads: Option<Vec<crate::modpack::ManualDownloadSource>>,
+) -> Result<crate::modpack::ModpackUpgradePlan> {
+    let instance = find_instance(&state, &instance_id)?;
+    crate::modpack::plan_modpack_upgrade(
+        &app,
+        &state,
+        &instance,
+        &target_version_id,
+        manual_downloads.as_deref().unwrap_or_default(),
+    )
+    .await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub async fn upgrade_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    target_version_id: String,
+    manual_downloads: Option<Vec<crate::modpack::ManualDownloadSource>>,
+    snapshot_first: Option<bool>,
+) -> Result<Instance> {
+    let instance = find_instance(&state, &instance_id)?;
+    crate::modpack::upgrade_modpack(
+        &app,
+        &state,
+        instance,
+        &target_version_id,
+        manual_downloads.as_deref().unwrap_or_default(),
+        snapshot_first.unwrap_or(true),
+    )
+    .await
+}
+
+#[tauri::command]
 #[tracing::instrument(skip(app), err)]
 pub async fn find_curseforge_download(
     app: AppHandle,

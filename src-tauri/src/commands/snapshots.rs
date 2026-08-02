@@ -31,9 +31,10 @@ pub async fn create_instance_snapshot(
     state: State<'_, AppState>,
     instance_id: String,
     name: Option<String>,
+    excluded: Option<Vec<String>>,
 ) -> Result<SnapshotSummary> {
     let instance = find_instance(&state, &instance_id)?;
-    crate::snapshots::create(&app, &state, instance, name).await
+    crate::snapshots::create(&app, &state, instance, name, excluded.unwrap_or_default()).await
 }
 
 #[tauri::command]

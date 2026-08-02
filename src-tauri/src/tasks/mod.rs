@@ -19,6 +19,7 @@ pub enum TaskKind {
     JavaInstall,
     LoaderInstall,
     ModpackInstall,
+    ModpackUpgrade,
     ContentInstall,
     ContentUpdate,
     WorldImport,
@@ -37,6 +38,7 @@ impl TaskKind {
             Self::JavaInstall => "java_install",
             Self::LoaderInstall => "loader_install",
             Self::ModpackInstall => "modpack_install",
+            Self::ModpackUpgrade => "modpack_upgrade",
             Self::ContentInstall => "content_install",
             Self::ContentUpdate => "content_update",
             Self::WorldImport => "world_import",
@@ -55,6 +57,7 @@ impl TaskKind {
             "java_install" | "JavaInstall" => Some(Self::JavaInstall),
             "loader_install" | "LoaderInstall" => Some(Self::LoaderInstall),
             "modpack_install" | "ModpackInstall" => Some(Self::ModpackInstall),
+            "modpack_upgrade" | "ModpackUpgrade" => Some(Self::ModpackUpgrade),
             "content_install" | "ContentInstall" => Some(Self::ContentInstall),
             "content_update" | "ContentUpdate" => Some(Self::ContentUpdate),
             "world_import" | "WorldImport" => Some(Self::WorldImport),
@@ -452,6 +455,10 @@ mod tests {
         assert_eq!(
             TaskKind::parse("ModpackInstall"),
             Some(TaskKind::ModpackInstall)
+        );
+        assert_eq!(
+            TaskKind::parse("modpack_upgrade"),
+            Some(TaskKind::ModpackUpgrade)
         );
         assert_eq!(
             TaskKind::parse("instance_repair"),

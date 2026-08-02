@@ -68,7 +68,11 @@ pub struct SnapshotSummary {
     pub size_bytes: u64,
     pub stored_size_bytes: u64,
     pub new_size_bytes: Option<u64>,
+    #[serde(default)]
+    pub excluded: Vec<String>,
 }
+
+pub const SCOPE_CHOICES: &[&str] = &["saves", "mods", "config", "resourcepacks", "shaderpacks"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SnapshotFile {
@@ -89,6 +93,8 @@ struct SnapshotManifest {
     stored_size_bytes: u64,
     #[serde(default)]
     new_size_bytes: Option<u64>,
+    #[serde(default)]
+    excluded: Vec<String>,
     directories: Vec<PathBuf>,
     files: Vec<SnapshotFile>,
     instance: Instance,
@@ -106,6 +112,7 @@ impl SnapshotManifest {
             size_bytes: self.size_bytes,
             stored_size_bytes: self.stored_size_bytes,
             new_size_bytes: self.new_size_bytes,
+            excluded: self.excluded.clone(),
         }
     }
 }
@@ -205,6 +212,17 @@ fn collect_entries(
     output: &mut Vec<SourceEntry>,
     exclude_volatile: bool,
 ) -> Result<()> {
+    collect_entries_excluding(files, root, current, output, exclude_volatile, &[])
+}
+
+fn collect_entries_excluding(
+    files: &FileManager,
+    root: &Path,
+    current: &Path,
+    output: &mut Vec<SourceEntry>,
+    exclude_volatile: bool,
+    excluded: &[String],
+) -> Result<()> {
     for path in files.read_dir(current)? {
         let metadata = files.symlink_metadata(&path)?;
         if metadata.file_type().is_symlink() {
@@ -217,18 +235,19 @@ fn collect_entries(
             .strip_prefix(root)
             .map_err(|_| Error::other("snapshot path escaped its source"))?
             .to_path_buf();
-        if exclude_volatile
-            && relative.components().count() == 1
-            && relative
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| EXCLUDED_TOP_LEVEL.contains(&name))
-        {
-            continue;
+        if relative.components().count() == 1 {
+            if let Some(name) = relative.file_name().and_then(|name| name.to_str()) {
+                if exclude_volatile && EXCLUDED_TOP_LEVEL.contains(&name) {
+                    continue;
+                }
+                if excluded.iter().any(|value| value == name) {
+                    continue;
+                }
+            }
         }
         if metadata.is_dir() {
             output.push(SourceEntry::Directory(relative));
-            collect_entries(files, root, &path, output, exclude_volatile)?;
+            collect_entries_excluding(files, root, &path, output, exclude_volatile, excluded)?;
         } else if metadata.is_file() {
             output.push(SourceEntry::File {
                 relative,
@@ -430,13 +449,14 @@ fn create_snapshot_sync(
     instance: &Instance,
     name: String,
     kind: SnapshotKind,
+    excluded: &[String],
     task: Option<&TaskHandle>,
 ) -> Result<SnapshotSummary> {
     let id = uuid::Uuid::new_v4().to_string();
     let source = state.paths.instance_dir(&instance.id);
     let destination = state.paths.snapshot_dir(&instance.id, &id);
     let mut entries = Vec::new();
-    collect_entries(&state.files, &source, &source, &mut entries, true)?;
+    collect_entries_excluding(&state.files, &source, &source, &mut entries, true, excluded)?;
     let mut directories = entries
         .iter()
         .filter_map(|entry| match entry {
@@ -527,6 +547,7 @@ fn create_snapshot_sync(
         size_bytes: snapshot_files.iter().map(|file| file.size).sum(),
         stored_size_bytes,
         new_size_bytes: Some(new_size_bytes),
+        excluded: excluded.to_vec(),
         directories,
         files: snapshot_files,
         instance: instance.clone(),
@@ -692,11 +713,17 @@ fn garbage_collect(state: &SnapshotStore) -> Result<u64> {
     Ok(reclaimed)
 }
 
-fn prune_automatic(state: &SnapshotStore, instance_id: &str) -> Result<()> {
-    let automatic = list_manifests(state, instance_id)?
+fn prune_automatic(state: &SnapshotStore, instance_id: &str, keep_id: Option<&str>) -> Result<()> {
+    let mut automatic = list_manifests(state, instance_id)?
         .into_iter()
         .filter(|snapshot| snapshot.kind == SnapshotKind::Automatic)
         .collect::<Vec<_>>();
+    if let Some(index) =
+        keep_id.and_then(|keep| automatic.iter().position(|snapshot| snapshot.id == keep))
+    {
+        let keep = automatic.remove(index);
+        automatic.insert(0, keep);
+    }
     for snapshot in automatic.into_iter().skip(AUTOMATIC_RETENTION) {
         if let Some(path) = state.paths.snapshot_dir_checked(instance_id, &snapshot.id) {
             state.files.remove_file_if_exists(path)?;
@@ -733,6 +760,7 @@ pub async fn create(
     state: &AppState,
     instance: Instance,
     name: Option<String>,
+    excluded: Vec<String>,
 ) -> Result<SnapshotSummary> {
     ensure_no_pending_restore(state, &instance.id)?;
     if instance_busy(state, &instance.id) {
@@ -760,8 +788,14 @@ pub async fn create(
         let task = Arc::clone(&task);
         move || {
             let _guard = store_guard()?;
-            let result =
-                create_snapshot_sync(&store, &instance, name, SnapshotKind::Manual, Some(&task));
+            let result = create_snapshot_sync(
+                &store,
+                &instance,
+                name,
+                SnapshotKind::Manual,
+                &excluded,
+                Some(&task),
+            );
             if result.is_err() {
                 if let Err(error) = garbage_collect(&store) {
                     tracing::warn!(%error, "could not clean incomplete snapshot blobs");
@@ -777,6 +811,41 @@ pub async fn create(
     };
     task.finish(&result);
     result
+}
+
+pub(crate) async fn create_automatic(
+    state: &AppState,
+    instance: Instance,
+    name: String,
+    excluded: Vec<String>,
+    task: Arc<TaskHandle>,
+) -> Result<SnapshotSummary> {
+    ensure_no_pending_restore(state, &instance.id)?;
+    let name = clean_name(&name)?;
+    let store = SnapshotStore::from_state(state);
+    tokio::task::spawn_blocking(move || {
+        let _guard = store_guard()?;
+        let result = create_snapshot_sync(
+            &store,
+            &instance,
+            name,
+            SnapshotKind::Automatic,
+            &excluded,
+            Some(&task),
+        );
+        if result.is_err() {
+            let _ = garbage_collect(&store);
+        } else if let Err(error) = prune_automatic(
+            &store,
+            &instance.id,
+            result.as_ref().ok().map(|snapshot| snapshot.id.as_str()),
+        ) {
+            tracing::warn!(%error, "could not prune automatic snapshots");
+        }
+        result
+    })
+    .await
+    .map_err(|error| Error::other(format!("automatic snapshot task failed: {error}")))?
 }
 
 pub async fn rename(
@@ -919,6 +988,7 @@ mod tests {
             &old_metadata,
             "Target".into(),
             SnapshotKind::Manual,
+            &[],
             None,
         )
         .unwrap();
@@ -932,6 +1002,7 @@ mod tests {
             instance,
             "Safety".into(),
             SnapshotKind::Automatic,
+            &[],
             None,
         )
         .unwrap();
@@ -977,6 +1048,68 @@ mod tests {
         assert!(EXCLUDED_TOP_LEVEL.contains(&"screenshots"));
         assert!(!EXCLUDED_TOP_LEVEL.contains(&"saves"));
         assert!(!EXCLUDED_TOP_LEVEL.contains(&"mods"));
+    }
+
+    #[test]
+    fn an_excluded_directory_stays_out_of_the_snapshot_and_survives_a_restore() {
+        let (store, _root) = test_store();
+        let instance = test_instance(&store, "scoped");
+        let live = store.paths.instance_dir(&instance.id);
+        store
+            .files
+            .write_atomic(live.join("saves/world/level.dat"), b"original world")
+            .unwrap();
+        store
+            .files
+            .write_atomic(live.join("mods/example.jar"), b"original mod")
+            .unwrap();
+
+        let summary = create_snapshot_sync(
+            &store,
+            &instance,
+            "Mods only".into(),
+            SnapshotKind::Manual,
+            &["saves".to_string()],
+            None,
+        )
+        .unwrap();
+        assert_eq!(summary.excluded, vec!["saves".to_string()]);
+
+        let manifest =
+            read_manifest(&store.files, &store.paths.snapshot_dir(&instance.id, &summary.id))
+                .unwrap();
+        assert!(manifest
+            .files
+            .iter()
+            .all(|file| !file.path.starts_with("saves")));
+        assert!(manifest
+            .files
+            .iter()
+            .any(|file| file.path == PathBuf::from("mods/example.jar")));
+
+        store
+            .files
+            .write_atomic(live.join("saves/world/level.dat"), b"newer world")
+            .unwrap();
+        store
+            .files
+            .write_atomic(live.join("mods/example.jar"), b"newer mod")
+            .unwrap();
+
+        let staging = store.paths.instances().join(".scoped-staging");
+        restore::stage_restore(&store, &manifest, &live, &staging, None).unwrap();
+
+        assert_eq!(
+            store.files.read(staging.join("mods/example.jar")).unwrap(),
+            b"original mod"
+        );
+        assert_eq!(
+            store
+                .files
+                .read(staging.join("saves/world/level.dat"))
+                .unwrap(),
+            b"newer world"
+        );
     }
 
     #[test]
@@ -1123,6 +1256,7 @@ mod tests {
             &instance,
             "First".into(),
             SnapshotKind::Manual,
+            &[],
             None,
         )
         .unwrap();
@@ -1131,6 +1265,7 @@ mod tests {
             &instance,
             "Second".into(),
             SnapshotKind::Manual,
+            &[],
             None,
         )
         .unwrap();
@@ -1214,12 +1349,13 @@ mod tests {
                 &instance,
                 format!("Automatic {index}"),
                 SnapshotKind::Automatic,
+                &[],
                 None,
             )
             .unwrap();
         }
 
-        prune_automatic(&store, &instance.id).unwrap();
+        prune_automatic(&store, &instance.id, None).unwrap();
         let manifests = list_manifests(&store, &instance.id).unwrap();
         assert_eq!(manifests.len(), AUTOMATIC_RETENTION);
         let blob = store

@@ -38,6 +38,7 @@ import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
 import { ContextMenu, useContextMenu, type MenuItem } from "../components/ContextMenu";
 import { SnapshotsModal } from "../components/SnapshotsModal";
+import { ModpackUpgradeModal } from "../components/ModpackUpgradeModal";
 import { toast } from "sonner";
 
 import { cn } from "../lib/cn";
@@ -52,6 +53,9 @@ import type {
   ContentKind,
   ContentUpdate,
   InstallPlan,
+  ManualDownloadSource,
+  ModpackUpgrade,
+  ModpackUpgradePlan,
   ProjectSummary,
   RemovalPlan,
   SearchProvider,
@@ -90,6 +94,7 @@ type Dialog =
   | { kind: "delete" }
   | { kind: "export" }
   | { kind: "snapshots" }
+  | { kind: "packUpgrade"; plan: ModpackUpgradePlan; sources: ManualDownloadSource[] }
   | { kind: "worldImport" }
   | { kind: "remove"; item: ContentItem; plan: RemovalPlan; orphans: string[] }
   | {
@@ -231,6 +236,9 @@ export function InstanceView() {
   const [updatingFile, setUpdatingFile] = useState<string | null>(null);
   const [suggestBusy, setSuggestBusy] = useState<string | null>(null);
   const [repairing, setRepairing] = useState(false);
+  const [checkingPackUpgrade, setCheckingPackUpgrade] = useState(false);
+  const [packUpgrade, setPackUpgrade] = useState<ModpackUpgrade | null>(null);
+  const [upgradingPack, setUpgradingPack] = useState(false);
   const installingInstance = useRef<string | null>(null);
   const browserDownloads = useCurseforgeDownloads();
 
@@ -596,7 +604,39 @@ export function InstanceView() {
     }
   };
 
+  useEffect(() => {
+    if (!instance.pack_project_id) {
+      setPackUpgrade(null);
+      return;
+    }
+    let live = true;
+    api
+      .checkModpackUpgrade(instance.id)
+      .then((update) => live && setPackUpgrade(update))
+      .catch(() => live && setPackUpgrade(null));
+    return () => {
+      live = false;
+    };
+  }, [instance.id, instance.pack_project_id, instance.pack_version_id]);
+
   const heroMenu = (): MenuItem[] => [
+    ...(instance.pack_project_id
+      ? [
+          {
+            label: packUpgrade
+              ? `Upgrade to ${packUpgrade.version_number}`
+              : checkingPackUpgrade
+                ? "Checking for pack update"
+                : "Check for pack update",
+            icon: checkingPackUpgrade ? Loader2 : ArrowUpCircle,
+            disabled: checkingPackUpgrade || busyWithTask || gameRunning,
+            onSelect: () =>
+              packUpgrade
+                ? void openPackUpgrade(packUpgrade.target_version_id)
+                : void checkPackUpgrade(),
+          } satisfies MenuItem,
+        ]
+      : []),
     {
       label: instance.loader ? "Find mods" : "Find mods (requires loader)",
       icon: Compass,
@@ -653,6 +693,79 @@ export function InstanceView() {
       onSelect: () => setDialog({ kind: "delete" }),
     },
   ];
+
+  const openPackUpgrade = async (targetVersionId: string) => {
+    setCheckingPackUpgrade(true);
+    try {
+      let sources: ManualDownloadSource[] = [];
+      let plan = await api.planModpackUpgrade(instance.id, targetVersionId);
+      while (plan.manual_downloads.length > 0) {
+        const downloaded = await browserDownloads.collect(plan.manual_downloads);
+        if (!downloaded) return;
+        sources = [...sources, ...downloaded];
+        plan = await api.planModpackUpgrade(instance.id, targetVersionId, sources);
+      }
+      setDialog({ kind: "packUpgrade", plan, sources });
+    } catch (error) {
+      toast.error("Could not read the update", { description: String(error) });
+    } finally {
+      setCheckingPackUpgrade(false);
+    }
+  };
+
+  const checkPackUpgrade = async () => {
+    setCheckingPackUpgrade(true);
+    try {
+      const update = await api.checkModpackUpgrade(instance.id);
+      setPackUpgrade(update);
+      if (!update) {
+        toast.success("Modpack is up to date", {
+          description: "The latest available pack version is already installed.",
+        });
+        return;
+      }
+      await openPackUpgrade(update.target_version_id);
+    } catch (error) {
+      toast.error("Could not check the modpack", { description: String(error) });
+    } finally {
+      setCheckingPackUpgrade(false);
+    }
+  };
+
+  const confirmPackUpgrade = async (snapshotFirst: boolean) => {
+    if (dialog?.kind !== "packUpgrade") return;
+    const { plan, sources } = dialog;
+    setUpgradingPack(true);
+    setDialog(null);
+    const optimistic = beginOptimisticTask("modpack_upgrade", `Upgrade ${instance.name}`, {
+      subtitle: `Preparing ${plan.update.version_number}`,
+      instanceId: instance.id,
+      projectId: instance.pack_project_id,
+    });
+    try {
+      await api.upgradeModpack(
+        instance.id,
+        plan.update.target_version_id,
+        sources,
+        snapshotFirst,
+      );
+      toast.success(`Upgraded ${instance.name}`, {
+        description: `${plan.update.version_number} is ready. Your previous state is available in Snapshots.`,
+      });
+      setPackUpgrade(null);
+      await refreshInstances();
+      await refresh();
+    } catch (error) {
+      if (!/cancelled/i.test(String(error))) {
+        toast.error(`Could not upgrade ${instance.name}`, {
+          description: `${String(error)} The existing instance was kept unchanged.`,
+        });
+      }
+    } finally {
+      endOptimisticTask(optimistic);
+      setUpgradingPack(false);
+    }
+  };
 
   const repair = async () => {
     setRepairing(true);
@@ -711,6 +824,21 @@ export function InstanceView() {
                 {instance.version_id} · {loaderLabel(instance).toUpperCase()}
                 {instance.pack_project_id && " · MODPACK"}
               </span>
+              {packUpgrade && (
+                <button
+                  onClick={() => void openPackUpgrade(packUpgrade.target_version_id)}
+                  disabled={checkingPackUpgrade || busyWithTask || gameRunning}
+                  title={`Version ${packUpgrade.version_number} was released`}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-(--accent) px-2 py-0.5 text-[11px] font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {checkingPackUpgrade ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <ArrowUpCircle className="size-3" />
+                  )}
+                  {packUpgrade.version_number} available
+                </button>
+              )}
               {instance.last_played_at && (
                 <span>
                   Played {relativeTime(instance.last_played_at)}
@@ -1265,6 +1393,13 @@ export function InstanceView() {
         busyWithTask={busyWithTask}
         onClose={close}
         onRestored={refreshInstances}
+      />
+      <ModpackUpgradeModal
+        instance={instance}
+        plan={dialog?.kind === "packUpgrade" ? dialog.plan : null}
+        busy={upgradingPack}
+        onUpgrade={(snapshotFirst) => void confirmPackUpgrade(snapshotFirst)}
+        onClose={close}
       />
       {browserDownloads.modal}
     </div>

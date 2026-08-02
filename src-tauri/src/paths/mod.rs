@@ -51,6 +51,15 @@ impl Paths {
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")
     }
+    pub fn modpack_upgrade_journals(&self) -> PathBuf {
+        self.root.join("modpack-upgrade-journals")
+    }
+    pub fn modpack_upgrade_journal(&self, instance_id: &str) -> Option<PathBuf> {
+        self.instance_dir_checked(instance_id)?;
+        let parent = self.modpack_upgrade_journals();
+        let path = parent.join(format!("{instance_id}.json"));
+        (path.parent() == Some(parent.as_path())).then_some(path)
+    }
     pub fn snapshots(&self) -> PathBuf {
         self.root.join("snapshots")
     }
@@ -188,6 +197,12 @@ mod tests {
             .instance_dir_checked("c4dbff5d-a385-47fb-9710-7d33bd154c3f")
             .unwrap();
         assert_eq!(dir.parent().unwrap(), p.instances());
+        assert_eq!(
+            p.modpack_upgrade_journal("c4dbff5d-a385-47fb-9710-7d33bd154c3f")
+                .unwrap()
+                .parent(),
+            Some(p.modpack_upgrade_journals().as_path())
+        );
     }
 
     #[test]
