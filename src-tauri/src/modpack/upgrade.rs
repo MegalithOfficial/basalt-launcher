@@ -229,6 +229,32 @@ async fn target_update(
     Ok(Some(upgrade_from_version(current, &latest)?))
 }
 
+pub(crate) async fn ensure_pack_state(app: &AppHandle, state: &AppState, instance: &Instance) {
+    let path = state_path(&state.paths.instance_dir(&instance.id));
+    if state.files.is_file(&path).unwrap_or(false) {
+        return;
+    }
+    let (Some(provider), Some(project), Some(version)) = (
+        instance.pack_provider.as_deref(),
+        instance.pack_project_id.as_deref(),
+        instance.pack_version_id.as_deref(),
+    ) else {
+        return;
+    };
+    let Ok(provider) = Provider::parse(provider) else {
+        return;
+    };
+    if let Err(error) = adopt_pack_state(app, state, instance, provider, project, version).await {
+        tracing::warn!(
+            instance_id = %instance.id,
+            %error,
+            "could not read the installed pack version, this upgrade will replace pack configs"
+        );
+    } else {
+        tracing::info!(instance_id = %instance.id, "adopted the installed pack version as a baseline");
+    }
+}
+
 pub async fn adopt_pack_state(
     app: &AppHandle,
     state: &AppState,
@@ -513,6 +539,7 @@ pub async fn plan_modpack_upgrade(
             changes: None,
         }),
         PreparePackOutcome::Ready(prepared) => {
+            ensure_pack_state(app, state, instance).await;
             let old = read_pack_state(state, instance)?;
             let new =
                 state_from_pack(&prepared.target.id, &prepared.index, &prepared.archive_path)?;
@@ -717,6 +744,7 @@ pub async fn upgrade_modpack(
         .cloned()
         .ok_or_else(|| Error::other("Pack index does not declare a Minecraft version."))?;
     let loader = loader_from_dependencies(&prepared.index.dependencies)?;
+    ensure_pack_state(app, state, &instance).await;
     let old_state = read_pack_state(state, &instance)?;
     let new_state = state_from_pack(&prepared.target.id, &prepared.index, &prepared.archive_path)?;
     let preserved = preserved_overrides(state, &instance, &old_state, &new_state)?;
