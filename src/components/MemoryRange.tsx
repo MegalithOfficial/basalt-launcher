@@ -5,8 +5,9 @@ import { cn } from "../lib/cn";
 const FLOOR = 512;
 const STEP = 256;
 
-/** Marks worth aiming for: the allocations most packs ask for. */
-const TICKS = [2048, 4096, 8192];
+const CANDIDATES = [1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576, 32768, 49152];
+
+const LABEL_GAP = 10;
 
 function label(mb: number) {
   if (mb % 1024 === 0) return `${mb / 1024} GB`;
@@ -23,7 +24,6 @@ export function MemoryRange({
   min: number;
   max: number;
   ceiling: number;
-  /** Free memory right now, drawn as the point where allocation gets risky. */
   available?: number;
   onChange: (min: number, max: number) => void;
 }) {
@@ -57,8 +57,6 @@ export function MemoryRange({
     [valueAt, onChange, min, max],
   );
 
-  /// The pointer leaves the handle almost immediately once it starts moving, so the
-  /// drag is followed on the window rather than the element it began on.
   useEffect(() => {
     if (!dragging) return;
     const onMove = (event: PointerEvent) => move(dragging, event.clientX);
@@ -81,7 +79,16 @@ export function MemoryRange({
   };
 
   const tight = available != null && max > available;
-  const ticks = TICKS.filter((tick) => tick > FLOOR + STEP && tick < ceiling - STEP);
+
+  const ticks: number[] = [];
+  let lastLabel = 0;
+  for (const candidate of CANDIDATES) {
+    if (candidate <= FLOOR + STEP || candidate >= ceiling - STEP) continue;
+    const at = percent(candidate);
+    if (at - lastLabel < LABEL_GAP || 100 - at < LABEL_GAP) continue;
+    ticks.push(candidate);
+    lastLabel = at;
+  }
 
   const handle = (which: "min" | "max", value: number) => (
     <div

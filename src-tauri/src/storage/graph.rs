@@ -62,12 +62,6 @@ fn profile_matches(instance: &Instance, id: &str) -> bool {
     }
 }
 
-/// Works out everything on disk that an instance can still reach.
-///
-/// Every rule here may only widen the live set. Keeping a file nothing needs costs disk;
-/// dropping one an instance needs stops it launching, so anything ambiguous is kept. If a
-/// version an instance actually uses cannot be read, the whole answer is withheld rather
-/// than reported half-resolved.
 pub fn resolve(files: &FileManager, paths: &Paths, instances: &[Instance]) -> Result<Graph> {
     let on_disk = installed_versions(files, paths);
     let mut parsed: HashMap<String, VersionJson> = HashMap::new();
@@ -134,8 +128,6 @@ pub fn resolve(files: &FileManager, paths: &Paths, instances: &[Instance]) -> Re
 
         set.natives.insert(json.id.clone());
 
-        // A profile that inherits its assets carries no index of its own, and asking for one
-        // by name would land on the "legacy" fallback that was never downloaded.
         if json.asset_index.is_none() && json.assets.is_none() {
             continue;
         }

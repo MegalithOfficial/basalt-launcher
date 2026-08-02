@@ -10,7 +10,6 @@ use crate::{
     tasks::TaskHandle,
 };
 
-/// The pieces of the app a scan needs, owned so the work can move onto a blocking thread.
 #[derive(Clone)]
 pub struct Store {
     pub files: FileManager,
@@ -83,7 +82,6 @@ pub struct StorageReport {
     pub shared_dedupe: bool,
 }
 
-/// Remembers files the scan has already counted, so a hardlinked copy is not counted twice.
 #[derive(Default)]
 struct Counted {
     #[cfg(unix)]
@@ -111,8 +109,6 @@ struct Walk {
     partials: Vec<(PathBuf, u64)>,
 }
 
-/// Totals a tree, skipping symlinks so a mod that linked somewhere odd cannot pull the scan
-/// outside the data directory or send it round in circles.
 fn walk(files: &FileManager, root: &Path, counted: &mut Counted) -> Walk {
     let mut pending = vec![root.to_path_buf()];
     let mut walk = Walk {
@@ -418,11 +414,6 @@ fn clear_orphan_files(files: &FileManager, root: &Path, live: &HashSet<PathBuf>)
     Ok(freed)
 }
 
-/// Frees the selected buckets.
-///
-/// Anything derived from the reference graph is worked out again here rather than trusted
-/// from the report the window is showing, so a scan that has gone stale can only ever delete
-/// less than it claimed, never more.
 pub fn reclaim(store: &Store, targets: &[String]) -> Result<ReclaimOutcome> {
     let files = &store.files;
     let paths = &store.paths;
@@ -760,8 +751,6 @@ pub fn scan(store: &Store, task: Option<&TaskHandle>) -> Result<StorageReport> {
 mod tests {
     use super::*;
 
-    /// Not a unit test but a way to look at the real data directory:
-    /// `cargo test --lib storage::tests::report_on_the_real_data_directory -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn report_on_the_real_data_directory() {
