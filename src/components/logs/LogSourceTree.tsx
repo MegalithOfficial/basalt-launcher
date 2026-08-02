@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { ChevronRight, FileArchive, FileText, FolderOpen, ScrollText } from "lucide-react";
+import {
+  ChevronRight,
+  FileArchive,
+  FileText,
+  FileWarning,
+  FolderOpen,
+  ScrollText,
+} from "lucide-react";
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
@@ -11,7 +18,7 @@ import { useStore } from "../../store";
 export type LogSelection =
   | { kind: "launcher" }
   | { kind: "run"; runningId: string }
-  | { kind: "file"; instanceId: string; name: string };
+  | { kind: "file"; instanceId: string; name: string; crash: boolean };
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -155,13 +162,14 @@ export function LogSourceTree({
         </>
       )}
 
-      <Section label="Instance folders" />
+      <Section label="Logs and crash reports" />
       {instances.length === 0 && (
         <div className="px-3 py-2 text-xs text-content-faint">No instances yet.</div>
       )}
       {instances.map((instance) => {
         const open = expanded.includes(instance.id);
         const listing = files[instance.id];
+        const crashes = listing?.filter((file) => file.crash).length ?? 0;
         return (
           <div key={instance.id}>
             <button
@@ -175,6 +183,11 @@ export function LogSourceTree({
                 )}
               />
               <span className="min-w-0 flex-1 truncate font-medium">{instance.name}</span>
+              {crashes > 0 && (
+                <span className="shrink-0 rounded bg-danger/15 px-1.5 text-[10px] font-semibold text-danger">
+                  {crashes}
+                </span>
+              )}
               <span className="shrink-0 text-[10px] text-content-faint">
                 {listing ? listing.length : ""}
               </span>
@@ -184,23 +197,31 @@ export function LogSourceTree({
               <>
                 {listing?.length === 0 && (
                   <div className="py-1.5 pl-9 pr-3 text-xs text-content-faint">
-                    No log files yet.
+                    Nothing here yet.
                   </div>
                 )}
                 {listing?.map((file) => (
                   <Row
-                    key={file.name}
+                    key={`${file.crash ? "crash" : "log"}/${file.name}`}
                     depth={1}
                     active={
                       selection.kind === "file" &&
                       selection.instanceId === instance.id &&
-                      selection.name === file.name
+                      selection.name === file.name &&
+                      selection.crash === file.crash
                     }
                     onClick={() =>
-                      onSelect({ kind: "file", instanceId: instance.id, name: file.name })
+                      onSelect({
+                        kind: "file",
+                        instanceId: instance.id,
+                        name: file.name,
+                        crash: file.crash,
+                      })
                     }
                   >
-                    {file.compressed ? (
+                    {file.crash ? (
+                      <FileWarning className="size-3.5 shrink-0 text-danger" />
+                    ) : file.compressed ? (
                       <FileArchive className="size-3.5 shrink-0 text-content-faint" />
                     ) : (
                       <FileText className="size-3.5 shrink-0 text-content-faint" />

@@ -1075,9 +1075,11 @@ mod tests {
         .unwrap();
         assert_eq!(summary.excluded, vec!["saves".to_string()]);
 
-        let manifest =
-            read_manifest(&store.files, &store.paths.snapshot_dir(&instance.id, &summary.id))
-                .unwrap();
+        let manifest = read_manifest(
+            &store.files,
+            &store.paths.snapshot_dir(&instance.id, &summary.id),
+        )
+        .unwrap();
         assert!(manifest
             .files
             .iter()

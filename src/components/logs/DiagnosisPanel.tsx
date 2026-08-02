@@ -23,9 +23,11 @@ function fixLabel(fix: DiagnosisFix) {
 export function DiagnosisPanel({
   instance,
   logName = null,
+  crash = false,
 }: {
   instance: Instance;
   logName?: string | null;
+  crash?: boolean;
 }) {
   const openDiscover = useStore((s) => s.openDiscover);
   const resetDiscoverBrowse = useStore((s) => s.resetDiscoverBrowse);
@@ -38,13 +40,13 @@ export function DiagnosisPanel({
   useEffect(() => {
     let live = true;
     api
-      .diagnoseInstance(instance.id, logName)
+      .diagnoseInstance(instance.id, logName, crash)
       .then((list) => live && setFound(list))
       .catch(() => live && setFound([]));
     return () => {
       live = false;
     };
-  }, [instance.id, logName]);
+  }, [instance.id, logName, crash]);
 
   const apply = async (fix: DiagnosisFix) => {
     if (fix === "open_mods_folder") {

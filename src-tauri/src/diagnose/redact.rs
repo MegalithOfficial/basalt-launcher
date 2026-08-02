@@ -33,21 +33,16 @@ fn earliest<'a>(text: &str, markers: &[&'a str]) -> Option<(usize, &'a str)> {
         .min_by_key(|(at, _)| *at)
 }
 
-fn earliest_lowered<'a>(lower: &str, markers: &[&'a str]) -> Option<(usize, &'a str)> {
-    earliest(lower, markers)
-}
-
 fn is_path_break(character: char) -> bool {
     matches!(character, '/' | '\\' | '"' | '\'' | ':' | ',' | ')' | ']')
         || character.is_whitespace()
 }
 
 fn is_value_break(character: char) -> bool {
-    matches!(character, '"' | '\'' | ',' | '}' | ']' | '&' | ';' | ')')
-        || character.is_whitespace()
+    matches!(character, '"' | '\'' | ',' | '}' | ']' | '&' | ';' | ')') || character.is_whitespace()
 }
 
-fn take_while_not<'a>(text: &'a str, stop: fn(char) -> bool) -> (&'a str, &'a str) {
+fn take_while_not(text: &str, stop: fn(char) -> bool) -> (&str, &str) {
     let end = text.find(stop).unwrap_or(text.len());
     text.split_at(end)
 }
@@ -93,7 +88,7 @@ fn key_values(line: &str) -> String {
     let lower = line.to_ascii_lowercase();
     let mut out = String::with_capacity(line.len());
     let mut cursor = 0usize;
-    while let Some((at, key)) = earliest_lowered(&lower[cursor..], KEYS) {
+    while let Some((at, key)) = earliest(&lower[cursor..], KEYS) {
         let start = cursor + at + key.len();
         out.push_str(&line[cursor..start]);
         let after = &line[start..];
@@ -133,15 +128,13 @@ fn bearer_tokens(line: &str) -> String {
 fn looks_like_uuid(value: &str) -> bool {
     let bytes = value.as_bytes();
     match bytes.len() {
-        36 => {
-            bytes.iter().enumerate().all(|(index, byte)| {
-                if matches!(index, 8 | 13 | 18 | 23) {
-                    *byte == b'-'
-                } else {
-                    byte.is_ascii_hexdigit()
-                }
-            })
-        }
+        36 => bytes.iter().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                *byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        }),
         32 => bytes.iter().all(u8::is_ascii_hexdigit),
         _ => false,
     }
@@ -177,11 +170,10 @@ fn url_credentials(line: &str) -> String {
         out.push_str(&rest[..at + 3]);
         let after = &rest[at + 3..];
         let (authority, tail) = take_while_not(after, |c| c == '/' || c.is_whitespace());
-        match authority.find('@').and_then(|end| {
-            authority[..end]
-                .find(':')
-                .map(|colon| (colon, end))
-        }) {
+        match authority
+            .find('@')
+            .and_then(|end| authority[..end].find(':').map(|colon| (colon, end)))
+        {
             Some((colon, end)) => {
                 out.push_str(&authority[..colon + 1]);
                 out.push_str(PLACEHOLDER);

@@ -188,7 +188,7 @@ export function LogsView() {
   const removeFile = async () => {
     if (selection.kind !== "file") return;
     try {
-      await api.deleteInstanceLog(selection.instanceId, selection.name);
+      await api.deleteInstanceLog(selection.instanceId, selection.name, selection.crash);
       notifyRemoved(`Deleted ${selection.name}`, fileInstance?.name);
       setTreeVersion((v) => v + 1);
       select({ kind: "launcher" });
@@ -206,7 +206,7 @@ export function LogsView() {
 
   const loadShareText = useCallback(() => {
     if (selection.kind === "file")
-      return api.redactInstanceLog(selection.instanceId, selection.name);
+      return api.redactInstanceLog(selection.instanceId, selection.name, selection.crash);
     const text =
       selection.kind === "run"
         ? (logsMap[selection.runningId] ?? []).map((entry) => entry.line).join("\n")
@@ -381,7 +381,11 @@ export function LogsView() {
         {selection.kind === "file" && fileInstance && (
           <>
             <ToolButton
-              onClick={() => void openPath(`${fileInstance.dir}/logs`)}
+              onClick={() =>
+                void openPath(
+                  `${fileInstance.dir}/${selection.crash ? "crash-reports" : "logs"}`,
+                )
+              }
               title="Open the folder"
             >
               <FolderOpen className="size-3.5" />
@@ -413,7 +417,11 @@ export function LogsView() {
         )}
 
         {selection.kind === "file" && fileInstance && (
-          <DiagnosisPanel instance={fileInstance} logName={selection.name} />
+          <DiagnosisPanel
+            instance={fileInstance}
+            logName={selection.name}
+            crash={selection.crash}
+          />
         )}
 
         {selection.kind === "launcher" && config?.env_override && (
@@ -458,6 +466,7 @@ export function LogsView() {
           <FileLogPanel
             instanceId={selection.instanceId}
             name={selection.name}
+            crash={selection.crash}
             query={query}
             minLevel={lineLevel}
             onResult={onFileResult}

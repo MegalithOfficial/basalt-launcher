@@ -7,12 +7,14 @@ import { OutputLine, type LineLevel } from "./lines";
 export function FileLogPanel({
   instanceId,
   name,
+  crash,
   query,
   minLevel,
   onResult,
 }: {
   instanceId: string;
   name: string;
+  crash: boolean;
   query: string;
   minLevel: LineLevel | "all";
   onResult: (search: LogSearch | null) => void;
@@ -27,7 +29,7 @@ export function FileLogPanel({
       () => {
         setLoading(true);
         api
-          .searchInstanceLog(instanceId, name, query, minLevel === "all" ? null : minLevel)
+          .searchInstanceLog(instanceId, name, crash, query, minLevel === "all" ? null : minLevel)
           .then((search) => {
             if (cancelled) return;
             setResult(search);
@@ -49,7 +51,7 @@ export function FileLogPanel({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [instanceId, name, query, minLevel, onResult]);
+  }, [instanceId, name, crash, query, minLevel, onResult]);
 
   const narrowed = !!query.trim() || minLevel !== "all";
 

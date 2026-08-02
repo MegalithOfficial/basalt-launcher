@@ -117,7 +117,8 @@ fn missing_dependency(lines: &[&str]) -> Option<Diagnosis> {
     let mut subjects = Vec::new();
     for line in lines {
         let lower = line.to_ascii_lowercase();
-        if !(lower.contains("which is missing") || lower.contains("missing or unsupported mandatory"))
+        if !(lower.contains("which is missing")
+            || lower.contains("missing or unsupported mandatory"))
         {
             continue;
         }

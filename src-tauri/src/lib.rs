@@ -43,6 +43,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -216,6 +217,10 @@ pub fn run() {
             commands::launch_commands::list_running,
             commands::launch_commands::get_logs,
             commands::launch_commands::close_running,
+            commands::captures::list_screenshots,
+            commands::captures::delete_screenshots,
+            commands::captures::copy_screenshot,
+            commands::captures::ensure_thumbnails,
             commands::logging_commands::diagnose_instance,
             commands::logging_commands::redact_instance_log,
             commands::logging_commands::redact_text,

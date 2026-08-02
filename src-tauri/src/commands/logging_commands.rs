@@ -20,6 +20,7 @@ pub struct InstanceLogFile {
     pub size_bytes: u64,
     pub modified_ms: i64,
     pub compressed: bool,
+    pub crash: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -67,9 +68,10 @@ fn match_ranges(line: &str, needle_lower: &str) -> Vec<[usize; 2]> {
     ranges
 }
 
-fn instance_logs_dir(state: &AppState, instance_id: &str) -> Result<PathBuf> {
+fn instance_logs_dir(state: &AppState, instance_id: &str, crash: bool) -> Result<PathBuf> {
     let instance = super::find_instance(state, instance_id)?;
-    Ok(PathBuf::from(instance.dir).join("logs"))
+    let folder = if crash { "crash-reports" } else { "logs" };
+    Ok(PathBuf::from(instance.dir).join(folder))
 }
 
 fn is_log_name(name: &str) -> bool {
@@ -128,35 +130,37 @@ pub fn list_instance_logs(
     state: State<AppState>,
     instance_id: String,
 ) -> Result<Vec<InstanceLogFile>> {
-    let dir = instance_logs_dir(&state, &instance_id)?;
     let mut files = Vec::new();
 
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(files),
-    };
+    for crash in [false, true] {
+        let dir = instance_logs_dir(&state, &instance_id, crash)?;
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
 
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if !is_log_name(&name) {
-            continue;
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !is_log_name(&name) {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            let modified_ms = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            files.push(InstanceLogFile {
+                compressed: name.to_ascii_lowercase().ends_with(".gz"),
+                name,
+                size_bytes: meta.len(),
+                modified_ms,
+                crash,
+            });
         }
-        let Ok(meta) = entry.metadata() else { continue };
-        if !meta.is_file() {
-            continue;
-        }
-        let modified_ms = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(0);
-        files.push(InstanceLogFile {
-            compressed: name.to_ascii_lowercase().ends_with(".gz"),
-            name,
-            size_bytes: meta.len(),
-            modified_ms,
-        });
     }
 
     files.sort_by(|a, b| {
@@ -173,6 +177,7 @@ pub fn diagnose_instance(
     state: State<AppState>,
     instance_id: String,
     name: Option<String>,
+    crash: Option<bool>,
 ) -> Result<Vec<crate::diagnose::Diagnosis>> {
     let instance = super::find_instance(&state, &instance_id)?;
     let settings = state.db.load_settings()?;
@@ -181,13 +186,16 @@ pub fn diagnose_instance(
     };
 
     if let Some(name) = name {
-        let text = read_instance_log(state, instance_id, name)?;
+        let text = read_instance_log(state, instance_id, name, crash.unwrap_or(false))?;
         return Ok(crate::diagnose::analyze(&text, &context));
     }
 
     let root = PathBuf::from(&instance.dir);
     let mut text = String::new();
-    for (directory, wanted) in [(root.join("crash-reports"), "txt"), (root.join("logs"), "log")] {
+    for (directory, wanted) in [
+        (root.join("crash-reports"), "txt"),
+        (root.join("logs"), "log"),
+    ] {
         let Ok(entries) = std::fs::read_dir(&directory) else {
             continue;
         };
@@ -228,11 +236,12 @@ pub fn search_instance_log(
     state: State<AppState>,
     instance_id: String,
     name: String,
+    crash: bool,
     query: String,
     min_level: Option<String>,
     limit: Option<usize>,
 ) -> Result<LogSearch> {
-    let text = read_instance_log(state, instance_id, name)?;
+    let text = read_instance_log(state, instance_id, name, crash)?;
     Ok(search_text(
         &text,
         &query,
@@ -344,8 +353,9 @@ pub fn delete_instance_log(
     state: State<AppState>,
     instance_id: String,
     name: String,
+    crash: bool,
 ) -> Result<()> {
-    let path = log_path(&state, &instance_id, &name)?;
+    let path = log_path(&state, &instance_id, &name, crash)?;
     std::fs::remove_file(&path)?;
     tracing::info!(file = %name, "instance log deleted");
     Ok(())
@@ -381,16 +391,20 @@ pub fn redact_instance_log(
     state: State<AppState>,
     instance_id: String,
     name: String,
+    crash: bool,
 ) -> Result<String> {
     let secrets = known_secrets(&state);
-    let text = read_instance_log(state, instance_id, name)?;
+    let text = read_instance_log(state, instance_id, name, crash)?;
     Ok(crate::diagnose::redact::redact(&text, &secrets))
 }
 
 #[tauri::command]
 #[tracing::instrument(skip(state, text), err)]
 pub fn redact_text(state: State<AppState>, text: String) -> Result<String> {
-    Ok(crate::diagnose::redact::redact(&text, &known_secrets(&state)))
+    Ok(crate::diagnose::redact::redact(
+        &text,
+        &known_secrets(&state),
+    ))
 }
 
 #[tauri::command]
@@ -427,12 +441,12 @@ pub async fn share_log(state: State<'_, AppState>, text: String) -> Result<Strin
         .ok_or_else(|| Error::other("mclo.gs did not return a link"))
 }
 
-fn log_path(state: &AppState, instance_id: &str, name: &str) -> Result<PathBuf> {
+fn log_path(state: &AppState, instance_id: &str, name: &str, crash: bool) -> Result<PathBuf> {
     if !is_log_name(name) || name.contains('/') || name.contains('\\') || name.contains("..") {
         return Err(Error::other(format!("not a log file: {name}")));
     }
 
-    let dir = instance_logs_dir(state, instance_id)?;
+    let dir = instance_logs_dir(state, instance_id, crash)?;
     let path = dir.join(name);
     if path.parent() != Some(dir.as_path()) {
         return Err(Error::other(format!("not a log file: {name}")));
@@ -440,8 +454,13 @@ fn log_path(state: &AppState, instance_id: &str, name: &str) -> Result<PathBuf> 
     Ok(path)
 }
 
-fn read_instance_log(state: State<AppState>, instance_id: String, name: String) -> Result<String> {
-    let path = log_path(&state, &instance_id, &name)?;
+fn read_instance_log(
+    state: State<AppState>,
+    instance_id: String,
+    name: String,
+    crash: bool,
+) -> Result<String> {
+    let path = log_path(&state, &instance_id, &name, crash)?;
     let mut file = std::fs::File::open(&path)?;
 
     if name.to_ascii_lowercase().ends_with(".gz") {

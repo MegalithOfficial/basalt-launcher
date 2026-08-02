@@ -650,11 +650,25 @@ export interface LogRecord {
 
 export type LogsTab = "launcher" | "game" | "files";
 
+export interface Screenshot {
+  name: string;
+  path: string;
+  size_bytes: number;
+  modified_ms: number;
+  thumbnail: string | null;
+}
+
+export interface Thumbnail {
+  name: string;
+  path: string | null;
+}
+
 export interface InstanceLogFile {
   name: string;
   size_bytes: number;
   modified_ms: number;
   compressed: boolean;
+  crash: boolean;
 }
 
 export interface LogHit {

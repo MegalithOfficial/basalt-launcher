@@ -36,6 +36,7 @@ import { useCurseforgeDownloads } from "../components/CurseForgeDownloadModal";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
 import { WorldsPanel } from "../components/worlds/WorldsPanel";
+import { ScreenshotsPanel } from "../components/captures/ScreenshotsPanel";
 import { ContextMenu, useContextMenu, type MenuItem } from "../components/ContextMenu";
 import { SnapshotsModal } from "../components/SnapshotsModal";
 import { ModpackUpgradeModal } from "../components/ModpackUpgradeModal";
@@ -63,7 +64,7 @@ import type {
 import { useActiveProjectIds, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
 
-type InstanceTab = ContentKind | "worlds";
+type InstanceTab = ContentKind | "worlds" | "screenshots";
 
 const TABS: Array<{ kind: ContentKind; label: string; extensions: string[] }> = [
   { kind: "mods", label: "Mods", extensions: ["jar"] },
@@ -80,6 +81,12 @@ const SCHEMATICS_TAB = {
 const WORLDS_TAB = {
   kind: "worlds" as const,
   label: "Worlds",
+  extensions: [],
+};
+
+const SCREENSHOTS_TAB = {
+  kind: "screenshots" as const,
+  label: "Screenshots",
   extensions: [],
 };
 
@@ -248,7 +255,7 @@ export function InstanceView() {
 
   const refresh = useCallback(
     async (reconcile = false) => {
-      if (!instance || tab === "worlds") return;
+      if (!instance || tab === "worlds" || tab === "screenshots") return;
       const target = tab;
       setLoadingTab(target);
       try {
@@ -375,10 +382,10 @@ export function InstanceView() {
     ? TABS
     : TABS.filter((t) => t.kind === "resourcepacks");
   const contentTabs = hasSchematicMod ? [...baseTabs, SCHEMATICS_TAB] : baseTabs;
-  const allTabs = [...contentTabs, WORLDS_TAB];
+  const allTabs = [...contentTabs, WORLDS_TAB, SCREENSHOTS_TAB];
+  const isContent = tab !== "worlds" && tab !== "screenshots";
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
-  const tabUpdates =
-    tab === "worlds" ? NO_UPDATES : updates.filter((u) => u.kind === tab);
+  const tabUpdates = isContent ? updates.filter((u) => u.kind === tab) : NO_UPDATES;
   const items = itemsByTab[tab] ?? EMPTY_ITEMS;
   const loading =
     (loadingTab !== null && itemsByTab[tab] === undefined) ||
@@ -411,7 +418,7 @@ export function InstanceView() {
   };
 
   const addContent = async () => {
-    if (tab === "worlds") return;
+    if (tab === "worlds" || tab === "screenshots") return;
     if (tab !== "schematics") {
       openSearch(tab);
       return;
@@ -428,13 +435,13 @@ export function InstanceView() {
   };
 
   const toggle = async (item: ContentItem) => {
-    if (tab === "worlds") return;
+    if (tab === "worlds" || tab === "screenshots") return;
     await api.toggleInstanceContent(instance.id, tab, item.file_name);
     await refresh();
   };
 
   const askRemove = async (item: ContentItem) => {
-    if (tab === "worlds") return;
+    if (tab === "worlds" || tab === "screenshots") return;
     const plan = await api
       .planContentRemoval(instance.id, tab, item.file_name)
       .catch(() => ({ dependents: [], from_pack: false, orphans: [] }) as RemovalPlan);
@@ -451,7 +458,7 @@ export function InstanceView() {
   };
 
   const remove = async (item: ContentItem, alsoRemove: string[]) => {
-    if (tab === "worlds") return;
+    if (tab === "worlds" || tab === "screenshots") return;
     close();
     await api.deleteInstanceContent(instance.id, tab, item.file_name);
     let extra = 0;
@@ -477,7 +484,7 @@ export function InstanceView() {
     withDependencies = true,
     plan?: InstallPlan,
   ) => {
-    if (tab === "worlds") return;
+    if (tab === "worlds" || tab === "screenshots") return;
     setSuggestBusy(project.id);
     try {
       if (!plan) {
@@ -590,7 +597,7 @@ export function InstanceView() {
   };
 
   const updateOne = async (item: ContentItem) => {
-    if (tab === "worlds" || !item.update) return;
+    if (tab === "worlds" || tab === "screenshots" || !item.update) return;
     setUpdatingFile(item.file_name);
     try {
       await applyAvailableUpdate(item.update);
@@ -921,7 +928,7 @@ export function InstanceView() {
           })}
         </div>
         <div className="mb-2 flex items-center gap-2">
-          {tab !== "worlds" && (
+          {isContent && (
             <>
               {tabUpdates.length > 0 && (
                 <button
@@ -940,44 +947,48 @@ export function InstanceView() {
               )}
             </>
           )}
-          <button
-            onClick={() =>
-              tab === "worlds" ? setWorldRefresh((v) => v + 1) : void checkUpdates()
-            }
-            disabled={
-              tab === "worlds" ? worldsLoading : checkingUpdates || busyWithTask
-            }
-            title={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
-            aria-label={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
-            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <RefreshCw
-              className={cn(
-                "size-3.5",
-                (tab === "worlds" ? worldsLoading : checkingUpdates) && "animate-spin",
-              )}
-            />
-          </button>
-          <button
-            onClick={() =>
-              tab === "worlds" ? setDialog({ kind: "worldImport" }) : void addContent()
-            }
-            disabled={busyWithTask}
-            title={busyWithTask ? "Wait for the current download to finish" : undefined}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-          >
-            {tab === "worlds" ? (
-              <HardDriveUpload className="size-3.5" />
-            ) : (
-              <Plus className="size-3.5" />
-            )}
-            {tab === "worlds" ? "Import world" : "Add content"}
-          </button>
+          {tab !== "screenshots" && (
+            <>
+              <button
+                onClick={() =>
+                  tab === "worlds" ? setWorldRefresh((v) => v + 1) : void checkUpdates()
+                }
+                disabled={tab === "worlds" ? worldsLoading : checkingUpdates || busyWithTask}
+                title={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
+                aria-label={tab === "worlds" ? "Refresh worlds" : "Check for updates"}
+                className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <RefreshCw
+                  className={cn(
+                    "size-3.5",
+                    (tab === "worlds" ? worldsLoading : checkingUpdates) && "animate-spin",
+                  )}
+                />
+              </button>
+              <button
+                onClick={() =>
+                  tab === "worlds" ? setDialog({ kind: "worldImport" }) : void addContent()
+                }
+                disabled={busyWithTask}
+                title={busyWithTask ? "Wait for the current download to finish" : undefined}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all [background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+              >
+                {tab === "worlds" ? (
+                  <HardDriveUpload className="size-3.5" />
+                ) : (
+                  <Plus className="size-3.5" />
+                )}
+                {tab === "worlds" ? "Import world" : "Add content"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "worlds" ? (
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {tab === "screenshots" ? (
+          <ScreenshotsPanel instance={instance} />
+        ) : tab === "worlds" ? (
           <WorldsPanel
             instance={instance}
             running={gameRunning}

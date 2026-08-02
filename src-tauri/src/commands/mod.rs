@@ -6,6 +6,7 @@ use crate::{
 
 pub(crate) mod accounts;
 pub(crate) mod app;
+pub(crate) mod captures;
 pub(crate) mod content_commands;
 pub(crate) mod instances;
 pub(crate) mod launch_commands;

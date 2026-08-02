@@ -45,6 +45,8 @@ import type {
   RemovalPlan,
   RepairReport,
   SnapshotSummary,
+  Screenshot,
+  Thumbnail,
   ProjectSummary,
   ProjectVersion,
   RunningInfo,
@@ -391,18 +393,34 @@ export const api = {
   searchInstanceLog: (
     instanceId: string,
     name: string,
+    crash: boolean,
     query: string,
     minLevel: string | null = null,
   ) =>
-    call<LogSearch>("search_instance_log", { instanceId, name, query, minLevel, limit: 1500 }),
-  diagnoseInstance: (instanceId: string, name: string | null = null) =>
-    call<Diagnosis[]>("diagnose_instance", { instanceId, name }),
-  redactInstanceLog: (instanceId: string, name: string) =>
-    call<string>("redact_instance_log", { instanceId, name }),
+    call<LogSearch>("search_instance_log", {
+      instanceId,
+      name,
+      crash,
+      query,
+      minLevel,
+      limit: 1500,
+    }),
+  diagnoseInstance: (instanceId: string, name: string | null = null, crash = false) =>
+    call<Diagnosis[]>("diagnose_instance", { instanceId, name, crash }),
+  redactInstanceLog: (instanceId: string, name: string, crash: boolean) =>
+    call<string>("redact_instance_log", { instanceId, name, crash }),
   redactText: (text: string) => call<string>("redact_text", { text }),
   shareLog: (text: string) => call<string>("share_log", { text }),
-  deleteInstanceLog: (instanceId: string, name: string) =>
-    call<void>("delete_instance_log", { instanceId, name }),
+  deleteInstanceLog: (instanceId: string, name: string, crash: boolean) =>
+    call<void>("delete_instance_log", { instanceId, name, crash }),
+  listScreenshots: (instanceId: string) =>
+    call<Screenshot[]>("list_screenshots", { instanceId }),
+  deleteScreenshots: (instanceId: string, names: string[]) =>
+    call<number>("delete_screenshots", { instanceId, names }),
+  copyScreenshot: (instanceId: string, name: string) =>
+    call<void>("copy_screenshot", { instanceId, name }),
+  ensureThumbnails: (instanceId: string, names: string[]) =>
+    call<Thumbnail[]>("ensure_thumbnails", { instanceId, names }),
   setLogLevel: (level: string) => call<LogConfig>("set_log_level", { level }),
   resetLauncher: (deep: boolean) => call<void>("reset_launcher", { deep }),
   testNetwork: (url?: string) => call<NetworkProbe>("test_network", { url: url ?? null }),
