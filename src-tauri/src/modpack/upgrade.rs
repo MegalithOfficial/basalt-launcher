@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
     sync::Arc,
 };

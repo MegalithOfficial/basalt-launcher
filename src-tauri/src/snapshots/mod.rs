@@ -72,8 +72,6 @@ pub struct SnapshotSummary {
     pub excluded: Vec<String>,
 }
 
-pub const SCOPE_CHOICES: &[&str] = &["saves", "mods", "config", "resourcepacks", "shaderpacks"];
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SnapshotFile {
     path: PathBuf,
@@ -1088,7 +1086,7 @@ mod tests {
         assert!(manifest
             .files
             .iter()
-            .any(|file| file.path == PathBuf::from("mods/example.jar")));
+            .any(|file| file.path == Path::new("mods/example.jar")));
 
         store
             .files

@@ -86,6 +86,7 @@ pub struct StorageReport {
 /// Remembers files the scan has already counted, so a hardlinked copy is not counted twice.
 #[derive(Default)]
 struct Counted {
+    #[cfg(unix)]
     inodes: HashSet<u64>,
 }
 
