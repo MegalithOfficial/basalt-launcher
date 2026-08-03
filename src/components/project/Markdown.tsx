@@ -1,3 +1,6 @@
+import { memo, useMemo } from "react";
+import type { MouseEvent } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -16,18 +19,49 @@ const sanitizeSchema = {
   },
 };
 
-export function Markdown({
-  body,
-  format,
-  className,
-}: {
+interface MarkdownProps {
   body: string;
   format: "markdown" | "html";
   className?: string;
-}) {
+}
+
+function openExternalLink(event: MouseEvent<HTMLDivElement>) {
+  if (!(event.target instanceof Element)) return;
+  const anchor = event.target.closest("a[href]");
+  if (!(anchor instanceof HTMLAnchorElement)) return;
+
+  let href = anchor.getAttribute("href")?.trim();
+  if (!href || href.startsWith("#")) return;
+  if (href.startsWith("//")) href = `https:${href}`;
+
+  try {
+    const url = new URL(href);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return;
+  } catch {
+    return;
+  }
+
+  event.preventDefault();
+  void openUrl(href);
+}
+
+export function Markdown(props: MarkdownProps) {
+  return <MemoizedMarkdown {...props} />;
+}
+
+const MemoizedMarkdown = memo(function MemoizedMarkdown({
+  body,
+  format,
+  className,
+}: MarkdownProps) {
+  const sanitized = useMemo(
+    () => (format === "html" ? DOMPurify.sanitize(body) : ""),
+    [body, format],
+  );
+
   if (format === "markdown") {
     return (
-      <div className={cn("prose-basalt", className)}>
+      <div className={cn("prose-basalt", className)} onClick={openExternalLink}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
@@ -40,7 +74,8 @@ export function Markdown({
   return (
     <div
       className={cn("prose-basalt", className)}
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(body) }}
+      onClick={openExternalLink}
+      dangerouslySetInnerHTML={{ __html: sanitized }}
     />
   );
-}
+});

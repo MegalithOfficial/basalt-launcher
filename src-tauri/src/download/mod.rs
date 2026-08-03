@@ -279,6 +279,41 @@ fn response_range(response: &crate::network::ManagedResponse) -> Option<ContentR
         .and_then(parse_content_range)
 }
 
+fn forgecdn_fallback_url(url: &str) -> Option<String> {
+    let mut parsed = reqwest::Url::parse(url).ok()?;
+    if parsed.host_str() != Some("edge.forgecdn.net") {
+        return None;
+    }
+    parsed.set_host(Some("mediafilez.forgecdn.net")).ok()?;
+    Some(parsed.into())
+}
+
+async fn send_download_request(
+    client: &NetworkManager,
+    url: &str,
+    offset: u64,
+) -> Result<crate::network::ManagedResponse> {
+    let fallback = forgecdn_fallback_url(url);
+    let mut current = url;
+    loop {
+        let mut request = client
+            .get(current)
+            .header(reqwest::header::ACCEPT_ENCODING, "identity");
+        if offset > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
+        }
+        let response = client.send_download_once(request).await?;
+        if current == url && response.status() == reqwest::StatusCode::NOT_FOUND {
+            if let Some(fallback) = fallback.as_deref() {
+                tracing::warn!(url, fallback, "CurseForge edge download was unavailable");
+                current = fallback;
+                continue;
+            }
+        }
+        return Ok(response);
+    }
+}
+
 async fn verify_partial(files: &FileManager, path: &Path, spec: &DownloadSpec) -> Result<u64> {
     let files = files.clone();
     let path = path.to_path_buf();
@@ -394,13 +429,7 @@ async fn download_once(
         hook(offset);
     }
     let response = loop {
-        let mut request = client
-            .get(&spec.url)
-            .header(reqwest::header::ACCEPT_ENCODING, "identity");
-        if offset > 0 {
-            request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
-        }
-        let response = client.send_download_once(request).await?;
+        let response = send_download_request(client, &spec.url, offset).await?;
         if offset == 0 {
             let response = response.error_for_status()?;
             if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
@@ -1034,6 +1063,21 @@ mod tests {
         );
         assert_eq!(parse_content_range("bytes 7-3/8"), None);
         assert_eq!(parse_content_range("items 3-7/8"), None);
+    }
+
+    #[test]
+    fn curseforge_edge_urls_get_a_media_fallback() {
+        assert_eq!(
+            forgecdn_fallback_url(
+                "https://edge.forgecdn.net/files/7703/848/Apotheosis-1.21.1-8.5.2.jar"
+            )
+            .as_deref(),
+            Some("https://mediafilez.forgecdn.net/files/7703/848/Apotheosis-1.21.1-8.5.2.jar")
+        );
+        assert_eq!(
+            forgecdn_fallback_url("https://example.com/files/7703/848/file.jar"),
+            None
+        );
     }
 
     #[tokio::test]
