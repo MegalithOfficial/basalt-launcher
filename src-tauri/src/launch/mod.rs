@@ -65,7 +65,7 @@ async fn refresh_account(state: &AppState, account: Account) -> Result<Account> 
 fn can_launch_offline(error: &Error) -> bool {
     match error {
         Error::Http(error) => error.is_connect() || error.is_timeout() || error.is_body(),
-        Error::HttpStatus(status) => {
+        Error::HttpStatus(status) | Error::HttpResponse { status, .. } => {
             *status == reqwest::StatusCode::REQUEST_TIMEOUT
                 || *status == reqwest::StatusCode::TOO_MANY_REQUESTS
                 || status.is_server_error()

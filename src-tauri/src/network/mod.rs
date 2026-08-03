@@ -176,7 +176,8 @@ impl NetworkManager {
                     let wait = retry_after(&response).unwrap_or_else(|| backoff(attempt));
                     attempt += 1;
                     if attempt >= self.attempts() {
-                        return Err(Error::HttpStatus(response.status()));
+                        let response = response.buffer().await?;
+                        return Err(response.into_http_error());
                     }
                     drop(response);
                     tokio::time::sleep(wait).await;
@@ -367,9 +368,13 @@ impl BufferedResponse {
 
     pub fn error_for_status(self) -> Result<Self> {
         if self.status.is_client_error() || self.status.is_server_error() {
-            return Err(Error::HttpStatus(self.status));
+            return Err(self.into_http_error());
         }
         Ok(self)
+    }
+
+    fn into_http_error(self) -> Error {
+        Error::http_response(self.status, &self.body)
     }
 
     pub async fn bytes(self) -> Result<Vec<u8>> {

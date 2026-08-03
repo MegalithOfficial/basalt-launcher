@@ -50,10 +50,10 @@ pub async fn fetch<T: DeserializeOwned>(
     if !fetched.status.is_success() {
         return match cached {
             Some(entry) => Ok(serde_json::from_str(&entry.body)?),
-            None => Err(crate::error::Error::other(format!(
-                "request failed with {}",
-                fetched.status
-            ))),
+            None => Err(crate::error::Error::http_response(
+                fetched.status,
+                fetched.body.as_bytes(),
+            )),
         };
     }
 
@@ -67,10 +67,10 @@ pub async fn fetch<T: DeserializeOwned>(
 pub async fn post<T: DeserializeOwned>(state: &AppState, request: RequestBuilder) -> Result<T> {
     let fetched = state.network.fetch_body(request).await?;
     if !fetched.status.is_success() {
-        return Err(crate::error::Error::other(format!(
-            "request failed with {}",
-            fetched.status
-        )));
+        return Err(crate::error::Error::http_response(
+            fetched.status,
+            fetched.body.as_bytes(),
+        ));
     }
     Ok(serde_json::from_str(&fetched.body)?)
 }

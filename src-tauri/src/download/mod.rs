@@ -134,7 +134,7 @@ pub fn is_retryable(error: &Error) -> bool {
     match error {
         Error::Cancelled => false,
         Error::Checksum { .. } | Error::SizeMismatch { .. } => true,
-        Error::HttpStatus(status) => retryable_status(*status),
+        Error::HttpStatus(status) | Error::HttpResponse { status, .. } => retryable_status(*status),
         Error::Http(e) => {
             if let Some(status) = e.status() {
                 return retryable_status(status);
@@ -226,7 +226,9 @@ fn short_reason(error: &Error) -> String {
             Some(status) => format!("server said {status}"),
             None => "network error".to_string(),
         },
-        Error::HttpStatus(status) => format!("server said {status}"),
+        Error::HttpStatus(status) | Error::HttpResponse { status, .. } => {
+            format!("server said {status}")
+        }
         other => other.to_string(),
     }
 }
