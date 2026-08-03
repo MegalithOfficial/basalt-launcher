@@ -689,6 +689,12 @@ pub async fn install_modpack(
     state.db.insert_instance(&instance)?;
     tracing::info!(instance_id = %instance.id, name = %instance.name, "modpack instance created");
 
+    let icon_url = search::resolve_projects(state, provider, &[project_id.to_string()])
+        .await
+        .ok()
+        .and_then(|projects| projects.into_iter().next())
+        .and_then(|project| project.icon_url);
+
     let task = state.tasks.start(
         app,
         crate::tasks::TaskKind::ModpackInstall,
@@ -703,6 +709,7 @@ pub async fn install_modpack(
                     .map(|l| format!(" · {l}"))
                     .unwrap_or_default()
             )),
+            icon_url,
             instance_id: Some(instance.id.clone()),
             project_id: Some(project_id.to_string()),
             ..Default::default()

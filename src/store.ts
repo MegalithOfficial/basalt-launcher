@@ -686,18 +686,23 @@ export const useStore = create<AppStore>((set) => ({
                 (!!task.instance_id &&
                   candidate.instance_id === task.instance_id &&
                   candidate.kind === task.kind),
-            )
-            .map((candidate) => candidate.id);
+            );
+          const iconUrl =
+            task.icon_url ??
+            s.tasks[task.id]?.icon_url ??
+            superseded.find((candidate) => candidate.icon_url)?.icon_url ??
+            null;
+          const supersededIds = superseded.map((candidate) => candidate.id);
           const tasks = { ...s.tasks };
-          for (const id of superseded) delete tasks[id];
-          const taskOrder = s.taskOrder.filter((id) => !superseded.includes(id));
+          for (const id of supersededIds) delete tasks[id];
+          const taskOrder = s.taskOrder.filter((id) => !supersededIds.includes(id));
           if (!taskOrder.includes(task.id)) taskOrder.push(task.id);
           const marksInstalled =
             task.state === "succeeded" &&
             (task.kind === "game_install" || task.kind === "modpack_install") &&
             !!task.instance_id;
           return {
-            tasks: { ...tasks, [task.id]: task },
+            tasks: { ...tasks, [task.id]: { ...task, icon_url: iconUrl } },
             taskOrder,
             installedIds:
               marksInstalled && !s.installedIds.includes(task.instance_id!)
