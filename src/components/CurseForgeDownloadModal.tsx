@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
@@ -16,26 +23,36 @@ import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatBytes } from "../lib/packs";
 import type {
-  Instance,
+  InstallPlan,
   ManualDownload,
   ManualDownloadSource,
   SearchProvider,
 } from "../lib/types";
+import {
+  ContentInstallerContext,
+  type ContentInstallOptions,
+} from "../lib/contentInstaller";
 import { useStore } from "../store";
+import { InstallPlanPrompt } from "./InstallPlanPrompt";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "./Modal";
 
 interface InstallRequest {
   provider: SearchProvider;
   projectId: string;
   versionId: string;
-  title: string;
-  iconUrl: string | null;
   downloads: ManualDownload[];
+  resolve: (sources: ManualDownloadSource[] | null) => void;
+  reject: (error: unknown) => void;
 }
 
 interface BrowserDownloadRequest {
   downloads: ManualDownload[];
   resolve: (sources: ManualDownloadSource[] | null) => void;
+}
+
+interface ContentPlanRequest {
+  plan: InstallPlan;
+  resolve: (withDependencies: boolean | null) => void;
 }
 
 interface DownloadState {
@@ -357,27 +374,56 @@ function ManualDownloadDialog({
   );
 }
 
-export function useModpackInstaller({
-  onInstalled,
-  onError,
-}: {
-  onInstalled: (instance: Instance) => void;
-  onError: (error: string) => void;
-}) {
+export function ContentInstallerProvider({ children }: { children: React.ReactNode }) {
   const installModpack = useStore((state) => state.installModpack);
+  const installContentShared = useStore((state) => state.installContent);
   const beginOptimisticTask = useStore((state) => state.beginOptimisticTask);
   const endOptimisticTask = useStore((state) => state.endOptimisticTask);
   const [request, setRequest] = useState<InstallRequest | null>(null);
+  const [contentRequest, setContentRequest] = useState<ContentPlanRequest | null>(null);
   const [installingVersionId, setInstallingVersionId] = useState<string | null>(null);
 
-  const startInstall = useCallback(
+  const runInstall = useCallback(
     async (
       provider: SearchProvider,
       projectId: string,
       versionId: string,
-      title: string,
-      iconUrl: string | null,
-      sources: ManualDownloadSource[] = [],
+    ) => {
+      let sources: ManualDownloadSource[] = [];
+      if (provider === "curseforge") {
+        const plan = await api.planModpackInstall(provider, projectId, versionId);
+        if (plan.manual_downloads.length > 0) {
+          const collected = await new Promise<ManualDownloadSource[] | null>(
+            (resolve, reject) => {
+              setRequest({
+                provider,
+                projectId,
+                versionId,
+                downloads: plan.manual_downloads,
+                resolve,
+                reject,
+              });
+            },
+          );
+          if (!collected) return null;
+          sources = collected;
+          toast.info("Browser downloads verified", {
+            description: "Installing the pack.",
+          });
+        }
+      }
+      return await installModpack(provider, projectId, versionId, sources);
+    },
+    [installModpack],
+  );
+
+  const installPack = useCallback(
+    async (
+      provider: SearchProvider,
+      projectId: string,
+      versionId: string,
+      title = "Modpack",
+      iconUrl: string | null = null,
     ) => {
       setInstallingVersionId(versionId);
       const taskId = beginOptimisticTask("modpack_install", title, {
@@ -386,73 +432,174 @@ export function useModpackInstaller({
         projectId,
       });
       try {
-        return await installModpack(provider, projectId, versionId, sources);
+        return await runInstall(provider, projectId, versionId);
+      } catch (error) {
+        toast.error(`Could not install ${title}`, { description: String(error) });
+        throw error;
       } finally {
         endOptimisticTask(taskId);
         setInstallingVersionId(null);
       }
     },
-    [beginOptimisticTask, endOptimisticTask, installModpack],
+    [beginOptimisticTask, endOptimisticTask, runInstall],
   );
 
-  const install = async (
-    provider: SearchProvider,
-    projectId: string,
-    versionId: string,
-    title = "Modpack",
-    iconUrl: string | null = null,
-  ): Promise<Instance | null> => {
-    if (provider !== "curseforge") {
-      return startInstall(provider, projectId, versionId, title, iconUrl);
-    }
-    const plan = await api.planModpackInstall(provider, projectId, versionId);
-    if (plan.manual_downloads.length > 0) {
-      setRequest({
-        provider,
-        projectId,
-        versionId,
-        title,
+  const installLatestPack = useCallback(
+    async (
+      provider: SearchProvider,
+      projectId: string,
+      title = "Modpack",
+      iconUrl: string | null = null,
+    ) => {
+      const taskId = beginOptimisticTask("modpack_install", title, {
+        subtitle: "Finding a compatible version",
         iconUrl,
-        downloads: plan.manual_downloads,
+        projectId,
       });
-      return null;
-    }
-    return startInstall(provider, projectId, versionId, title, iconUrl);
-  };
-
-  return {
-    install,
-    installingVersionId,
-    modal: request ? (
-      <ManualDownloadDialog
-        request={request}
-        resolveMore={(sources) =>
-          api
-            .planModpackInstall(request.provider, request.projectId, request.versionId, sources)
-            .then((plan) => plan.manual_downloads)
+      try {
+        const versions = await api.listProjectVersions(
+          provider,
+          projectId,
+          "modpacks",
+          "",
+          null,
+        );
+        const preferred =
+          versions.find((version) => version.channel === "release") ?? versions[0];
+        if (!preferred) {
+          throw new Error("This pack has no installable versions.");
         }
-        onClose={() => setRequest(null)}
-        onReady={(sources) => {
-          const active = request;
-          setRequest(null);
-          toast.info("Browser downloads verified", {
-            description: "Installing the pack.",
+        setInstallingVersionId(preferred.id);
+        return await runInstall(provider, projectId, preferred.id);
+      } catch (error) {
+        toast.error(`Could not install ${title}`, { description: String(error) });
+        throw error;
+      } finally {
+        endOptimisticTask(taskId);
+        setInstallingVersionId(null);
+      }
+    },
+    [beginOptimisticTask, endOptimisticTask, runInstall],
+  );
+
+  const installContent = useCallback(
+    async (options: ContentInstallOptions) => {
+      const taskId = beginOptimisticTask(
+        "content_install",
+        options.title ?? "Content",
+        {
+          subtitle: "Planning install",
+          iconUrl: options.iconUrl,
+          instanceId: options.instanceId,
+          projectId: options.projectId,
+        },
+      );
+      try {
+        const plan = await api.planContentInstall(
+          options.provider,
+          options.projectId,
+          options.instanceId,
+          options.kind,
+          options.gameVersion,
+          options.loader,
+          options.versionId ?? null,
+        );
+        const replaces =
+          !!plan.primary?.replaces || plan.dependencies.some((file) => !!file.replaces);
+        const trivial =
+          plan.dependencies.length === 0 &&
+          plan.skipped.length === 0 &&
+          plan.conflicts.length === 0 &&
+          !replaces;
+        let withDependencies = true;
+        if (!trivial) {
+          const choice = await new Promise<boolean | null>((resolve) => {
+            setContentRequest({ plan, resolve });
           });
-          void startInstall(
-            active.provider,
-            active.projectId,
-            active.versionId,
-            active.title,
-            active.iconUrl,
-            sources,
-          )
-            .then(onInstalled)
-            .catch((error) => onError(String(error)));
-        }}
-        onError={onError}
+          if (choice === null) return null;
+          withDependencies = choice;
+        }
+        return await installContentShared({
+          provider: options.provider,
+          projectId: options.projectId,
+          instanceId: options.instanceId,
+          kind: options.kind,
+          gameVersion: options.gameVersion,
+          loader: options.loader,
+          versionId: options.versionId,
+          withDependencies,
+        });
+      } catch (error) {
+        toast.error(`Could not install ${options.title ?? "content"}`, {
+          description: String(error),
+        });
+        throw error;
+      } finally {
+        endOptimisticTask(taskId);
+      }
+    },
+    [beginOptimisticTask, endOptimisticTask, installContentShared],
+  );
+
+  const finishContentRequest = useCallback(
+    (withDependencies: boolean | null) => {
+      contentRequest?.resolve(withDependencies);
+      setContentRequest(null);
+    },
+    [contentRequest],
+  );
+
+  const finishRequest = useCallback(
+    (sources: ManualDownloadSource[] | null) => {
+      request?.resolve(sources);
+      setRequest(null);
+    },
+    [request],
+  );
+
+  const failRequest = useCallback(
+    (error: string) => {
+      request?.reject(new Error(error));
+      setRequest(null);
+    },
+    [request],
+  );
+
+  const value = useMemo(
+    () => ({ installContent, installPack, installLatestPack, installingVersionId }),
+    [installContent, installPack, installLatestPack, installingVersionId],
+  );
+
+  return (
+    <ContentInstallerContext.Provider value={value}>
+      {children}
+      <InstallPlanPrompt
+        plan={contentRequest?.plan ?? null}
+        busy={false}
+        progress={null}
+        onConfirm={() => finishContentRequest(true)}
+        onSkipDependencies={() => finishContentRequest(false)}
+        onCancel={() => finishContentRequest(null)}
       />
-    ) : null,
-  };
+      {request && (
+        <ManualDownloadDialog
+          request={request}
+          resolveMore={(sources) =>
+            api
+              .planModpackInstall(request.provider, request.projectId, request.versionId, sources)
+              .then((plan) => plan.manual_downloads)
+          }
+          onClose={() => finishRequest(null)}
+          onReady={finishRequest}
+          onError={failRequest}
+        />
+      )}
+    </ContentInstallerContext.Provider>
+  );
+}
+
+export function useContentInstaller() {
+  return useContext(ContentInstallerContext);
 }
 
 export function useCurseforgeDownloads() {

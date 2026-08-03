@@ -10,6 +10,7 @@ import { RecoveryBanner } from "./components/RecoveryBanner";
 import { TitleBar } from "./components/TitleBar";
 import { WindowFrame } from "./components/WindowFrame";
 import { UpdateNotifications } from "./components/UpdateNotifications";
+import { ContentInstallerProvider } from "./components/CurseForgeDownloadModal";
 import { Toaster } from "sonner";
 import { AccountsView } from "./views/AccountsView";
 import { HomeView } from "./views/HomeView";
@@ -69,6 +70,7 @@ function App() {
   const immersive = view === "instance" || view === "project";
 
   return (
+    <ContentInstallerProvider>
     <div
       className={cn(
         "flex h-full w-full overflow-hidden bg-base text-content",
@@ -147,6 +149,7 @@ function App() {
         </>
       )}
     </div>
+    </ContentInstallerProvider>
   );
 }
 

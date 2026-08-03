@@ -19,7 +19,6 @@ import type {
   Instance,
   ContentKind,
   FilterTaxonomy,
-  InstallPlan,
   ProjectSummary,
   SearchPage,
   SearchProvider,
@@ -37,8 +36,7 @@ import {
   FilterRail,
   type FilterState,
 } from "../components/FilterRail";
-import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
-import { useModpackInstaller } from "../components/CurseForgeDownloadModal";
+import { useContentInstaller } from "../components/CurseForgeDownloadModal";
 import { Modal, ModalHeader } from "../components/Modal";
 import { WorldTargetPicker } from "../components/WorldTargetPicker";
 import { InstanceTargetPicker } from "../components/InstanceTargetPicker";
@@ -47,7 +45,6 @@ import {
   taskFraction,
   useActiveProjectIds,
   useActiveTasksByProject,
-  useInstanceTask,
 } from "../lib/useTasks";
 import { useStore } from "../store";
 
@@ -74,12 +71,6 @@ const SORTS: Array<{ id: SortOrder; label: string }> = [
 
 const PAGE_SIZE = 40;
 
-interface PendingInstall {
-  project: ProjectSummary;
-  plan: InstallPlan;
-  into: Instance;
-}
-
 export function DiscoverView() {
   const kind = useStore((s) => s.discoverKind);
   const setKind = useStore((s) => s.setDiscoverKind);
@@ -92,8 +83,6 @@ export function DiscoverView() {
   );
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
-  const installContent = useStore((s) => s.installContent);
-  const contentProgress = useInstanceTask(targetId);
   const activeProjects = useActiveProjectIds();
   const activeTasks = useActiveTasksByProject();
   const allSources = useStore((s) => s.contentSources);
@@ -125,7 +114,6 @@ export function DiscoverView() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [resultView, setResultView] = useResultView("discover-view");
-  const [pending, setPending] = useState<PendingInstall | null>(null);
   const [planning, setPlanning] = useState<string | null>(null);
   const [pickingWorld, setPickingWorld] = useState<{
     project: ProjectSummary;
@@ -138,10 +126,7 @@ export function DiscoverView() {
   const [targetWorlds, setTargetWorlds] = useState<WorldSummary[]>([]);
   const [installingPack, setInstallingPack] = useState<string | null>(null);
   const [needsTarget, setNeedsTarget] = useState<ProjectSummary | null>(null);
-  const modpackInstaller = useModpackInstaller({
-    onInstalled: (created) => setNotice(`Created instance ${created.name}`),
-    onError: setError,
-  });
+  const contentInstaller = useContentInstaller();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const requestRef = useRef(0);
@@ -293,22 +278,9 @@ export function DiscoverView() {
       setError(null);
       setNotice(null);
       try {
-        const versions = await api.listProjectVersions(
+        const created = await contentInstaller.installLatestPack(
           provider,
           project.id,
-          "modpacks",
-          "",
-          null,
-        );
-        const preferred = versions.find((v) => v.channel === "release") ?? versions[0];
-        if (!preferred) {
-          setError("This pack has no installable versions.");
-          return;
-        }
-        const created = await modpackInstaller.install(
-          provider,
-          project.id,
-          preferred.id,
           project.title,
           project.icon_url,
         );
@@ -355,63 +327,26 @@ export function DiscoverView() {
       return;
     }
 
-    setPlanning(project.id);
     setError(null);
     setNotice(null);
     try {
-      const plan = await api.planContentInstall(
-        provider,
-        project.id,
-        destination.id,
-        kind,
-        destination.version_id,
-        kind === "mods" ? destination.loader : null,
-      );
-      const replaces =
-        !!plan.primary?.replaces || plan.dependencies.some((file) => !!file.replaces);
-      const trivial =
-        plan.dependencies.length === 0 &&
-        plan.skipped.length === 0 &&
-        plan.conflicts.length === 0 &&
-        !replaces;
-      if (trivial) {
-        await runInstall(project, true, destination);
-      } else {
-        setPending({ project, plan, into: destination });
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setPlanning(null);
-    }
-  };
-
-  const runInstall = async (
-    project: ProjectSummary,
-    withDependencies: boolean,
-    into?: Instance,
-  ) => {
-    const destination = into ?? target;
-    if (!destination) return;
-    setError(null);
-    try {
-      const files = await installContent({
+      const files = await contentInstaller.installContent({
         provider,
         projectId: project.id,
         instanceId: destination.id,
         kind,
         gameVersion: destination.version_id,
         loader: kind === "mods" ? destination.loader : null,
-        withDependencies,
+        title: project.title,
+        iconUrl: project.icon_url,
       });
-      setPending(null);
+      if (!files) return;
       setNotice(
         files.length > 1
           ? `Installed ${project.title} and ${files.length - 1} more into ${destination.name}`
           : `Installed ${project.title} into ${destination.name}`,
       );
     } catch (e) {
-      setPending(null);
       setError(String(e));
     }
   };
@@ -800,15 +735,6 @@ export function DiscoverView() {
         </div>
       </div>
 
-      <InstallPlanPrompt
-        plan={pending?.plan ?? null}
-        busy={!!pending && activeProjects.has(pending.project.id)}
-        progress={contentProgress ?? null}
-        onConfirm={() => pending && runInstall(pending.project, true, pending.into)}
-        onSkipDependencies={() => pending && runInstall(pending.project, false, pending.into)}
-        onCancel={() => setPending(null)}
-      />
-
       {needsTarget && (
         <InstanceTargetPicker
           instances={instances}
@@ -877,7 +803,6 @@ export function DiscoverView() {
           </div>
         </Modal>
       )}
-      {modpackInstaller.modal}
     </div>
   );
 }

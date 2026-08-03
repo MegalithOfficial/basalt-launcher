@@ -6,20 +6,19 @@ import { api } from "../lib/api";
 import type {
   Changelog,
   ContentKind,
-  InstallPlan,
+  Instance,
   ProjectDetails,
   ProjectSummary,
   ProjectVersion,
 } from "../lib/types";
-import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
-import { useModpackInstaller } from "../components/CurseForgeDownloadModal";
+import { useContentInstaller } from "../components/CurseForgeDownloadModal";
 import { InstanceTargetPicker } from "../components/InstanceTargetPicker";
 import { Markdown } from "../components/project/Markdown";
 import { ProjectGallery } from "../components/project/ProjectGallery";
 import { ProjectHero } from "../components/project/ProjectHero";
 import { ProjectSidebar } from "../components/project/ProjectSidebar";
 import { VersionBrowser } from "../components/project/VersionBrowser";
-import { useActiveProjectIds, useInstanceTask } from "../lib/useTasks";
+import { useActiveProjectIds } from "../lib/useTasks";
 import { useStore } from "../store";
 
 interface PendingInstall {
@@ -39,7 +38,6 @@ export function ProjectView() {
   );
   const instances = useStore((s) => s.instances);
   const setDiscoverTarget = useStore((s) => s.setDiscoverTarget);
-  const contentProgress = useInstanceTask(instance?.id);
   const activeProjects = useActiveProjectIds();
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
@@ -50,7 +48,6 @@ export function ProjectView() {
   );
   const sourcesMap = useStore((s) => s.contentSources[`${instance?.id}:${s.searchKind}`]);
   const refreshContentSources = useStore((s) => s.refreshContentSources);
-  const installContentShared = useStore((s) => s.installContent);
 
   const [tab, setTab] = useState<Tab>("description");
   const [details, setDetails] = useState<ProjectDetails | null>(null);
@@ -65,18 +62,12 @@ export function ProjectView() {
   const [resolvedProjects, setResolvedProjects] = useState<
     Record<string, ProjectSummary | null>
   >({});
-  const [pending, setPending] = useState<{ target: PendingInstall; plan: InstallPlan } | null>(
-    null,
-  );
   const [needsTarget, setNeedsTarget] = useState<PendingInstall | null>(null);
   const [pickingTarget, setPickingTarget] = useState(false);
 
   const isPack = kind === "modpacks";
   const loader = kind === "mods" ? (instance?.loader ?? null) : null;
-  const modpackInstaller = useModpackInstaller({
-    onInstalled: (created) => setNotice(`Created instance ${created.name}`),
-    onError: setError,
-  });
+  const contentInstaller = useContentInstaller();
 
   useEffect(() => {
     if (instance && storeKind) void refreshContentSources(instance.id, storeKind);
@@ -158,17 +149,16 @@ export function ProjectView() {
     try {
       let vid = versionId;
       if (!vid) {
-        const list =
-          versions ??
-          (await api.listProjectVersions(projectRef.provider, projectRef.id, "modpacks", "", null));
-        const preferred = list.find((v) => v.channel === "release") ?? list[0];
-        if (!preferred) {
-          setError("This pack has no installable versions.");
-          return;
-        }
-        vid = preferred.id;
+        const created = await contentInstaller.installLatestPack(
+          projectRef.provider,
+          projectRef.id,
+          details?.title ?? projectRef.title ?? "Modpack",
+          details?.icon_url ?? null,
+        );
+        if (created) setNotice(`Created instance ${created.name}`);
+        return;
       }
-      const created = await modpackInstaller.install(
+      const created = await contentInstaller.installPack(
         projectRef.provider,
         projectRef.id,
         vid,
@@ -183,76 +173,46 @@ export function ProjectView() {
     }
   };
 
-  const doInstall = async (target: PendingInstall, withDependencies: boolean) => {
-    if (!instance) return;
+  const doInstall = async (target: PendingInstall, destination: Instance) => {
     setInstalling(target.key);
     setError(null);
     setNotice(null);
     try {
-      const files = await installContentShared({
+      const files = await contentInstaller.installContent({
         provider: projectRef.provider,
         projectId: target.projectId,
-        instanceId: instance.id,
+        instanceId: destination.id,
         kind,
-        gameVersion: instance.version_id,
-        loader,
+        gameVersion: destination.version_id,
+        loader: kind === "mods" ? destination.loader : null,
         versionId: target.versionId,
-        withDependencies,
+        title: details?.title ?? projectRef.title ?? "Content",
+        iconUrl: details?.icon_url ?? null,
       });
-      setPending(null);
+      if (!files) return;
       setInstalled((prev) => new Set(prev).add(target.key));
       setNotice(
         files.length > 1
-          ? `Installed ${files[0]?.title ?? "the file"} and ${files.length - 1} more into ${instance.name}`
-          : `Installed ${files[0]?.title ?? "the file"} into ${instance.name}`,
+          ? `Installed ${files[0]?.title ?? "the file"} and ${files.length - 1} more into ${destination.name}`
+          : `Installed ${files[0]?.title ?? "the file"} into ${destination.name}`,
       );
     } catch (e) {
-      setPending(null);
       setError(String(e));
     } finally {
       setInstalling(null);
     }
   };
 
-  const beginInstall = async (target: PendingInstall) => {
+  const beginInstall = async (target: PendingInstall, into: Instance | null = instance ?? null) => {
     if (isPack) {
       await installPack(target.versionId);
       return;
     }
-    if (!instance) {
+    if (!into) {
       setNeedsTarget(target);
       return;
     }
-    setInstalling(target.key);
-    setError(null);
-    try {
-      const plan = await api.planContentInstall(
-        projectRef.provider,
-        target.projectId,
-        instance.id,
-        kind,
-        instance.version_id,
-        loader,
-        target.versionId,
-      );
-      const replaces =
-        !!plan.primary?.replaces || plan.dependencies.some((file) => !!file.replaces);
-      const trivial =
-        plan.dependencies.length === 0 &&
-        plan.skipped.length === 0 &&
-        plan.conflicts.length === 0 &&
-        !replaces;
-      if (!trivial) {
-        setInstalling(null);
-        setPending({ target, plan });
-        return;
-      }
-    } catch (e) {
-      setInstalling(null);
-      setError(String(e));
-      return;
-    }
-    await doInstall(target, true);
+    await doInstall(target, into);
   };
 
   const install = (versionId: string | null) =>
@@ -398,7 +358,7 @@ export function ProjectView() {
                 instanceLoader={loader}
                 hasInstance={!!instance}
                 installedVersionId={installedEntry?.version_id ?? null}
-                installingKey={installing ?? modpackInstaller.installingVersionId}
+                installingKey={installing ?? contentInstaller.installingVersionId}
                 installedKeys={installed}
                 resolvedProjects={resolvedProjects}
                 changelogs={changelogs}
@@ -422,15 +382,6 @@ export function ProjectView() {
         ) : null}
       </div>
 
-      <InstallPlanPrompt
-        plan={pending?.plan ?? null}
-        busy={installing !== null}
-        progress={contentProgress ?? null}
-        onConfirm={() => pending && doInstall(pending.target, true)}
-        onSkipDependencies={() => pending && doInstall(pending.target, false)}
-        onCancel={() => setPending(null)}
-      />
-
       {(needsTarget || pickingTarget) && (
         <InstanceTargetPicker
           instances={instances}
@@ -442,12 +393,11 @@ export function ProjectView() {
             setPickingTarget(false);
             if (picked) {
               setDiscoverTarget(picked.id);
-              if (target) setTimeout(() => void beginInstall(target), 0);
+              if (target) void beginInstall(target, picked);
             }
           }}
         />
       )}
-      {modpackInstaller.modal}
     </div>
   );
 }
