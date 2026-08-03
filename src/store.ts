@@ -136,6 +136,7 @@ interface AppStore {
   ready: boolean;
   error: string | null;
   settings: LauncherSettings | null;
+  bundledCurseforgeKey: boolean;
   instances: Instance[];
   instanceOrganization: InstanceOrganization;
   installedIds: string[];
@@ -354,6 +355,7 @@ export const useStore = create<AppStore>((set) => ({
   ready: false,
   error: null,
   settings: null,
+  bundledCurseforgeKey: false,
   instances: [],
   instanceOrganization: { groups: [], placements: [] },
   installedIds: [],
@@ -773,6 +775,10 @@ export const useStore = create<AppStore>((set) => ({
         api.listRunning().catch(() => [] as RunningInfo[]),
         api.getAppUpdateStatus().catch(() => null),
       ]);
+      const bundledCurseforgeKey = await api
+        .getAppInfo()
+        .then((info) => info.bundled_curseforge_key)
+        .catch(() => false);
       const recoveredLogs = await Promise.all(
         recoveredRuns.map(async (run) => [
           run.running_id,
@@ -806,6 +812,7 @@ export const useStore = create<AppStore>((set) => ({
 
         return {
           settings,
+          bundledCurseforgeKey,
           instances,
           instanceOrganization,
           accounts,

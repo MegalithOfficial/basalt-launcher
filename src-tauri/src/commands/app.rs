@@ -27,6 +27,7 @@ pub struct AppInfo {
     pub jvm_placeholders: Vec<String>,
     pub arch: String,
     pub install_source: update::InstallSource,
+    pub bundled_curseforge_key: bool,
 }
 
 #[tauri::command]
@@ -43,6 +44,7 @@ pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
             .collect(),
         arch: std::env::consts::ARCH.to_string(),
         install_source: update::install_source(),
+        bundled_curseforge_key: crate::build_info::bundled_curseforge_key().is_some(),
     })
 }
 

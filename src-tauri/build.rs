@@ -2,6 +2,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BASALT_BUILD_CHANNEL");
     println!("cargo:rerun-if-env-changed=BASALT_DEV_BUILD");
     println!("cargo:rerun-if-env-changed=BASALT_DISTRIBUTION");
+    println!("cargo:rerun-if-env-changed=BASALT_CURSEFORGE_API_KEY");
     println!("cargo:rerun-if-env-changed=GITHUB_RUN_NUMBER");
     println!("cargo:rerun-if-env-changed=GITHUB_RUN_ATTEMPT");
     let channel = std::env::var("BASALT_BUILD_CHANNEL").unwrap_or_else(|_| "dev".to_string());
@@ -18,5 +19,7 @@ fn main() {
     let distribution =
         std::env::var("BASALT_DISTRIBUTION").unwrap_or_else(|_| "source".to_string());
     println!("cargo:rustc-env=BASALT_DISTRIBUTION={distribution}");
+    let curseforge_api_key = std::env::var("BASALT_CURSEFORGE_API_KEY").unwrap_or_default();
+    println!("cargo:rustc-env=BASALT_CURSEFORGE_API_KEY={curseforge_api_key}");
     tauri_build::build()
 }

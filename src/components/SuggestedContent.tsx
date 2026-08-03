@@ -93,7 +93,7 @@ export function SuggestedContent({
   onInstall: (provider: SearchProvider, project: ProjectSummary) => void;
   onOpen: (provider: SearchProvider, project: ProjectSummary) => void;
 }) {
-  const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
+  const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key || s.bundledCurseforgeKey);
   const installed = useStore((s) => s.contentSources[`${instance.id}:${kind}`]);
   const [results, setResults] = useState<Suggestion[]>([]);
   const [searching, setSearching] = useState(false);

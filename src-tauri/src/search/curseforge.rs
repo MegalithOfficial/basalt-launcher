@@ -79,6 +79,7 @@ pub fn key(state: &AppState) -> Result<String> {
         .load_runtime_settings(&state.credentials)?
         .curseforge_api_key
         .filter(|k| !k.trim().is_empty())
+        .or_else(|| crate::build_info::bundled_curseforge_key().map(str::to_string))
         .ok_or_else(|| {
             Error::other(
                 "CurseForge needs an API key. Get a free key at console.curseforge.com and add it in Settings.",

@@ -578,6 +578,7 @@ export interface AppInfo {
   jvm_placeholders: string[];
   arch: string;
   install_source: InstallSource;
+  bundled_curseforge_key: boolean;
 }
 
 export interface JavaStatus {

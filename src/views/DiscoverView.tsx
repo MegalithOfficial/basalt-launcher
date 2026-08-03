@@ -88,7 +88,7 @@ export function DiscoverView() {
   const allSources = useStore((s) => s.contentSources);
   const sources = allSources[`${targetId}:${kind}`];
   const refreshContentSources = useStore((s) => s.refreshContentSources);
-  const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
+  const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key || s.bundledCurseforgeKey);
 
   const browse = useStore((s) => s.discoverBrowse);
   const setBrowse = useStore((s) => s.setDiscoverBrowse);

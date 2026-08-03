@@ -23,7 +23,7 @@ export function LinkModpackModal({
   onClose: () => void;
 }) {
   const refreshInstances = useStore((s) => s.refreshInstances);
-  const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key);
+  const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key || s.bundledCurseforgeKey);
 
   const [provider, setProvider] = useState<SearchProvider>("modrinth");
   const [query, setQuery] = useState("");
