@@ -60,6 +60,12 @@ pub struct LauncherSettings {
     pub minimize_on_launch: bool,
     #[serde(default = "default_true")]
     pub auto_update_checks: bool,
+    #[serde(default)]
+    pub wrapper_command: String,
+    #[serde(default)]
+    pub pre_launch_command: String,
+    #[serde(default)]
+    pub post_exit_command: String,
 }
 
 pub fn default_proxy_mode() -> String {
@@ -132,6 +138,9 @@ impl Default for LauncherSettings {
             pack_content_updates: false,
             minimize_on_launch: false,
             auto_update_checks: true,
+            wrapper_command: String::new(),
+            pre_launch_command: String::new(),
+            post_exit_command: String::new(),
         }
     }
 }
@@ -181,4 +190,10 @@ pub struct Instance {
     pub banner_id: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    #[serde(default)]
+    pub wrapper_command: Option<String>,
+    #[serde(default)]
+    pub pre_launch_command: Option<String>,
+    #[serde(default)]
+    pub post_exit_command: Option<String>,
 }

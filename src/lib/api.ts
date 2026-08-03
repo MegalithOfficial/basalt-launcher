@@ -101,6 +101,13 @@ export const api = {
     call<void>("delete_instance_group", { groupId }),
   setInstanceNotes: (instanceId: string, notes: string) =>
     call<void>("set_instance_notes", { instanceId, notes }),
+  setInstanceLaunchTools: (
+    instanceId: string,
+    wrapper: string,
+    preLaunch: string,
+    postExit: string,
+  ) =>
+    call<void>("set_instance_launch_tools", { instanceId, wrapper, preLaunch, postExit }),
   moveInstanceToGroup: (instanceId: string, groupId: string | null) =>
     call<void>("move_instance_to_group", { instanceId, groupId }),
   reorderInstanceGroups: (groupIds: string[]) =>

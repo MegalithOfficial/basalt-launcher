@@ -89,6 +89,9 @@ interface Draft {
   envVarsMode: string;
   notes: string;
   groupId: string | null;
+  wrapper: string;
+  preLaunch: string;
+  postExit: string;
 }
 
 function draftFrom(instance: Instance): Draft {
@@ -107,6 +110,9 @@ function draftFrom(instance: Instance): Draft {
     envVarsMode: instance.env_vars_mode ?? "append",
     notes: instance.notes ?? "",
     groupId: null,
+    wrapper: instance.wrapper_command ?? "",
+    preLaunch: instance.pre_launch_command ?? "",
+    postExit: instance.post_exit_command ?? "",
   };
 }
 
@@ -348,6 +354,12 @@ export function EditInstanceModal({
         envVarsMode,
       );
       await api.setInstanceNotes(instance.id, notes);
+      await api.setInstanceLaunchTools(
+        instance.id,
+        draft.wrapper,
+        draft.preLaunch,
+        draft.postExit,
+      );
       const current =
         organization.placements.find((p) => p.instance_id === instance.id)?.group_id ?? null;
       if (draft.groupId !== null && draft.groupId !== current) {
@@ -867,6 +879,43 @@ export function EditInstanceModal({
                   spellCheck={false}
                   placeholder="-XX:+UseG1GC -Dsome.flag=true"
                   className={cn(inputCls, "w-full resize-y font-mono text-xs")}
+                />
+              </SettingRow>
+            </SettingGroup>
+
+            <SettingGroup
+              title="Around the launch"
+              description="Leave a box empty to follow the launcher setting."
+            >
+              <SettingRow label="Wrapper command" hint="mangohud, gamemoderun, and the like" stacked>
+                <input
+                  value={draft.wrapper}
+                  onChange={(e) => set({ wrapper: e.target.value })}
+                  spellCheck={false}
+                  placeholder="follows the launcher setting"
+                  className={cn(inputCls, "w-full font-mono text-xs")}
+                />
+              </SettingRow>
+              <SettingRow
+                label="Before launching"
+                hint="the launch stops if this fails"
+                stacked
+              >
+                <input
+                  value={draft.preLaunch}
+                  onChange={(e) => set({ preLaunch: e.target.value })}
+                  spellCheck={false}
+                  placeholder="follows the launcher setting"
+                  className={cn(inputCls, "w-full font-mono text-xs")}
+                />
+              </SettingRow>
+              <SettingRow label="After the game exits" hint="failures only reach the log" stacked>
+                <input
+                  value={draft.postExit}
+                  onChange={(e) => set({ postExit: e.target.value })}
+                  spellCheck={false}
+                  placeholder="follows the launcher setting"
+                  className={cn(inputCls, "w-full font-mono text-xs")}
                 />
               </SettingRow>
             </SettingGroup>

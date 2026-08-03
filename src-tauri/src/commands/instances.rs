@@ -114,6 +114,9 @@ pub fn create_instance(
         import_source_id: None,
         banner_id: None,
         notes: None,
+        wrapper_command: None,
+        pre_launch_command: None,
+        post_exit_command: None,
         jvm_args: None,
         jvm_args_mode: None,
         env_vars: None,
@@ -211,6 +214,27 @@ pub fn update_instance(
     }
     tracing::info!(needs_reset, "instance updated");
     find_instance(&state, &instance_id)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state, wrapper, pre_launch, post_exit), err)]
+pub fn set_instance_launch_tools(
+    state: State<AppState>,
+    instance_id: String,
+    wrapper: String,
+    pre_launch: String,
+    post_exit: String,
+) -> Result<()> {
+    let kept = |value: &str| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    };
+    state.db.set_instance_launch_tools(
+        &instance_id,
+        kept(&wrapper).as_deref(),
+        kept(&pre_launch).as_deref(),
+        kept(&post_exit).as_deref(),
+    )
 }
 
 #[tauri::command]

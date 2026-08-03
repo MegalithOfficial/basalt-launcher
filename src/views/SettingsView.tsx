@@ -871,6 +871,50 @@ export function SettingsView() {
             </Row>
           </Section>
           <Section
+            title="Around the launch"
+            description="Commands Basalt runs for you. Placeholders like {{instance_name}} and {{game_dir}} work here."
+          >
+            <Row
+              label="Wrapper command"
+              hint="runs the game through this, for example mangohud or gamemoderun"
+              stacked
+            >
+              <input
+                value={draft.wrapper_command}
+                onChange={(e) => set({ wrapper_command: e.target.value })}
+                spellCheck={false}
+                placeholder="mangohud"
+                className={cn(inputCls, "w-full font-mono text-xs")}
+              />
+            </Row>
+            <Row
+              label="Before launching"
+              hint="the launch stops if this fails, and its output is shown"
+              stacked
+            >
+              <input
+                value={draft.pre_launch_command}
+                onChange={(e) => set({ pre_launch_command: e.target.value })}
+                spellCheck={false}
+                placeholder="systemctl --user start my-backup.service"
+                className={cn(inputCls, "w-full font-mono text-xs")}
+              />
+            </Row>
+            <Row
+              label="After the game exits"
+              hint="failures are written to the log and nothing else"
+              stacked
+            >
+              <input
+                value={draft.post_exit_command}
+                onChange={(e) => set({ post_exit_command: e.target.value })}
+                spellCheck={false}
+                placeholder="notify-send 'Minecraft closed'"
+                className={cn(inputCls, "w-full font-mono text-xs")}
+              />
+            </Row>
+          </Section>
+          <Section
             title="Environment variables"
             description="Set on the game process only. Useful for driver and GPU switches."
           >

@@ -13,7 +13,8 @@ impl Db {
                     java_path, last_played_at, playtime_secs, loader, loader_version,
                     launch_version_id, pack_provider, pack_project_id, pack_version_id,
                     jvm_args, jvm_args_mode, env_vars, env_vars_mode,
-                    import_source, import_source_id, banner_id, notes
+                    import_source, import_source_id, banner_id, notes,
+                    wrapper_command, pre_launch_command, post_exit_command
              FROM instances ORDER BY created_at",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -47,9 +48,29 @@ impl Db {
                 import_source_id: row.get(20)?,
                 banner_id: row.get(21)?,
                 notes: row.get(22)?,
+                wrapper_command: row.get(23)?,
+                pre_launch_command: row.get(24)?,
+                post_exit_command: row.get(25)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    pub fn set_instance_launch_tools(
+        &self,
+        instance_id: &str,
+        wrapper: Option<&str>,
+        pre_launch: Option<&str>,
+        post_exit: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE instances
+             SET wrapper_command = ?2, pre_launch_command = ?3, post_exit_command = ?4
+             WHERE id = ?1",
+            params![instance_id, wrapper, pre_launch, post_exit],
+        )?;
+        Ok(())
     }
 
     pub fn set_instance_notes(&self, instance_id: &str, notes: Option<&str>) -> Result<()> {

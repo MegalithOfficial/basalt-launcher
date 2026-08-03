@@ -234,6 +234,7 @@ pub struct ProcessLaunch<'a> {
     pub args: Vec<String>,
     pub cwd: &'a std::path::Path,
     pub env: Vec<(String, String)>,
+    pub post_exit: Option<String>,
 }
 
 pub fn spawn_process(
@@ -251,13 +252,14 @@ pub fn spawn_process(
         args,
         cwd,
         env,
+        post_exit,
     } = launch;
     let stdout_log = files.create(files.paths().run_log(running_id, "stdout"))?;
     let stderr_log = files.create(files.paths().run_log(running_id, "stderr"))?;
     let mut command = Command::new(program);
     command
         .args(&args)
-        .envs(env)
+        .envs(env.iter().cloned())
         .current_dir(cwd)
         .stdout(Stdio::from(stdout_log))
         .stderr(Stdio::from(stderr_log));
@@ -313,6 +315,8 @@ pub fn spawn_process(
 
     let sup_app = app.clone();
     let sup_logs = logs.clone();
+    let sup_cwd = cwd.to_path_buf();
+    let sup_env = env.clone();
     let sup_status = status.clone();
     let sup_running_id = running_id.to_string();
     let sup_instance_id = instance_id.to_string();
@@ -371,6 +375,13 @@ pub fn spawn_process(
             );
         }
         let _ = db.record_playtime(&sup_instance_id, played_secs, ended_at);
+        if let Some(command) = post_exit {
+            if let Err(error) =
+                super::tools::run_hook("post-exit", &command, &sup_cwd, &sup_env).await
+            {
+                tracing::warn!(error = %error, "the post-exit command did not finish cleanly");
+            }
+        }
         let _ = sup_app.emit(
             "process:state",
             RunningInfo {

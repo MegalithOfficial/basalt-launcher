@@ -196,6 +196,9 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         ("group_id", "TEXT"),
         ("group_order", "INTEGER NOT NULL DEFAULT 0"),
         ("notes", "TEXT"),
+        ("wrapper_command", "TEXT"),
+        ("pre_launch_command", "TEXT"),
+        ("post_exit_command", "TEXT"),
     ] {
         add_column_if_missing(conn, "instances", column, declaration)?;
     }

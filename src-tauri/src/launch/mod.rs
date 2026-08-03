@@ -1,4 +1,5 @@
 pub mod process;
+pub mod tools;
 
 use std::{collections::HashMap, time::Duration};
 
@@ -467,6 +468,10 @@ pub async fn launch_instance(
     placeholders.insert("launcher_name", "basalt".to_string());
     placeholders.insert("launcher_version", env!("CARGO_PKG_VERSION").to_string());
 
+    let tools = tools::resolve(&settings, instance, &placeholders);
+    let env = instance_env(&settings, instance);
+    tools::run_hook("pre-launch", &tools.pre_launch, &game_dir, &env).await?;
+
     let template = instance_jvm_template(&settings, instance);
     let mut args: Vec<String> = split_args(&render_placeholders(&template, &placeholders));
     let running_id = uuid::Uuid::new_v4().to_string();
@@ -506,7 +511,17 @@ pub async fn launch_instance(
     let extra_game = split_args(&render_placeholders(&settings.game_args, &placeholders));
     args.extend(extra_game.iter().cloned());
 
-    let env = instance_env(&settings, instance);
+    let wrapper = split_args(&tools.wrapper);
+    let (program, prefix) = match wrapper.split_first() {
+        Some((first, rest)) => (first.clone(), rest.to_vec()),
+        None => (java.path.clone(), Vec::new()),
+    };
+    if !wrapper.is_empty() {
+        let mut wrapped = prefix;
+        wrapped.push(java.path.clone());
+        wrapped.extend(args);
+        args = wrapped;
+    }
 
     tracing::info!(
         main_class = %version.main_class,
@@ -519,6 +534,7 @@ pub async fn launch_instance(
         game_args = extra_game.len(),
         env_vars = env.len(),
         fullscreen = settings.fullscreen,
+        wrapper = %tools.wrapper,
         "launching minecraft"
     );
 
@@ -531,10 +547,11 @@ pub async fn launch_instance(
             instance_id: &instance.id,
             running_id: &running_id,
             started_at: now(),
-            program: &java.path,
+            program: &program,
             args,
             cwd: &game_dir,
             env,
+            post_exit: (!tools.post_exit.trim().is_empty()).then(|| tools.post_exit.clone()),
         },
     )?;
 

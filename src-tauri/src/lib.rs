@@ -220,6 +220,7 @@ pub fn run() {
             commands::launch_commands::get_logs,
             commands::launch_commands::close_running,
             commands::instances::set_instance_notes,
+            commands::instances::set_instance_launch_tools,
             commands::datapacks::list_instance_datapacks,
             commands::datapacks::toggle_datapack,
             commands::datapacks::delete_datapack,

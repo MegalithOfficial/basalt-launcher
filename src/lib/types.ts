@@ -31,6 +31,9 @@ export interface LauncherSettings {
   pack_content_updates: boolean;
   minimize_on_launch: boolean;
   auto_update_checks: boolean;
+  wrapper_command: string;
+  pre_launch_command: string;
+  post_exit_command: string;
 }
 
 export type AccentMode = "banner" | "custom" | "default";
@@ -74,6 +77,9 @@ export interface Instance {
   env_vars_mode: string | null;
   banner_id: string | null;
   notes: string | null;
+  wrapper_command: string | null;
+  pre_launch_command: string | null;
+  post_exit_command: string | null;
 }
 
 export interface InstanceGroup {

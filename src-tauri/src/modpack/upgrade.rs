@@ -955,6 +955,9 @@ mod tests {
             import_source_id: None,
             banner_id: None,
             notes: None,
+            wrapper_command: None,
+            pre_launch_command: None,
+            post_exit_command: None,
         }
     }
 
