@@ -96,4 +96,5 @@ pub struct CachedResponse {
     pub body: String,
     pub etag: Option<String>,
     pub fresh: bool,
+    pub age_secs: i64,
 }

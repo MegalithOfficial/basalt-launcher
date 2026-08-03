@@ -4,6 +4,8 @@ use crate::error::Result;
 
 use super::{CachedResponse, Db};
 
+pub const CURSEFORGE_CACHE_PREFIX: &str = "cf:";
+
 impl Db {
     pub fn cache_get(&self, key: &str, now: i64) -> Result<Option<CachedResponse>> {
         let conn = self.0.lock().unwrap();
@@ -18,6 +20,7 @@ impl Db {
                         body: row.get(0)?,
                         etag: row.get(1)?,
                         fresh: now - fetched_at < ttl_secs,
+                        age_secs: (now - fetched_at).max(0),
                     })
                 },
             )
@@ -57,6 +60,15 @@ impl Db {
         conn.execute("DELETE FROM api_cache", [])?;
         conn.execute_batch("VACUUM")?;
         Ok(())
+    }
+
+    pub fn purge_api_cache_prefix(&self, prefix: &str) -> Result<usize> {
+        let conn = self.0.lock().unwrap();
+        let removed = conn.execute(
+            "DELETE FROM api_cache WHERE key GLOB ?1",
+            params![format!("{prefix}*")],
+        )?;
+        Ok(removed)
     }
 
     pub fn cache_touch(&self, key: &str, fetched_at: i64) -> Result<()> {

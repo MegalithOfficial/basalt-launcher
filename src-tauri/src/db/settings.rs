@@ -6,7 +6,7 @@ use crate::{
     error::Result,
 };
 
-use super::Db;
+use super::{cache::CURSEFORGE_CACHE_PREFIX, Db};
 
 impl Db {
     pub fn load_settings(&self) -> Result<LauncherSettings> {
@@ -62,11 +62,15 @@ impl Db {
         credentials: &CredentialStore,
         submitted: &LauncherSettings,
     ) -> Result<LauncherSettings> {
+        let previous_api_key = read_optional_secret(credentials, CURSEFORGE_API_KEY);
         let curseforge_api_key = update_secret(
             credentials,
             CURSEFORGE_API_KEY,
             submitted.curseforge_api_key.as_deref(),
         )?;
+        if curseforge_api_key != previous_api_key {
+            self.purge_api_cache_prefix(CURSEFORGE_CACHE_PREFIX)?;
+        }
         let proxy_password =
             update_secret(credentials, PROXY_PASSWORD, Some(&submitted.proxy_password))?;
 
@@ -217,6 +221,70 @@ mod tests {
         assert_eq!(runtime.max_memory_mb, 4096);
         assert_eq!(runtime.curseforge_api_key.as_deref(), Some("curse-secret"));
         assert_eq!(runtime.proxy_password, "proxy-secret");
+    }
+
+    #[test]
+    fn replacing_the_curseforge_key_drops_only_its_cached_responses() {
+        let db = Db::open_in_memory().unwrap();
+        let credentials = memory_store();
+        let settings = LauncherSettings {
+            curseforge_api_key: Some("first-key".to_string()),
+            ..LauncherSettings::default()
+        };
+        db.save_settings_secure(&credentials, &settings).unwrap();
+        db.cache_put("cf:project:42", "{}", None, 0, 3600).unwrap();
+        db.cache_put("mr:project:42", "{}", None, 0, 3600).unwrap();
+
+        let rotated = LauncherSettings {
+            curseforge_api_key: Some("second-key".to_string()),
+            ..LauncherSettings::default()
+        };
+        db.save_settings_secure(&credentials, &rotated).unwrap();
+
+        assert!(db.cache_get("cf:project:42", 0).unwrap().is_none());
+        assert!(db.cache_get("mr:project:42", 0).unwrap().is_some());
+    }
+
+    #[test]
+    fn removing_the_curseforge_key_drops_its_cached_responses() {
+        let db = Db::open_in_memory().unwrap();
+        let credentials = memory_store();
+        db.save_settings_secure(
+            &credentials,
+            &LauncherSettings {
+                curseforge_api_key: Some("first-key".to_string()),
+                ..LauncherSettings::default()
+            },
+        )
+        .unwrap();
+        db.cache_put("cf:search:mod:query", "{}", None, 0, 3600)
+            .unwrap();
+
+        db.save_settings_secure(&credentials, &LauncherSettings::default())
+            .unwrap();
+
+        assert!(db.cache_get("cf:search:mod:query", 0).unwrap().is_none());
+    }
+
+    #[test]
+    fn unrelated_settings_updates_keep_cached_responses() {
+        let db = Db::open_in_memory().unwrap();
+        let credentials = memory_store();
+        db.save_settings_secure(
+            &credentials,
+            &LauncherSettings {
+                curseforge_api_key: Some("curse-secret".to_string()),
+                ..LauncherSettings::default()
+            },
+        )
+        .unwrap();
+        db.cache_put("cf:project:42", "{}", None, 0, 3600).unwrap();
+
+        let mut submitted = db.load_settings_view(&credentials).unwrap();
+        submitted.max_memory_mb = 4096;
+        db.save_settings_secure(&credentials, &submitted).unwrap();
+
+        assert!(db.cache_get("cf:project:42", 0).unwrap().is_some());
     }
 
     #[test]
