@@ -98,3 +98,64 @@ pub struct CachedResponse {
     pub fresh: bool,
     pub age_secs: i64,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PlaySession {
+    pub id: i64,
+    pub instance_id: String,
+    pub instance_name: String,
+    pub started_at: i64,
+    pub ended_at: i64,
+    pub played_secs: i64,
+    pub crashed: bool,
+    pub version_id: Option<String>,
+    pub loader: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DayBucket {
+    pub date: String,
+    pub secs: i64,
+    pub sessions: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InstancePlayStat {
+    pub instance_id: String,
+    pub name: String,
+    pub secs: i64,
+    pub sessions: i64,
+    pub crashes: i64,
+    pub last_played_at: Option<i64>,
+    pub lifetime_secs: i64,
+    pub deleted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LoaderPlayStat {
+    pub loader: String,
+    pub secs: i64,
+    pub sessions: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PlayStats {
+    pub lifetime_secs: i64,
+    pub tracked_since: Option<i64>,
+    pub window_days: Option<u32>,
+    pub window_secs: i64,
+    pub session_count: i64,
+    pub crash_count: i64,
+    pub longest_session_secs: i64,
+    pub average_session_secs: i64,
+    pub active_days: i64,
+    pub current_streak_days: i64,
+    pub longest_streak_days: i64,
+    pub busiest_day: Option<DayBucket>,
+    pub daily: Vec<DayBucket>,
+    pub hourly: Vec<i64>,
+    pub weekday: Vec<i64>,
+    pub instances: Vec<InstancePlayStat>,
+    pub loaders: Vec<LoaderPlayStat>,
+    pub recent: Vec<PlaySession>,
+}

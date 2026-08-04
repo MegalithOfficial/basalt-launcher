@@ -165,6 +165,7 @@ pub fn run() {
             commands::snapshots::rename_instance_snapshot,
             commands::snapshots::delete_instance_snapshot,
             commands::snapshots::restore_instance_snapshot,
+            commands::stats::get_play_stats,
             commands::tasks::list_tasks,
             commands::tasks::clear_finished_tasks,
             commands::tasks::cancel_task,

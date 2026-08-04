@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 11;
+pub(super) const SCHEMA_VERSION: i64 = 12;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -158,7 +158,22 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             hash TEXT,
             remote_hash TEXT,
             added_at INTEGER NOT NULL
-        );",
+        );
+        CREATE TABLE IF NOT EXISTS play_sessions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            instance_id TEXT NOT NULL,
+            instance_name TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            ended_at INTEGER NOT NULL,
+            played_secs INTEGER NOT NULL,
+            crashed INTEGER NOT NULL DEFAULT 0,
+            version_id TEXT,
+            loader TEXT
+        );
+        CREATE INDEX IF NOT EXISTS play_sessions_started
+            ON play_sessions(started_at);
+        CREATE INDEX IF NOT EXISTS play_sessions_instance
+            ON play_sessions(instance_id, started_at);",
     )?;
 
     if column_exists(conn, "accounts", "mc_access_token")?
@@ -238,6 +253,7 @@ mod tests {
         assert!(super::table_exists(&conn, "api_cache").unwrap());
         assert!(super::table_exists(&conn, "active_runs").unwrap());
         assert!(super::table_exists(&conn, "instance_groups").unwrap());
+        assert!(super::table_exists(&conn, "play_sessions").unwrap());
         assert!(column_exists(&conn, "instances", "group_id").unwrap());
         assert!(!column_exists(&conn, "accounts", "mc_access_token").unwrap());
     }

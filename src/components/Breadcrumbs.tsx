@@ -13,6 +13,7 @@ const LABELS: Record<View, string> = {
   instance: "Instance",
   discover: "Discover",
   project: "Project",
+  stats: "Stats",
   logs: "Logs",
 };
 

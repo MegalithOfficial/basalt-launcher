@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "motion/react";
 
@@ -23,6 +23,10 @@ import { SettingsView } from "./views/SettingsView";
 import { useStore } from "./store";
 import type { View } from "./lib/types";
 
+const StatsView = lazy(() =>
+  import("./views/StatsView").then((module) => ({ default: module.StatsView })),
+);
+
 const VIEWS: Record<View, React.ComponentType> = {
   home: HomeView,
   instances: InstancesView,
@@ -31,6 +35,7 @@ const VIEWS: Record<View, React.ComponentType> = {
   instance: InstanceView,
   discover: DiscoverView,
   project: ProjectView,
+  stats: StatsView,
   logs: LogsView,
 };
 
@@ -140,7 +145,9 @@ function App() {
               transition={{ duration: 0.15 }}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <Current />
+              <Suspense fallback={<div className="flex-1" />}>
+                <Current />
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         )}

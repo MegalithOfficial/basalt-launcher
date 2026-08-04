@@ -374,7 +374,7 @@ pub fn spawn_process(
                 "game exited"
             );
         }
-        let _ = db.record_playtime(&sup_instance_id, played_secs, ended_at);
+        let _ = db.record_playtime(&sup_instance_id, started_at, ended_at, state == "crashed");
         if let Some(command) = post_exit {
             if let Err(error) =
                 super::tools::run_hook("post-exit", &command, &sup_cwd, &sup_env).await
@@ -442,7 +442,9 @@ fn monitor_recovered_process(
             }
             let ended_at = chrono::Utc::now().timestamp();
             let played_secs = ended_at.saturating_sub(run.started_at);
-            if let Err(error) = db.record_playtime(&run.instance_id, played_secs, ended_at) {
+            if let Err(error) =
+                db.record_playtime(&run.instance_id, run.started_at, ended_at, false)
+            {
                 tracing::warn!(error = %error, "could not record recovered game playtime");
             }
             if let Err(error) = db.remove_active_run(&run.running_id) {

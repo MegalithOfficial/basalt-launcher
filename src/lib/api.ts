@@ -41,6 +41,7 @@ import type {
   PackExport,
   PackFormat,
   PackPreview,
+  PlayStats,
   ProjectDetails,
   RemovalPlan,
   RepairReport,
@@ -91,6 +92,7 @@ export const api = {
   updateSettings: (settings: LauncherSettings) =>
     call<void>("update_settings", { settings }),
   listInstances: () => call<Instance[]>("list_instances"),
+  getPlayStats: (days: number | null) => call<PlayStats>("get_play_stats", { days }),
   getInstanceOrganization: () =>
     call<InstanceOrganization>("get_instance_organization"),
   createInstanceGroup: (name: string) =>

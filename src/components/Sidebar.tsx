@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   Boxes,
+  ChartNoAxesColumn,
   CircleStop,
   Compass,
   Copy,
@@ -424,6 +425,14 @@ export function Sidebar() {
               <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-base" />
             )}
           </span>
+        </RailButton>
+
+        <RailButton
+          label="Stats"
+          active={view === "stats"}
+          onClick={() => setView("stats")}
+        >
+          <ChartNoAxesColumn className="size-5.25" />
         </RailButton>
 
         <RailButton

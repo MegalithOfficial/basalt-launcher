@@ -16,6 +16,7 @@ pub(crate) mod migrate_commands;
 pub(crate) mod pack_commands;
 pub(crate) mod skins;
 pub(crate) mod snapshots;
+pub(crate) mod stats;
 pub(crate) mod storage;
 pub(crate) mod tasks;
 pub(crate) mod worlds;

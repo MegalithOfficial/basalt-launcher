@@ -712,7 +712,64 @@ export type View =
   | "instance"
   | "discover"
   | "project"
+  | "stats"
   | "logs";
+
+export interface PlaySession {
+  id: number;
+  instance_id: string;
+  instance_name: string;
+  started_at: number;
+  ended_at: number;
+  played_secs: number;
+  crashed: boolean;
+  version_id: string | null;
+  loader: string | null;
+}
+
+export interface DayBucket {
+  date: string;
+  secs: number;
+  sessions: number;
+}
+
+export interface InstancePlayStat {
+  instance_id: string;
+  name: string;
+  secs: number;
+  sessions: number;
+  crashes: number;
+  last_played_at: number | null;
+  lifetime_secs: number;
+  deleted: boolean;
+}
+
+export interface LoaderPlayStat {
+  loader: string;
+  secs: number;
+  sessions: number;
+}
+
+export interface PlayStats {
+  lifetime_secs: number;
+  tracked_since: number | null;
+  window_days: number | null;
+  window_secs: number;
+  session_count: number;
+  crash_count: number;
+  longest_session_secs: number;
+  average_session_secs: number;
+  active_days: number;
+  current_streak_days: number;
+  longest_streak_days: number;
+  busiest_day: DayBucket | null;
+  daily: DayBucket[];
+  hourly: number[];
+  weekday: number[];
+  instances: InstancePlayStat[];
+  loaders: LoaderPlayStat[];
+  recent: PlaySession[];
+}
 
 export interface UpdateInfo {
   current: string;

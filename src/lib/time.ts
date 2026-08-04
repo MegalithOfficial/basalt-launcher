@@ -7,6 +7,16 @@ export function relativeTime(unixSecs: number): string {
   return new Date(unixSecs * 1000).toLocaleDateString();
 }
 
+export function formatDuration(secs: number): string {
+  if (secs <= 0) return "0m";
+  if (secs < 60) return `${secs}s`;
+  const hours = Math.floor(secs / 3600);
+  const minutes = Math.floor((secs % 3600) / 60);
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 export function formatPlaytime(secs: number): string | null {
   if (secs < 60) return null;
   const hours = secs / 3600;
