@@ -1060,16 +1060,12 @@ export function SettingsView() {
                       onClick={async () => {
                         setReconnecting(true);
                         try {
-                          const connected = await api.reconnectDiscord();
-                          if (connected) {
-                            toast.success("Connected to Discord");
-                          } else {
-                            toast.error("Discord did not answer", {
-                              description: "Open Discord and try again.",
-                            });
-                          }
+                          await api.reconnectDiscord();
+                          toast.success("Connected to Discord");
                         } catch (error) {
-                          toast.error(String(error));
+                          toast.error("Discord refused the connection", {
+                            description: String(error),
+                          });
                         } finally {
                           setReconnecting(false);
                         }

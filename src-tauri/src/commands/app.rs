@@ -114,7 +114,7 @@ pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Re
 
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
-pub async fn reconnect_discord(state: State<'_, AppState>) -> Result<bool> {
+pub async fn reconnect_discord(state: State<'_, AppState>) -> Result<()> {
     let settings = state.db.load_settings()?;
     if !settings.discord_rpc {
         return Err(Error::other("Turn on the Discord integration first."));
@@ -122,11 +122,10 @@ pub async fn reconnect_discord(state: State<'_, AppState>) -> Result<bool> {
     let app_id = crate::presence::app_id(&settings)
         .ok_or_else(|| Error::other("Add a Discord application id first."))?;
     let presence = state.presence.clone();
-    Ok(
-        tauri::async_runtime::spawn_blocking(move || presence.reconnect(app_id))
-            .await
-            .unwrap_or(false),
-    )
+    tauri::async_runtime::spawn_blocking(move || presence.reconnect(app_id))
+        .await
+        .map_err(|_| Error::other("The reconnect attempt did not finish."))?
+        .map_err(Error::other)
 }
 
 #[derive(Debug, serde::Serialize)]

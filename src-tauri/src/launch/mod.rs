@@ -3,14 +3,15 @@ pub mod tools;
 
 use std::{collections::HashMap, time::Duration};
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
     auth::{account::Account, microsoft},
-    config::Instance,
+    config::{Instance, LauncherSettings},
     error::{Error, Result},
     install, java,
     meta::version::{rules_allow, Arg, ArgValue, VersionJson},
+    search,
     state::AppState,
 };
 
@@ -18,8 +19,44 @@ fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-fn presence_detail(state: &AppState, instance: &Instance) -> Option<String> {
-    let streak = state.db.current_streak_days().unwrap_or(0);
+fn publish_pack_icon(
+    app: &AppHandle,
+    instance: &Instance,
+    settings: &LauncherSettings,
+    activity: crate::presence::PresenceActivity,
+) {
+    if !settings.discord_rpc_show_logo {
+        return;
+    }
+    let (Some(provider), Some(project_id)) = (
+        instance.pack_provider.clone(),
+        instance.pack_project_id.clone(),
+    ) else {
+        return;
+    };
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Ok(provider) = search::Provider::parse(&provider) else {
+            return;
+        };
+        let state = handle.state::<AppState>();
+        let icon = search::resolve_projects(&state, provider, &[project_id])
+            .await
+            .ok()
+            .and_then(|mut list| list.pop())
+            .and_then(|summary| summary.icon_url)
+            .filter(|url| url.starts_with("http"));
+        let Some(icon) = icon else { return };
+        tracing::debug!(icon, "publishing the pack icon to discord");
+        state.presence.set(crate::presence::PresenceActivity {
+            logo_url: Some(icon),
+            ..activity
+        });
+    });
+}
+
+pub(crate) fn presence_detail(db: &crate::db::Db, instance: &Instance) -> Option<String> {
+    let streak = db.current_streak_days().unwrap_or(0);
     if streak > 1 {
         return Some(format!("{streak} day streak"));
     }
@@ -572,10 +609,11 @@ pub async fn launch_instance(
         &instance.version_id,
         instance.loader.as_deref(),
         instance.logo.as_deref(),
-        presence_detail(state, instance),
+        presence_detail(&state.db, instance),
         started_at,
     ) {
-        state.presence.set(activity);
+        state.presence.set(activity.clone());
+        publish_pack_icon(app, instance, &settings, activity);
     }
 
     if launch_account.offline {

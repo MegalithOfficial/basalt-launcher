@@ -1,13 +1,19 @@
-use std::sync::mpsc::{self, Sender};
-
-use discord_rich_presence::{
-    activity::{Activity, Assets, Timestamps},
-    DiscordIpc, DiscordIpcClient,
+use std::{
+    sync::mpsc::{self, RecvTimeoutError, Sender},
+    time::Duration,
 };
+
+use serde_json::{json, Map, Value};
 
 use crate::{build_info, config::LauncherSettings};
 
+mod ipc;
+
+use ipc::Connection;
+
 const IDLE_LARGE_IMAGE: &str = "basalt";
+const ACTIVITY_NAME: &str = "Minecraft";
+const HEARTBEAT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresenceActivity {
@@ -22,7 +28,10 @@ pub struct PresenceActivity {
 enum Message {
     Set(Box<PresenceActivity>),
     Clear,
-    Reconnect { app_id: String, reply: Sender<bool> },
+    Reconnect {
+        app_id: String,
+        reply: Sender<std::result::Result<(), String>>,
+    },
 }
 
 pub struct Presence {
@@ -76,41 +85,66 @@ pub fn activity_for(
     })
 }
 
-fn build_activity(state: &PresenceActivity) -> Activity<'_> {
-    let mut activity = Activity::new()
-        .details(state.instance_name.as_str())
-        .timestamps(Timestamps::new().start(state.started_at));
-
+fn build_activity(state: &PresenceActivity) -> Value {
+    let mut activity = Map::new();
+    activity.insert("type".into(), json!(0));
+    activity.insert("name".into(), json!(ACTIVITY_NAME));
+    activity.insert("details".into(), json!(state.instance_name));
     if let Some(line) = state.version_line.as_deref() {
-        activity = activity.state(line);
+        activity.insert("state".into(), json!(line));
     }
+    activity.insert(
+        "timestamps".into(),
+        json!({ "start": state.started_at * 1000 }),
+    );
 
-    let large_image = state.logo_url.as_deref().unwrap_or(IDLE_LARGE_IMAGE);
-    let mut assets = Assets::new()
-        .large_image(large_image)
-        .large_text(state.instance_name.as_str());
+    let mut assets = Map::new();
+    assets.insert(
+        "large_image".into(),
+        json!(state.logo_url.as_deref().unwrap_or(IDLE_LARGE_IMAGE)),
+    );
+    assets.insert("large_text".into(), json!(state.instance_name));
     if let Some(line) = state.detail_line.as_deref() {
-        assets = assets.small_text(line);
+        assets.insert("small_text".into(), json!(line));
     }
-    activity.assets(assets)
+    activity.insert("assets".into(), Value::Object(assets));
+
+    Value::Object(activity)
 }
 
-fn connect(app_id: &str) -> Option<DiscordIpcClient> {
-    let mut fresh = DiscordIpcClient::new(app_id);
-    match fresh.connect() {
-        Ok(()) => Some(fresh),
-        Err(error) => {
-            tracing::debug!(%error, "discord is not accepting connections");
-            None
-        }
-    }
+fn connect(app_id: &str) -> std::result::Result<Connection, String> {
+    Connection::open(app_id).map_err(|error| {
+        let message = error.to_string();
+        tracing::debug!(%message, "could not open a discord connection");
+        message
+    })
 }
 
 fn worker(rx: mpsc::Receiver<Message>) {
-    let mut client: Option<(String, DiscordIpcClient)> = None;
+    let mut client: Option<(String, Connection)> = None;
     let mut last: Option<PresenceActivity> = None;
 
-    while let Ok(message) = rx.recv() {
+    loop {
+        let message = match rx.recv_timeout(HEARTBEAT) {
+            Ok(message) => message,
+            Err(RecvTimeoutError::Timeout) => {
+                let Some(state) = last.clone() else { continue };
+                if client.is_none() {
+                    client = connect(&state.app_id)
+                        .ok()
+                        .map(|fresh| (state.app_id.clone(), fresh));
+                }
+                if let Some((_, active)) = client.as_mut() {
+                    if let Err(error) = active.set_activity(build_activity(&state)) {
+                        tracing::debug!(%error, "the discord connection went away, dropping it");
+                        client = None;
+                    }
+                }
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
+
         match message {
             Message::Clear => {
                 last = None;
@@ -122,15 +156,27 @@ fn worker(rx: mpsc::Receiver<Message>) {
             }
             Message::Reconnect { app_id, reply } => {
                 if let Some((_, mut stale)) = client.take() {
-                    let _ = stale.close();
+                    stale.close();
                 }
-                client = connect(&app_id).map(|fresh| (app_id.clone(), fresh));
-                if let (Some((_, active)), Some(state)) = (client.as_mut(), last.as_ref()) {
-                    if state.app_id == app_id {
-                        let _ = active.set_activity(build_activity(state));
+                let outcome = match connect(&app_id) {
+                    Ok(fresh) => {
+                        client = Some((app_id.clone(), fresh));
+                        let mut outcome = Ok(());
+                        if let (Some((_, active)), Some(state)) = (client.as_mut(), last.as_ref()) {
+                            if state.app_id == app_id {
+                                if let Err(error) = active.set_activity(build_activity(state)) {
+                                    outcome = Err(error.to_string());
+                                }
+                            }
+                        }
+                        outcome
                     }
+                    Err(message) => Err(message),
+                };
+                if outcome.is_err() {
+                    client = None;
                 }
-                let _ = reply.send(client.is_some());
+                let _ = reply.send(outcome);
             }
             Message::Set(state) => {
                 if client.as_ref().is_some_and(|(id, _)| id != &state.app_id) {
@@ -140,13 +186,15 @@ fn worker(rx: mpsc::Receiver<Message>) {
                 }
 
                 if client.is_none() {
-                    client = connect(&state.app_id).map(|fresh| (state.app_id.clone(), fresh));
+                    client = connect(&state.app_id)
+                        .ok()
+                        .map(|fresh| (state.app_id.clone(), fresh));
                 }
                 last = Some((*state).clone());
 
                 if let Some((_, active)) = client.as_mut() {
                     if let Err(error) = active.set_activity(build_activity(&state)) {
-                        tracing::debug!(%error, "could not publish the discord activity");
+                        tracing::warn!(%error, "could not publish the discord activity");
                         client = None;
                     }
                 }
@@ -156,7 +204,7 @@ fn worker(rx: mpsc::Receiver<Message>) {
 
     if let Some((_, mut active)) = client {
         let _ = active.clear_activity();
-        let _ = active.close();
+        active.close();
     }
 }
 
@@ -178,14 +226,14 @@ impl Presence {
         let _ = self.tx.send(Message::Clear);
     }
 
-    pub fn reconnect(&self, app_id: String) -> bool {
+    pub fn reconnect(&self, app_id: String) -> std::result::Result<(), String> {
         let (reply, answer) = mpsc::channel();
         if self.tx.send(Message::Reconnect { app_id, reply }).is_err() {
-            return false;
+            return Err("The presence worker is not running.".to_string());
         }
         answer
-            .recv_timeout(std::time::Duration::from_secs(5))
-            .unwrap_or(false)
+            .recv_timeout(Duration::from_secs(15))
+            .unwrap_or_else(|_| Err("Discord did not answer in time.".to_string()))
     }
 }
 

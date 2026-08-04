@@ -428,6 +428,7 @@ pub fn spawn_process(
 fn monitor_recovered_process(
     app: AppHandle,
     db: Db,
+    presence: Arc<Presence>,
     run: ActiveRun,
     status: Arc<Mutex<RunStatus>>,
 ) {
@@ -445,6 +446,7 @@ fn monitor_recovered_process(
             }
             let ended_at = chrono::Utc::now().timestamp();
             let played_secs = ended_at.saturating_sub(run.started_at);
+            presence.clear();
             if let Err(error) =
                 db.record_playtime(&run.instance_id, run.started_at, ended_at, false)
             {
@@ -481,8 +483,11 @@ pub fn recover_processes(
     registry: &Arc<Mutex<HashMap<String, RunningHandle>>>,
     files: &FileManager,
     db: &Db,
+    presence: &Arc<Presence>,
 ) -> Result<usize> {
     let mut recovered = 0;
+    let settings = db.load_settings().ok();
+    let instances = db.list_instances(files).unwrap_or_default();
     for run in db.active_runs()? {
         if !process_matches(run.pid, run.process_started_at, &run.running_id) {
             tracing::info!(
@@ -528,7 +533,25 @@ pub fn recover_processes(
             status.clone(),
             logs,
         );
-        monitor_recovered_process(app.clone(), db.clone(), run, status);
+        if let Some(settings) = settings.as_ref() {
+            let instance = instances
+                .iter()
+                .find(|candidate| candidate.id == run.instance_id);
+            if let Some(instance) = instance {
+                if let Some(activity) = crate::presence::activity_for(
+                    settings,
+                    &instance.name,
+                    &instance.version_id,
+                    instance.loader.as_deref(),
+                    instance.logo.as_deref(),
+                    super::presence_detail(db, instance),
+                    run.started_at,
+                ) {
+                    presence.set(activity);
+                }
+            }
+        }
+        monitor_recovered_process(app.clone(), db.clone(), presence.clone(), run, status);
         recovered += 1;
     }
     if recovered > 0 {

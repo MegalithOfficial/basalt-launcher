@@ -119,6 +119,7 @@ pub fn run() {
                 &state.running,
                 &state.files,
                 &state.db,
+                &state.presence,
             ) {
                 tracing::warn!(error = %e, "could not recover running game processes");
             }
