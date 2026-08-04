@@ -18,6 +18,15 @@ fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
+fn presence_detail(state: &AppState, instance: &Instance) -> Option<String> {
+    let streak = state.db.current_streak_days().unwrap_or(0);
+    if streak > 1 {
+        return Some(format!("{streak} day streak"));
+    }
+    let hours = instance.playtime_secs / 3600;
+    (hours > 0).then(|| format!("{hours}h in this pack"))
+}
+
 #[tracing::instrument(skip_all, err)]
 pub(crate) async fn ensure_account(state: &AppState) -> Result<Account> {
     let account = active_account(state)?;
@@ -538,15 +547,17 @@ pub async fn launch_instance(
         "launching minecraft"
     );
 
+    let started_at = now();
     process::spawn_process(
         app,
         &state.running,
         state.files.clone(),
         state.db.clone(),
+        state.presence.clone(),
         process::ProcessLaunch {
             instance_id: &instance.id,
             running_id: &running_id,
-            started_at: now(),
+            started_at,
             program: &program,
             args,
             cwd: &game_dir,
@@ -554,6 +565,18 @@ pub async fn launch_instance(
             post_exit: (!tools.post_exit.trim().is_empty()).then(|| tools.post_exit.clone()),
         },
     )?;
+
+    if let Some(activity) = crate::presence::activity_for(
+        &settings,
+        &instance.name,
+        &instance.version_id,
+        instance.loader.as_deref(),
+        instance.logo.as_deref(),
+        presence_detail(state, instance),
+        started_at,
+    ) {
+        state.presence.set(activity);
+    }
 
     if launch_account.offline {
         let _ = app.emit(

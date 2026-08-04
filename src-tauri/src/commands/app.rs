@@ -28,6 +28,7 @@ pub struct AppInfo {
     pub arch: String,
     pub install_source: update::InstallSource,
     pub bundled_curseforge_key: bool,
+    pub bundled_discord_app_id: bool,
 }
 
 #[tauri::command]
@@ -45,6 +46,7 @@ pub fn get_app_info(state: State<AppState>) -> Result<AppInfo> {
         arch: std::env::consts::ARCH.to_string(),
         install_source: update::install_source(),
         bundled_curseforge_key: crate::build_info::bundled_curseforge_key().is_some(),
+        bundled_discord_app_id: crate::build_info::bundled_discord_app_id().is_some(),
     })
 }
 
@@ -101,10 +103,30 @@ pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Re
     {
         state.db.clear_all_content_updates()?;
     }
+    if !settings.discord_rpc {
+        state.presence.clear();
+    }
     let runtime = state
         .db
         .save_settings_secure(&state.credentials, &settings)?;
     state.network.reconfigure(&runtime)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip_all, err)]
+pub async fn reconnect_discord(state: State<'_, AppState>) -> Result<bool> {
+    let settings = state.db.load_settings()?;
+    if !settings.discord_rpc {
+        return Err(Error::other("Turn on the Discord integration first."));
+    }
+    let app_id = crate::presence::app_id(&settings)
+        .ok_or_else(|| Error::other("Add a Discord application id first."))?;
+    let presence = state.presence.clone();
+    Ok(
+        tauri::async_runtime::spawn_blocking(move || presence.reconnect(app_id))
+            .await
+            .unwrap_or(false),
+    )
 }
 
 #[derive(Debug, serde::Serialize)]

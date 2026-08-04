@@ -93,6 +93,7 @@ export const api = {
     call<void>("update_settings", { settings }),
   listInstances: () => call<Instance[]>("list_instances"),
   getPlayStats: (days: number | null) => call<PlayStats>("get_play_stats", { days }),
+  reconnectDiscord: () => call<boolean>("reconnect_discord"),
   getInstanceOrganization: () =>
     call<InstanceOrganization>("get_instance_organization"),
   createInstanceGroup: (name: string) =>

@@ -252,6 +252,19 @@ impl Db {
         ))
     }
 
+    pub fn current_streak_days(&self) -> Result<i64> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT started_at FROM play_sessions")?;
+        let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+        let mut active = BTreeSet::new();
+        for row in rows {
+            if let Some(date) = local_date(row?) {
+                active.insert(date);
+            }
+        }
+        Ok(streaks(&active, Local::now().date_naive()).0)
+    }
+
     fn play_sessions(&self) -> Result<Vec<PlaySession>> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(

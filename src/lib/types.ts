@@ -34,6 +34,11 @@ export interface LauncherSettings {
   wrapper_command: string;
   pre_launch_command: string;
   post_exit_command: string;
+  discord_rpc: boolean;
+  discord_rpc_show_version: boolean;
+  discord_rpc_show_streak: boolean;
+  discord_rpc_show_logo: boolean;
+  discord_app_id: string;
 }
 
 export type AccentMode = "banner" | "custom" | "default";
@@ -579,6 +584,7 @@ export interface AppInfo {
   arch: string;
   install_source: InstallSource;
   bundled_curseforge_key: boolean;
+  bundled_discord_app_id: boolean;
 }
 
 export interface JavaStatus {

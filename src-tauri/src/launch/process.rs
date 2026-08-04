@@ -14,6 +14,7 @@ use crate::{
     db::{ActiveRun, Db},
     error::{Error, Result},
     files::FileManager,
+    presence::Presence,
 };
 
 const MAX_LOG_LINES: usize = 6000;
@@ -242,6 +243,7 @@ pub fn spawn_process(
     registry: &Arc<Mutex<HashMap<String, RunningHandle>>>,
     files: FileManager,
     db: Db,
+    presence: Arc<Presence>,
     launch: ProcessLaunch<'_>,
 ) -> Result<()> {
     let ProcessLaunch {
@@ -374,6 +376,7 @@ pub fn spawn_process(
                 "game exited"
             );
         }
+        presence.clear();
         let _ = db.record_playtime(&sup_instance_id, started_at, ended_at, state == "crashed");
         if let Some(command) = post_exit {
             if let Err(error) =

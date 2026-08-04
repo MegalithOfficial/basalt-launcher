@@ -22,6 +22,7 @@ mod modpack;
 mod network;
 mod packs;
 mod paths;
+mod presence;
 mod search;
 mod skin;
 mod snapshots;
@@ -130,6 +131,7 @@ pub fn run() {
             commands::app::get_settings,
             commands::app::update_settings,
             commands::app::get_app_info,
+            commands::app::reconnect_discord,
             commands::app::list_javas,
             commands::app::install_java_runtime,
             commands::instances::list_instances,

@@ -66,6 +66,16 @@ pub struct LauncherSettings {
     pub pre_launch_command: String,
     #[serde(default)]
     pub post_exit_command: String,
+    #[serde(default = "default_true")]
+    pub discord_rpc: bool,
+    #[serde(default = "default_true")]
+    pub discord_rpc_show_version: bool,
+    #[serde(default = "default_true")]
+    pub discord_rpc_show_streak: bool,
+    #[serde(default = "default_true")]
+    pub discord_rpc_show_logo: bool,
+    #[serde(default)]
+    pub discord_app_id: String,
 }
 
 pub fn default_proxy_mode() -> String {
@@ -141,6 +151,11 @@ impl Default for LauncherSettings {
             wrapper_command: String::new(),
             pre_launch_command: String::new(),
             post_exit_command: String::new(),
+            discord_rpc: true,
+            discord_rpc_show_version: true,
+            discord_rpc_show_streak: true,
+            discord_rpc_show_logo: true,
+            discord_app_id: String::new(),
         }
     }
 }

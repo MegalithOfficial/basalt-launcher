@@ -27,6 +27,7 @@ import { MemoryRange } from "../components/MemoryRange";
 import { MigrateModal } from "../components/MigrateModal";
 import { Select } from "../components/Select";
 import { SettingGroup, SettingRow as Row, Toggle } from "../components/ui";
+import { DiscordPreview } from "../components/DiscordPreview";
 import { ACCENT_PRESETS, applyTheme, DEFAULTS, isHex, themeVars } from "../lib/accent";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
@@ -57,6 +58,12 @@ const TABS = [
   { id: "resources", label: "Resources" },
   { id: "storage", label: "Storage" },
 ];
+
+const DISCORD_LINES = [
+  { key: "discord_rpc_show_version", label: "Version and loader" },
+  { key: "discord_rpc_show_streak", label: "Streak" },
+  { key: "discord_rpc_show_logo", label: "Pack logo" },
+] as const;
 
 const ACCENT_MODES: Array<{ id: AccentMode; label: string; hint: string }> = [
   {
@@ -191,8 +198,11 @@ export function SettingsView() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkFailed, setCheckFailed] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const firstRun = useRef(true);
+  const discordReady =
+    (draft?.discord_app_id ?? "").trim().length > 0 || appInfo?.bundled_discord_app_id === true;
 
   useEffect(() => setDraft(settings), [settings]);
 
@@ -987,6 +997,102 @@ export function SettingsView() {
                 <KeyRound className="size-4" />
               </button>
             </Row>
+          </Section>
+          <Section
+            title="Discord"
+            description="Shows what you are playing on your Discord profile while an instance is running. Nothing leaves your machine when Discord is not open."
+          >
+            <div className="flex flex-col gap-6 px-4 py-4 lg:flex-row lg:items-start">
+              <DiscordPreview
+                enabled={draft.discord_rpc && discordReady}
+                showVersion={draft.discord_rpc_show_version}
+                showStreak={draft.discord_rpc_show_streak}
+                showLogo={draft.discord_rpc_show_logo}
+              />
+              <div className="min-w-0 flex-1">
+                <label className="flex items-center justify-between gap-4 pb-3">
+                  <span className="text-sm font-medium text-content">
+                    Show what I am playing
+                  </span>
+                  <Toggle
+                    label="Show what I am playing"
+                    checked={draft.discord_rpc}
+                    onChange={(discord_rpc) => set({ discord_rpc })}
+                  />
+                </label>
+
+                <div
+                  className={cn(
+                    "space-y-2.5 border-t border-border-soft py-3 pl-4 transition-opacity",
+                    !draft.discord_rpc && "opacity-50",
+                  )}
+                >
+                  {DISCORD_LINES.map((line) => (
+                    <label key={line.key} className="flex items-center justify-between gap-4">
+                      <span className="text-[13px] text-content-muted">{line.label}</span>
+                      <Toggle
+                        label={line.label}
+                        checked={draft[line.key]}
+                        onChange={(value) => set({ [line.key]: value })}
+                        disabled={!draft.discord_rpc}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="border-t border-border-soft pt-3">
+                  <div className="text-[13px] text-content-muted">Application id</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      value={draft.discord_app_id}
+                      onChange={(e) => set({ discord_app_id: e.target.value })}
+                      placeholder="leave empty to use the one this build ships with"
+                      className={cn(inputCls, "min-w-0 flex-1")}
+                    />
+                    <button
+                      onClick={() => openUrl("https://discord.com/developers/applications")}
+                      title="Discord developer portal"
+                      className="grid size-9 shrink-0 place-items-center rounded-lg border border-border bg-surface-2 text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                    >
+                      <KeyRound className="size-4" />
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setReconnecting(true);
+                        try {
+                          const connected = await api.reconnectDiscord();
+                          if (connected) {
+                            toast.success("Connected to Discord");
+                          } else {
+                            toast.error("Discord did not answer", {
+                              description: "Open Discord and try again.",
+                            });
+                          }
+                        } catch (error) {
+                          toast.error(String(error));
+                        } finally {
+                          setReconnecting(false);
+                        }
+                      }}
+                      disabled={!draft.discord_rpc || !discordReady || reconnecting}
+                      className={cn(actionCls, "disabled:cursor-not-allowed disabled:opacity-50")}
+                    >
+                      {reconnecting ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                      Reconnect
+                    </button>
+                  </div>
+                  {!discordReady && (
+                    <p className="mt-2 text-[12px] text-warn">
+                      Discord shows nothing until an application id is set.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
           </Section>
           </div>
         )}

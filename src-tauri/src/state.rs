@@ -12,6 +12,7 @@ use crate::{
     meta::media::{PatchNotes, VersionMedia},
     network::NetworkManager,
     paths::Paths,
+    presence::Presence,
     tasks::Tasks,
     update::UpdateCoordinator,
 };
@@ -27,6 +28,7 @@ pub struct AppState {
     pub media_cache: Mutex<HashMap<String, Option<VersionMedia>>>,
     pub tasks: std::sync::Arc<Tasks>,
     pub updates: Arc<UpdateCoordinator>,
+    pub presence: Arc<Presence>,
 }
 
 impl AppState {
@@ -55,6 +57,7 @@ impl AppState {
             media_cache: Mutex::new(HashMap::new()),
             tasks,
             updates,
+            presence: Arc::new(Presence::spawn()),
         }
     }
 
