@@ -25,9 +25,9 @@ const LEVEL_TEXT: Record<LogLevel, string> = {
 const LEVEL_PILL: Record<LogLevel, string> = {
   error: "border-danger/30 bg-danger/10 text-danger",
   warn: "border-warn/30 bg-warn/10 text-warn",
-  info: "border-border bg-surface-2 text-content-muted",
-  debug: "border-border-soft bg-surface-2 text-content-faint",
-  trace: "border-border-soft bg-surface-2 text-content-faint",
+  info: "border-border bg-surface-2 text-content",
+  debug: "border-debug/30 bg-debug/10 text-debug",
+  trace: "border-trace/30 bg-trace/10 text-trace",
 };
 
 function shortTarget(target: string) {

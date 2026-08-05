@@ -34,6 +34,8 @@
   --color-ok: #46c08a;
   --color-warn: #e9b949;
   --color-danger: #e5484d;
+  --color-debug: #5fb2d6;
+  --color-trace: #9b8cf0;
 }
 
 @layer base {
