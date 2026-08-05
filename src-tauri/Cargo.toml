@@ -1,6 +1,6 @@
 [package]
 name = "basalt-launcher"
-version = "1.0.1"
+version = "1.0.0"
 description = "A visually polished Minecraft launcher with practical instance and content management"
 authors = ["MegalithOfficial"]
 edition = "2021"
