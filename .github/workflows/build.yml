@@ -126,6 +126,8 @@ jobs:
         env:
           BASALT_BUILD_CHANNEL: dev
           BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
+          BASALT_CURSEFORGE_API_KEY: ${{ secrets.BASALT_CURSEFORGE_API_KEY }}
+          BASALT_DISCORD_APP_ID: ${{ vars.BASALT_DISCORD_APP_ID }}
         run: bun run tauri build --debug
 
       - name: Build signed development bundles
@@ -133,6 +135,8 @@ jobs:
         env:
           BASALT_BUILD_CHANNEL: dev
           BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
+          BASALT_CURSEFORGE_API_KEY: ${{ secrets.BASALT_CURSEFORGE_API_KEY }}
+          BASALT_DISCORD_APP_ID: ${{ vars.BASALT_DISCORD_APP_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: bun run tauri build --debug --config src-tauri/tauri.updater.conf.json
 
@@ -141,6 +145,8 @@ jobs:
         env:
           BASALT_BUILD_CHANNEL: release
           BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
+          BASALT_CURSEFORGE_API_KEY: ${{ secrets.BASALT_CURSEFORGE_API_KEY }}
+          BASALT_DISCORD_APP_ID: ${{ vars.BASALT_DISCORD_APP_ID }}
         run: bun run tauri build
 
       - name: Build signed release bundles
@@ -148,6 +154,8 @@ jobs:
         env:
           BASALT_BUILD_CHANNEL: release
           BASALT_DISTRIBUTION: ${{ runner.os == 'Linux' && 'linux_bundle' || runner.os == 'Windows' && 'windows' || 'macos' }}
+          BASALT_CURSEFORGE_API_KEY: ${{ secrets.BASALT_CURSEFORGE_API_KEY }}
+          BASALT_DISCORD_APP_ID: ${{ vars.BASALT_DISCORD_APP_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: bun run tauri build --config src-tauri/tauri.updater.conf.json
 
