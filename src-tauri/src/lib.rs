@@ -57,6 +57,8 @@ pub fn run() {
             let files = FileManager::new(paths.clone())?;
             files.ensure_base_dirs()?;
 
+            storage::prune_window_cache(&files, storage::WINDOW_CACHE_CAP);
+
             let log_state = logging::init(app.handle(), &files, logging::DEFAULT_LEVEL)?;
             tracing::info!(
                 version = env!("CARGO_PKG_VERSION"),

@@ -186,16 +186,15 @@ fn spawn_log_tailer(
 ) {
     tauri::async_runtime::spawn(async move {
         let path = files.paths().run_log(&running_id, stream);
-        let mut offset = 0;
+        let mut offset = 0u64;
         let mut pending = Vec::new();
         loop {
-            if let Ok(bytes) = files.read_async(&path).await {
-                if bytes.len() < offset {
-                    offset = 0;
+            if let Ok(tail) = files.read_tail_async(&path, offset).await {
+                if tail.restarted {
                     pending.clear();
                 }
-                pending.extend_from_slice(&bytes[offset..]);
-                offset = bytes.len();
+                pending.extend_from_slice(&tail.bytes);
+                offset = tail.len;
 
                 let mut lines = Vec::new();
                 while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
@@ -577,5 +576,54 @@ mod recovery_tests {
         assert!(!command_has_marker(&args, "run-2"));
         assert!(identity_matches(100, &args, 100, "run-1"));
         assert!(!identity_matches(101, &args, 100, "run-1"));
+    }
+}
+
+#[cfg(test)]
+mod tail_tests {
+    use std::io::Write;
+
+    use crate::{files::FileManager, paths::Paths};
+
+    #[test]
+    fn a_tail_read_returns_only_what_was_appended() {
+        let root = std::env::temp_dir().join(format!("basalt-tail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let path = root.join("run.log");
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        std::fs::write(&path, b"first\nsecond\n").unwrap();
+        let opening = runtime.block_on(files.read_tail_async(&path, 0)).unwrap();
+        assert_eq!(opening.bytes, b"first\nsecond\n");
+        assert!(!opening.restarted);
+
+        let mut handle = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        handle.write_all(b"third\n").unwrap();
+        drop(handle);
+
+        let appended = runtime
+            .block_on(files.read_tail_async(&path, opening.len))
+            .unwrap();
+        assert_eq!(appended.bytes, b"third\n");
+        assert!(!appended.restarted);
+
+        let idle = runtime
+            .block_on(files.read_tail_async(&path, appended.len))
+            .unwrap();
+        assert!(idle.bytes.is_empty());
+
+        std::fs::write(&path, b"restarted\n").unwrap();
+        let rewound = runtime
+            .block_on(files.read_tail_async(&path, appended.len))
+            .unwrap();
+        assert!(rewound.restarted);
+        assert_eq!(rewound.bytes, b"restarted\n");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

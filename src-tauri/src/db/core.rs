@@ -10,6 +10,29 @@ use crate::{
 
 use super::{migrate, Db, SCHEMA_VERSION};
 
+const WAL_SIZE_LIMIT: i64 = 8 * 1024 * 1024;
+const VACUUM_THRESHOLD: i64 = 2 * 1024 * 1024;
+
+fn compact(conn: &Connection) {
+    let _ = conn.pragma_update(None, "journal_size_limit", WAL_SIZE_LIMIT);
+    let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+
+    let free_bytes = (|| -> rusqlite::Result<i64> {
+        let page_size: i64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
+        let free: i64 = conn.query_row("PRAGMA freelist_count", [], |row| row.get(0))?;
+        Ok(page_size * free)
+    })()
+    .unwrap_or(0);
+
+    if free_bytes >= VACUUM_THRESHOLD {
+        match conn.execute_batch("VACUUM;") {
+            Ok(()) => tracing::info!(free_bytes, "compacted the database"),
+            Err(error) => tracing::warn!(error = %error, "could not compact the database"),
+        }
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+    }
+}
+
 impl Db {
     pub fn open(files: &FileManager) -> Result<Self> {
         let paths = files.paths();
@@ -18,6 +41,7 @@ impl Db {
         let conn = Connection::open(&path)?;
         let _ = conn.pragma_update(None, "journal_mode", "WAL");
         migrate(&conn)?;
+        compact(&conn);
         let db = Db(Arc::new(Mutex::new(conn)));
         db.import_legacy_json(files)?;
         let discarded = db.discard_insecure_credentials()?;

@@ -359,6 +359,26 @@ pub struct ReclaimOutcome {
     pub failures: Vec<String>,
 }
 
+pub const WINDOW_CACHE_CAP: u64 = 256 * 1024 * 1024;
+
+pub fn prune_window_cache(files: &FileManager, cap: u64) -> u64 {
+    let path = files.paths().root.join("WebKitCache");
+    let bytes = size_of(files, &path, &mut Counted::default());
+    if bytes <= cap {
+        return 0;
+    }
+    match files.remove_managed_dir_all_if_exists(&path) {
+        Ok(_) => {
+            tracing::info!(bytes, cap, "cleared the oversized window cache");
+            bytes
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "could not clear the window cache");
+            0
+        }
+    }
+}
+
 fn clear_tree(files: &FileManager, path: &Path) -> Result<u64> {
     let bytes = size_of(files, path, &mut Counted::default());
     files.remove_managed_dir_all_if_exists(path)?;
@@ -458,6 +478,7 @@ pub fn reclaim(store: &Store, targets: &[String]) -> Result<ReclaimOutcome> {
             "cache-runtimes" => clear_tree(files, &cache_root.join("runtimes")),
             "thumbnails" => clear_tree(files, &paths.media().join("thumbnails")),
             "run-logs" => clear_files_in(files, &paths.logs().join("runs")),
+            "webkit" => clear_tree(files, &paths.root.join("WebKitCache")),
             "api-cache" => {
                 let bytes = store.db.api_cache_bytes().unwrap_or(0);
                 store.db.clear_api_cache().map(|_| bytes)
@@ -629,8 +650,8 @@ pub fn scan(store: &Store, task: Option<&TaskHandle>) -> Result<StorageReport> {
             "webkit",
             "Window cache",
             paths.root.join("WebKitCache"),
-            false,
-            "The window's own cache for icons and images it has loaded.",
+            true,
+            "Icons and images the window has loaded. Cleared automatically once it passes 256 MB.",
         ),
     ] {
         let bytes = size_of(files, &path, &mut counted);

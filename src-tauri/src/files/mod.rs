@@ -19,6 +19,12 @@ pub struct FileManager {
     root: Arc<Dir>,
 }
 
+pub struct Tail {
+    pub bytes: Vec<u8>,
+    pub len: u64,
+    pub restarted: bool,
+}
+
 impl FileManager {
     pub fn new(paths: Paths) -> Result<Self> {
         Dir::create_ambient_dir_all(&paths.root, ambient_authority())?;
@@ -105,6 +111,29 @@ impl FileManager {
         tokio::task::spawn_blocking(move || files.read(path))
             .await
             .map_err(|error| Error::other(format!("read task failed: {error}")))?
+    }
+
+    pub async fn read_tail_async(&self, path: impl AsRef<Path>, from: u64) -> Result<Tail> {
+        let files = self.clone();
+        let path = path.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            use std::io::{Read, Seek, SeekFrom};
+
+            let mut file = files.open(&path)?;
+            let len = file.metadata()?.len();
+            let restarted = len < from;
+            let start = if restarted { 0 } else { from };
+            file.seek(SeekFrom::Start(start))?;
+            let mut bytes = Vec::with_capacity(len.saturating_sub(start) as usize);
+            file.read_to_end(&mut bytes)?;
+            Ok(Tail {
+                bytes,
+                len,
+                restarted,
+            })
+        })
+        .await
+        .map_err(|error| Error::other(format!("read task failed: {error}")))?
     }
 
     pub async fn read_external_async(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
