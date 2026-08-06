@@ -71,7 +71,7 @@ settings.
 
 ## Project status
 
-Basalt is cross-platform alpha software for Linux, Windows, and macOS. Testing
+Basalt is cross-platform software for Linux, Windows, and macOS. Testing
 coverage still varies between platforms, so platform-specific bug reports are
 especially useful during the beta.
 
