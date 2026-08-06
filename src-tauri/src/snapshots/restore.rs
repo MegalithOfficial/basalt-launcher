@@ -383,7 +383,7 @@ pub(crate) async fn restore(
             instance_id: Some(instance.id.clone()),
             ..Default::default()
         },
-    ));
+    )?);
     let instance_id = instance.id.clone();
     let store = SnapshotStore::from_state(state);
     let result = match tokio::task::spawn_blocking({

@@ -577,7 +577,7 @@ pub async fn download(app: AppHandle, state: &crate::state::AppState) -> Result<
             subtitle: Some("Launcher update".to_string()),
             ..Default::default()
         },
-    );
+    )?;
 
     let result = async {
         task.stage("preparing");

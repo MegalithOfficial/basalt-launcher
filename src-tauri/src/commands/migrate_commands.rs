@@ -60,7 +60,7 @@ pub async fn migrate_instances(
             subtitle: Some("From ATLauncher".to_string()),
             ..Default::default()
         },
-    );
+    )?;
 
     let files = state.files.clone();
     let db = state.db.clone();

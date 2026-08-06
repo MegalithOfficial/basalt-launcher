@@ -76,7 +76,7 @@ pub async fn import_worlds(
             instance_id: Some(instance_id.clone()),
             ..Default::default()
         },
-    ));
+    )?);
     let files = state.files.clone();
     let source = PathBuf::from(source_path);
     let worker_task = Arc::clone(&task);

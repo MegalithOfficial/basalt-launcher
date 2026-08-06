@@ -685,9 +685,6 @@ pub async fn install_modpack(
         env_vars_mode: None,
     };
     let instance_dir = state.paths.instance_dir(&instance.id);
-    state.files.ensure_dir(&instance_dir)?;
-    state.db.insert_instance(&instance)?;
-    tracing::info!(instance_id = %instance.id, name = %instance.name, "modpack instance created");
 
     let icon_url = search::resolve_projects(state, provider, &[project_id.to_string()])
         .await
@@ -714,7 +711,20 @@ pub async fn install_modpack(
             project_id: Some(project_id.to_string()),
             ..Default::default()
         },
-    );
+    )?;
+
+    let setup = (|| {
+        state.files.ensure_dir(&instance_dir)?;
+        state.db.insert_instance(&instance)?;
+        Result::<()>::Ok(())
+    })();
+    if let Err(error) = setup {
+        let _ = state.db.delete_instance(&instance.id);
+        let _ = state.files.remove_instance_dir(&instance.id);
+        task.fail(&error);
+        return Err(error);
+    }
+    tracing::info!(instance_id = %instance.id, name = %instance.name, "modpack instance created");
 
     let outcome = install_pack_body(
         app,

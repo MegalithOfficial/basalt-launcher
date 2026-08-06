@@ -233,7 +233,7 @@ pub async fn repair(app: &AppHandle, state: &AppState, instance: Instance) -> Re
             instance_id: Some(instance.id.clone()),
             ..Default::default()
         },
-    ));
+    )?);
 
     let result = async {
         task.stage("loader-profile");
@@ -383,7 +383,7 @@ pub async fn duplicate(app: &AppHandle, state: &AppState, source: Instance) -> R
             instance_id: Some(source.id.clone()),
             ..Default::default()
         },
-    ));
+    )?);
     let destination = state.paths.instance_dir(&id);
     let result = match tokio::task::spawn_blocking({
         let files = state.files.clone();

@@ -411,34 +411,38 @@ pub async fn apply(
         })
         .collect();
 
-    let task = app.map(|app| {
+    let task = if let Some(app) = app {
         let instance_name = state
             .db
             .list_instances(&state.files)
             .ok()
             .and_then(|list| list.into_iter().find(|i| i.id == instance_id))
             .map(|i| i.name);
-        state.tasks.start(
-            app,
-            match pack_version_id {
-                Some(_) => TaskKind::ModpackInstall,
-                None => TaskKind::ContentInstall,
-            },
-            TaskSpec {
-                title: plan
-                    .primary
-                    .as_ref()
-                    .map(|f| f.title.clone())
-                    .unwrap_or_else(|| "Content".to_string()),
-                subtitle: instance_name.map(|name| format!("into {name}")),
-                icon_url: plan.primary.as_ref().and_then(|f| f.icon_url.clone()),
-                instance_id: Some(instance_id.to_string()),
-                project_id: plan.primary.as_ref().map(|f| f.project_id.clone()),
-                total: total as u64,
-                total_bytes: plan.total_bytes,
-            },
+        Some(
+            state.tasks.start(
+                app,
+                match pack_version_id {
+                    Some(_) => TaskKind::ModpackInstall,
+                    None => TaskKind::ContentInstall,
+                },
+                TaskSpec {
+                    title: plan
+                        .primary
+                        .as_ref()
+                        .map(|f| f.title.clone())
+                        .unwrap_or_else(|| "Content".to_string()),
+                    subtitle: instance_name.map(|name| format!("into {name}")),
+                    icon_url: plan.primary.as_ref().and_then(|f| f.icon_url.clone()),
+                    instance_id: Some(instance_id.to_string()),
+                    project_id: plan.primary.as_ref().map(|f| f.project_id.clone()),
+                    total: total as u64,
+                    total_bytes: plan.total_bytes,
+                },
+            )?,
         )
-    });
+    } else {
+        None
+    };
 
     if let Some(task) = &task {
         task.stage("downloading");

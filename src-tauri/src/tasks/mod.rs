@@ -200,7 +200,12 @@ impl Tasks {
         });
     }
 
-    pub fn start(self: &Arc<Self>, app: &AppHandle, kind: TaskKind, spec: TaskSpec) -> TaskHandle {
+    pub fn start(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        kind: TaskKind,
+        spec: TaskSpec,
+    ) -> crate::error::Result<TaskHandle> {
         let task = Task {
             id: uuid::Uuid::new_v4().to_string(),
             kind,
@@ -223,6 +228,17 @@ impl Tasks {
         };
 
         let id = task.id.clone();
+        if is_recoverable(kind) {
+            self.db.begin_operation(&crate::db::PendingOperation {
+                id: id.clone(),
+                kind,
+                instance_id: task.instance_id.clone(),
+                title: task.title.clone(),
+                payload: None,
+                started_at: task.started_at,
+            })?;
+        }
+
         {
             let mut list = self.inner.lock().unwrap();
             list.push(task.clone());
@@ -234,27 +250,16 @@ impl Tasks {
             .unwrap()
             .insert(id.clone(), token.clone());
 
-        if is_recoverable(kind) {
-            let _ = self.db.begin_operation(&crate::db::PendingOperation {
-                id: id.clone(),
-                kind,
-                instance_id: task.instance_id.clone(),
-                title: task.title.clone(),
-                payload: None,
-                started_at: task.started_at,
-            });
-        }
-
         emit(app, &task);
 
-        TaskHandle {
+        Ok(TaskHandle {
             id,
             app: app.clone(),
             tasks: Arc::clone(self),
             last_emit: Mutex::new(Instant::now()),
             token,
             written: Mutex::new(Vec::new()),
-        }
+        })
     }
 
     fn mutate<F>(&self, id: &str, apply: F) -> Option<Task>
@@ -382,7 +387,9 @@ impl TaskHandle {
         let snapshot = task.clone();
         drop(list);
         self.tasks.tokens.lock().unwrap().remove(&self.id);
-        let _ = self.tasks.db.end_operation(&self.id);
+        if let Err(error) = self.tasks.db.end_operation(&self.id) {
+            tracing::warn!(task_id = %self.id, %error, "could not clear the recovery journal");
+        }
         emit(&self.app, &snapshot);
     }
 

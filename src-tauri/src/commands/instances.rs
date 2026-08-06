@@ -569,7 +569,7 @@ pub async fn install_instance(
             instance_id: Some(instance.id.clone()),
             ..Default::default()
         },
-    );
+    )?;
 
     let result = async {
         let launch_id = match (&instance.loader, &instance.launch_version_id) {

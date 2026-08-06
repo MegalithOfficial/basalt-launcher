@@ -759,7 +759,7 @@ pub async fn upgrade_modpack(
             project_id: instance.pack_project_id.clone(),
             ..Default::default()
         },
-    ));
+    )?);
     let result = async {
         if snapshot_first {
             task.stage("safety-snapshot");

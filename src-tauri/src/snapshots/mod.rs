@@ -779,7 +779,7 @@ pub async fn create(
             instance_id: Some(instance.id.clone()),
             ..Default::default()
         },
-    ));
+    )?);
     task.stage("indexing");
     let store = SnapshotStore::from_state(state);
     let result = match tokio::task::spawn_blocking({

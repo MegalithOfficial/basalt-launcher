@@ -373,7 +373,7 @@ pub async fn install(
             total: 1,
             total_bytes: file.size.unwrap_or(0),
         },
-    );
+    )?;
 
     let spec = crate::download::DownloadSpec {
         url: file.url.clone(),

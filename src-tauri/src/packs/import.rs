@@ -484,7 +484,6 @@ pub async fn prepare_import(
         .join("cache")
         .join("modpacks")
         .join(format!("import-{}.zip", uuid::Uuid::new_v4()));
-    state.files.copy_external_into(path, &staged).await?;
 
     let base = name_override
         .map(|name| name.trim().to_string())
@@ -524,8 +523,6 @@ pub async fn prepare_import(
         env_vars_mode: None,
     };
     let instance_dir = state.paths.instance_dir(&instance.id);
-    state.files.ensure_dir(&instance_dir)?;
-    state.db.insert_instance(&instance)?;
 
     let task = state.tasks.start(
         app,
@@ -544,7 +541,22 @@ pub async fn prepare_import(
             instance_id: Some(instance.id.clone()),
             ..Default::default()
         },
-    );
+    )?;
+
+    let setup = async {
+        state.files.copy_external_into(path, &staged).await?;
+        state.files.ensure_dir(&instance_dir)?;
+        state.db.insert_instance(&instance)?;
+        Result::<()>::Ok(())
+    }
+    .await;
+    if let Err(error) = setup {
+        let _ = state.files.remove_file_if_exists(&staged);
+        let _ = state.db.delete_instance(&instance.id);
+        let _ = state.files.remove_instance_dir(&instance.id);
+        task.fail(&error);
+        return Err(error);
+    }
 
     Ok(PreparedImport {
         instance,

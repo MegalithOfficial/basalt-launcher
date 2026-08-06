@@ -57,7 +57,7 @@ pub async fn scan_storage(
             title: "Measuring storage".to_string(),
             ..Default::default()
         },
-    );
+    )?;
 
     let store = Store::from_state(&state);
     let result = tokio::task::spawn_blocking(move || {

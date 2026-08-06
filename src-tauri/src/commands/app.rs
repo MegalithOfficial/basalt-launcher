@@ -76,7 +76,7 @@ pub async fn install_java_runtime(
             subtitle: Some(format!("Eclipse Temurin · {platform}")),
             ..Default::default()
         },
-    );
+    )?;
     let result = async {
         let info = java::managed::install(&state.network, &state.files, major, &task).await?;
         if let Some(instance_id) = instance_id.as_deref() {
