@@ -128,7 +128,7 @@ function ColorField({
 }
 
 function Section(props: React.ComponentProps<typeof SettingGroup>) {
-  return <SettingGroup {...props} className={cn("mb-6", props.className)} />;
+  return <SettingGroup {...props} className={cn("pb-6", props.className)} />;
 }
 
 const PROXY_LABELS: Record<ProxyMode, string> = {
