@@ -965,7 +965,7 @@ mod tests {
     fn interrupted_activation_restores_the_original_folder_and_metadata() {
         let root =
             std::env::temp_dir().join(format!("basalt-pack-upgrade-test-{}", uuid::Uuid::new_v4()));
-        let paths = Paths { root: root.clone() };
+        let paths = Paths::plain(root.clone());
         let files = FileManager::new(paths.clone()).unwrap();
         files.ensure_base_dirs().unwrap();
         let db = Db::open(&files).unwrap();

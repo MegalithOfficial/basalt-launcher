@@ -932,7 +932,7 @@ mod tests {
     fn test_store() -> (SnapshotStore, PathBuf) {
         let root =
             std::env::temp_dir().join(format!("basalt-snapshot-test-{}", uuid::Uuid::new_v4()));
-        let paths = Paths { root: root.clone() };
+        let paths = Paths::plain(root.clone());
         let files = FileManager::new(paths.clone()).unwrap();
         files.ensure_base_dirs().unwrap();
         let db = Db::open(&files).unwrap();

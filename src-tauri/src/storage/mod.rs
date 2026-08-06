@@ -437,7 +437,7 @@ fn clear_orphan_files(files: &FileManager, root: &Path, live: &HashSet<PathBuf>)
 pub fn reclaim(store: &Store, targets: &[String]) -> Result<ReclaimOutcome> {
     let files = &store.files;
     let paths = &store.paths;
-    let cache_root = paths.root.join("cache");
+    let cache_root = paths.cache();
 
     let wants_graph = targets.iter().any(|target| {
         matches!(
@@ -614,7 +614,7 @@ pub fn scan(store: &Store, task: Option<&TaskHandle>) -> Result<StorageReport> {
     if let Some(task) = task {
         task.stage("caches");
     }
-    let cache_root = paths.root.join("cache");
+    let cache_root = paths.cache();
     let mut caches = Vec::new();
     let mut caches_total = 0;
     for (id, label, path, offer, detail) in [
@@ -776,7 +776,7 @@ mod tests {
     #[ignore]
     fn report_on_the_real_data_directory() {
         let root = dirs_root();
-        let paths = Paths { root };
+        let paths = Paths::plain(root);
         let files = FileManager::new(paths.clone()).unwrap();
         let db = Db::open(&files).unwrap();
         let store = Store { files, paths, db };
@@ -812,7 +812,7 @@ mod tests {
     fn test_store() -> Store {
         let root =
             std::env::temp_dir().join(format!("basalt-reclaim-test-{}", uuid::Uuid::new_v4()));
-        let paths = Paths { root };
+        let paths = Paths::plain(root);
         let files = FileManager::new(paths.clone()).unwrap();
         files.ensure_base_dirs().unwrap();
         let db = Db::open(&files).unwrap();

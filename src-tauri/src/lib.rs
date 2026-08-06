@@ -54,6 +54,24 @@ pub fn run() {
                 let _ = window.set_icon(icon);
             }
             let paths = Paths::resolve(app.handle())?;
+            let unavailable = paths.unavailable();
+            if !unavailable.is_empty() {
+                let listed = unavailable
+                    .iter()
+                    .map(|(slot, path)| format!("{}: {}", slot.directory(), path.display()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                tauri_plugin_dialog::DialogExt::dialog(app.handle())
+                    .message(format!(
+                        "Basalt keeps some data on another drive and cannot reach it right now.\n\n{listed}\n\nMount the drive and start Basalt again, or edit {} to point these folders somewhere else.",
+                        paths.root.join(paths::OVERRIDES_FILE).display()
+                    ))
+                    .title("A data folder is missing")
+                    .kind(tauri_plugin_dialog::MessageDialogKind::Error)
+                    .blocking_show();
+                app.handle().exit(1);
+                return Ok(());
+            }
             let files = FileManager::new(paths.clone())?;
             files.ensure_base_dirs()?;
 
@@ -264,6 +282,9 @@ pub fn run() {
             commands::app::get_system_stats,
             commands::app::get_system_usage,
             commands::app::preview_launch_args,
+            commands::locations::get_data_locations,
+            commands::locations::inspect_data_location,
+            commands::locations::set_data_location,
             commands::skins::get_appearance,
             commands::skins::list_skins,
             commands::skins::add_skin_from_file,

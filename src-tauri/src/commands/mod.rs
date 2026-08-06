@@ -11,6 +11,7 @@ pub(crate) mod content_commands;
 pub(crate) mod datapacks;
 pub(crate) mod instances;
 pub(crate) mod launch_commands;
+pub(crate) mod locations;
 pub(crate) mod logging_commands;
 pub(crate) mod migrate_commands;
 pub(crate) mod pack_commands;

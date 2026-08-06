@@ -31,6 +31,7 @@ pub enum TaskKind {
     SnapshotRestore,
     StorageScan,
     DatapackInstall,
+    DataMove,
 }
 
 impl TaskKind {
@@ -52,6 +53,7 @@ impl TaskKind {
             Self::SnapshotRestore => "snapshot_restore",
             Self::StorageScan => "storage_scan",
             Self::DatapackInstall => "datapack_install",
+            Self::DataMove => "data_move",
         }
     }
 
@@ -73,6 +75,7 @@ impl TaskKind {
             "snapshot_restore" | "SnapshotRestore" => Some(Self::SnapshotRestore),
             "storage_scan" | "StorageScan" => Some(Self::StorageScan),
             "datapack_install" | "DatapackInstall" => Some(Self::DatapackInstall),
+            "data_move" | "DataMove" => Some(Self::DataMove),
             _ => None,
         }
     }

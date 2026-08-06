@@ -253,7 +253,7 @@ mod tests {
         }
         std::fs::create_dir_all(root.join("not-a-jdk/share")).unwrap();
 
-        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let files = FileManager::new(Paths::plain(root.clone())).unwrap();
         let found = runtime_binaries_in(&files, &root);
         assert_eq!(found.len(), 3, "found: {found:?}");
         assert!(found.iter().all(|p| p.ends_with(java_binary())));

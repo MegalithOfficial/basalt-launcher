@@ -157,7 +157,7 @@ async fn run_installer(
 
     task.stage("loader-installer");
 
-    let installer_dir = state.paths.root.join("cache").join("installers");
+    let installer_dir = state.paths.cache().join("installers");
     let installer_path = installer_dir.join(installer_name);
     download::download_one(
         &state.network,

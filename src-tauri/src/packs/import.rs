@@ -480,8 +480,7 @@ pub async fn prepare_import(
 
     let staged = state
         .paths
-        .root
-        .join("cache")
+        .cache()
         .join("modpacks")
         .join(format!("import-{}.zip", uuid::Uuid::new_v4()));
 

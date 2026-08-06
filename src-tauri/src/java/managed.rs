@@ -281,15 +281,10 @@ pub async fn install(
     task.stage("java-metadata");
     let package = resolve_package(network, major, platform).await?;
     let extension = archive_extension(&package.name)?;
-    let archive = files
-        .paths()
-        .root
-        .join("cache")
-        .join("runtimes")
-        .join(format!(
-            "temurin-{major}-{}-{}.{extension}",
-            platform.os, platform.arch
-        ));
+    let archive = files.paths().cache().join("runtimes").join(format!(
+        "temurin-{major}-{}-{}.{extension}",
+        platform.os, platform.arch
+    ));
     task.stage("java-download");
     task.set_total(1, package.size);
     download::download_many_cancellable(
@@ -361,10 +356,7 @@ mod tests {
     use crate::{files::FileManager, paths::Paths};
 
     fn files(root: &std::path::Path) -> FileManager {
-        FileManager::new(Paths {
-            root: root.to_path_buf(),
-        })
-        .unwrap()
+        FileManager::new(Paths::plain(root.to_path_buf())).unwrap()
     }
 
     #[test]

@@ -653,10 +653,7 @@ mod tests {
     }
 
     fn files(root: &std::path::Path) -> FileManager {
-        FileManager::new(crate::paths::Paths {
-            root: root.to_path_buf(),
-        })
-        .unwrap()
+        FileManager::new(crate::paths::Paths::plain(root.to_path_buf())).unwrap()
     }
 
     fn read_request(socket: &mut std::net::TcpStream) -> String {

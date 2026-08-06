@@ -423,8 +423,7 @@ pub(super) async fn prepare_pack(
         .ok_or_else(|| Error::other("This pack version has no downloadable file."))?;
     let archive_path = state
         .paths
-        .root
-        .join("cache")
+        .cache()
         .join("modpacks")
         .join(&archive.file_name);
     let downloads_dir = app.path().download_dir()?;

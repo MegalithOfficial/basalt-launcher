@@ -17,6 +17,7 @@ import { log } from "../../lib/log";
 import { formatBytes } from "../../lib/packs";
 import type { Reclaimable, StorageEntry, StorageReport } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { DataLocations } from "./DataLocations";
 
 const BUCKET_COLORS: Record<string, string> = {
   instances: "var(--accent)",
@@ -483,6 +484,10 @@ export function StoragePanel() {
         {report.buckets.map((bucket) => (
           <Row key={bucket.id} entry={bucket} total={total} depth={0} showShare />
         ))}
+      </div>
+
+      <div className="mb-8">
+        <DataLocations />
       </div>
 
       <div className="flex items-baseline gap-3">

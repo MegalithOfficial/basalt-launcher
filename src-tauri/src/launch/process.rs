@@ -590,7 +590,7 @@ mod tail_tests {
         let root = std::env::temp_dir().join(format!("basalt-tail-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
-        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let files = FileManager::new(Paths::plain(root.clone())).unwrap();
         let path = root.join("run.log");
         let runtime = tokio::runtime::Runtime::new().unwrap();
 

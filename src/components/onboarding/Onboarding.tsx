@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowRight,
@@ -7,6 +8,7 @@ import {
   Check,
   Coffee,
   Compass,
+  HardDrive,
   HardDriveDownload,
   Loader2,
   MemoryStick,
@@ -16,20 +18,45 @@ import {
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
-import type { JavaInfo, LauncherSettings, LauncherSource, SystemStats } from "../../lib/types";
+import type {
+  DataLocation,
+  DataRoot,
+  DiskInfo,
+  JavaInfo,
+  LauncherSettings,
+  LauncherSource,
+  SystemStats,
+} from "../../lib/types";
 import { useStore } from "../../store";
 import { CreateInstanceModal } from "../CreateInstanceModal";
 import { MemoryRange } from "../MemoryRange";
 import { MigrateModal } from "../MigrateModal";
 import { PlayerHead } from "../Avatar";
 import { SignInModal } from "../SignInModal";
+import { DataLocationsModal } from "../storage/DataLocationsModal";
 
-type StepId = "welcome" | "import" | "account" | "java" | "memory" | "done";
+type StepId = "welcome" | "storage" | "import" | "account" | "java" | "memory" | "done";
+
+const BULK_SLOTS: DataRoot[] = [
+  "instances",
+  "versions",
+  "libraries",
+  "assets",
+  "natives",
+  "runtimes",
+  "snapshots",
+  "cache",
+];
 
 const TITLES: Record<StepId, { title: string; blurb: string }> = {
   welcome: {
     title: "Welcome to Basalt",
     blurb: "A fast, native Minecraft launcher. Four short steps and you are playing.",
+  },
+  storage: {
+    title: "Where should the files go",
+    blurb:
+      "Modpacks and worlds run to tens of gigabytes. Put them on a roomier drive now and Basalt will not have to move them later.",
   },
   import: {
     title: "Bring your instances over",
@@ -52,6 +79,15 @@ const TITLES: Record<StepId, { title: string; blurb: string }> = {
     blurb: "Make an instance of your own, or browse the modpacks people have already built.",
   },
 };
+
+function parentOf(path: string) {
+  const cut = path.replace(/[/\\]+$/, "").lastIndexOf("/");
+  return cut > 0 ? path.slice(0, cut) : path;
+}
+
+function diskLabel(disk: DiskInfo) {
+  return disk.mount_point === "/" ? "system drive" : disk.mount_point;
+}
 
 function StepDots({ steps, at }: { steps: StepId[]; at: number }) {
   return (
@@ -117,8 +153,13 @@ export function Onboarding() {
   const [javaMajors, setJavaMajors] = useState<number[]>([17, 21]);
   const [installingJava, setInstallingJava] = useState(false);
   const [javaError, setJavaError] = useState<string | null>(null);
+  const [locations, setLocations] = useState<DataLocation[] | null>(null);
+  const [movingData, setMovingData] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [locationsOpen, setLocationsOpen] = useState(false);
 
   useEffect(() => {
+    api.getDataLocations().then(setLocations).catch(() => setLocations([]));
     api.detectLaunchers().then(setSources).catch(() => setSources([]));
     api.listJavas().then(setJavas).catch(() => setJavas([]));
     api.getSystemStats().then(setStats).catch(() => setStats(null));
@@ -137,7 +178,7 @@ export function Onboarding() {
   }, [settings, memory]);
 
   const steps = useMemo<StepId[]>(() => {
-    const list: StepId[] = ["welcome", "account"];
+    const list: StepId[] = ["welcome", "account", "storage"];
     if (sources && sources.length > 0) list.push("import");
     if (javas && javas.length === 0) list.push("java");
     list.push("memory", "done");
@@ -146,6 +187,31 @@ export function Onboarding() {
 
   const step = steps[Math.min(at, steps.length - 1)];
   const account = accounts.find((a) => a.active) ?? accounts[0];
+
+  const instancesRoot = locations?.find((entry) => entry.slot === "instances");
+  const dataBase = instancesRoot ? parentOf(instancesRoot.path) : null;
+  const dataDisk = instancesRoot?.disk ?? null;
+
+  const chooseDataFolder = async () => {
+    const chosen = await openFolderDialog({
+      directory: true,
+      title: "Pick a folder for the Basalt game files",
+    });
+    if (typeof chosen !== "string" || !locations) return;
+    setMovingData(true);
+    setStorageError(null);
+    try {
+      for (const slot of BULK_SLOTS) {
+        await api.setDataLocation(slot, `${chosen}/${slot}`, true);
+      }
+      setLocations(await api.getDataLocations());
+    } catch (cause) {
+      setStorageError(String(cause));
+      setLocations(await api.getDataLocations().catch(() => locations));
+    } finally {
+      setMovingData(false);
+    }
+  };
 
   const downloadJava = async () => {
     if (installingJava || javaMajors.length === 0) return;
@@ -245,6 +311,54 @@ export function Onboarding() {
                       title="Mods without the busywork"
                       hint="Browse Modrinth and CurseForge, install dependencies, and manage updates in one place."
                     />
+                  </>
+                )}
+
+                {step === "storage" && (
+                  <>
+                    <div className="rounded-2xl border border-border-soft bg-surface-2/60 px-4 py-3.5">
+                      <div className="flex items-start gap-3.5">
+                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-3 text-(--accent)">
+                          <HardDrive className="size-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono text-[11px] leading-relaxed break-all text-content">
+                            {dataBase ?? "Reading the current folder"}
+                          </div>
+                          <div className="mt-1 text-xs text-content-faint">
+                            {dataDisk
+                              ? `${diskLabel(dataDisk)} · ${Math.round(dataDisk.free_mb / 1024)} GB free of ${Math.round(dataDisk.total_mb / 1024)} GB`
+                              : "Free space is unknown on this drive"}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => void chooseDataFolder()}
+                          disabled={movingData}
+                          className="shrink-0 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-content transition-colors hover:bg-surface-3 disabled:opacity-50"
+                        >
+                          {movingData ? <Loader2 className="size-3.5 animate-spin" /> : "Another drive"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {storageError && (
+                      <div className="flex gap-2.5 rounded-2xl border border-danger/25 bg-danger/[0.07] px-4 py-3 text-xs text-danger">
+                        <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                        <span className="leading-relaxed">{storageError}</span>
+                      </div>
+                    )}
+
+                    <p className="text-xs leading-relaxed text-content-faint">
+                      Everything below goes onto the drive you pick. Or{" "}
+                      <button
+                        onClick={() => setLocationsOpen(true)}
+                        className="font-medium text-content-muted underline decoration-border-soft underline-offset-2 transition-colors hover:text-content"
+                      >
+                        place each folder yourself
+                      </button>
+                      . Nothing is locked in either way, Settings, Storage moves any single folder
+                      later, files and all.
+                    </p>
                   </>
                 )}
 
@@ -445,7 +559,6 @@ export function Onboarding() {
             </motion.div>
           </AnimatePresence>
         </div>
-
       </div>
 
       <div className="relative flex shrink-0 items-center justify-between gap-4 px-8 py-6">
@@ -481,6 +594,13 @@ export function Onboarding() {
       </div>
 
       <MigrateModal open={migrateOpen} onClose={() => setMigrateOpen(false)} />
+      <DataLocationsModal
+        open={locationsOpen}
+        onClose={() => {
+          setLocationsOpen(false);
+          void api.getDataLocations().then(setLocations).catch(() => {});
+        }}
+      />
       <CreateInstanceModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}

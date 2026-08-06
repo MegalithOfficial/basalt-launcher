@@ -850,6 +850,43 @@ export interface SystemStats {
   data_dir_total_mb: number | null;
 }
 
+export type DataRoot =
+  | "instances"
+  | "versions"
+  | "libraries"
+  | "assets"
+  | "natives"
+  | "runtimes"
+  | "snapshots"
+  | "cache";
+
+export interface DiskInfo {
+  mount_point: string;
+  name: string;
+  free_mb: number;
+  total_mb: number;
+  removable: boolean;
+}
+
+export interface DataLocation {
+  slot: DataRoot;
+  label: string;
+  summary: string;
+  path: string;
+  default_path: string;
+  custom: boolean;
+  exists: boolean;
+  disk: DiskInfo | null;
+}
+
+export interface LocationCandidate {
+  path: string;
+  usable: boolean;
+  problem: string | null;
+  occupied: boolean;
+  disk: DiskInfo | null;
+}
+
 export interface LaunchPreview {
   java: string;
   pinned: boolean;

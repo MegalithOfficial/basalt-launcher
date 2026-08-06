@@ -649,6 +649,9 @@ export const useStore = create<AppStore>((set) => ({
           duration: 8_000,
         });
       }));
+      track(await listen("data:relocated", () => {
+        void useStore.getState().refreshInstances();
+      }));
       track(await listen<Task>("task:update", (e) => {
         const task = e.payload;
         const previous = useStore.getState().tasks[task.id];

@@ -181,7 +181,7 @@ mod tests {
     fn test_paths() -> (Paths, FileManager) {
         let root =
             std::env::temp_dir().join(format!("basalt-storage-test-{}", uuid::Uuid::new_v4()));
-        let paths = Paths { root };
+        let paths = Paths::plain(root);
         let files = FileManager::new(paths.clone()).unwrap();
         files.ensure_base_dirs().unwrap();
         (paths, files)

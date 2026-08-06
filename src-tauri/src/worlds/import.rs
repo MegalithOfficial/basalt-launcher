@@ -718,7 +718,7 @@ mod tests {
     fn files() -> FileManager {
         let root =
             std::env::temp_dir().join(format!("basalt-world-import-{}", uuid::Uuid::new_v4()));
-        FileManager::new(Paths { root }).unwrap()
+        FileManager::new(Paths::plain(root)).unwrap()
     }
 
     fn named_tag(tag: u8, name: &str, payload: &[u8], out: &mut Vec<u8>) {

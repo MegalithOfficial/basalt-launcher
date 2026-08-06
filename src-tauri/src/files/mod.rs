@@ -1,7 +1,7 @@
 use std::{
     io::Write,
     path::{Component, Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 use crate::{
@@ -13,10 +13,12 @@ use cap_std::{
     fs::{Dir, Metadata, OpenOptions},
 };
 
+type Roots = Arc<Vec<(PathBuf, Arc<Dir>)>>;
+
 #[derive(Clone)]
 pub struct FileManager {
     paths: Paths,
-    root: Arc<Dir>,
+    roots: Arc<RwLock<Roots>>,
 }
 
 pub struct Tail {
@@ -27,12 +29,31 @@ pub struct Tail {
 
 impl FileManager {
     pub fn new(paths: Paths) -> Result<Self> {
-        Dir::create_ambient_dir_all(&paths.root, ambient_authority())?;
-        let root = Dir::open_ambient_dir(&paths.root, ambient_authority())?;
+        if let Some((slot, path)) = paths.unavailable().into_iter().next() {
+            return Err(Error::other(format!(
+                "the {} folder is on a drive that is not mounted: {}",
+                slot.directory(),
+                path.display()
+            )));
+        }
+        let roots = open_roots(&paths)?;
         Ok(Self {
             paths,
-            root: Arc::new(root),
+            roots: Arc::new(RwLock::new(roots)),
         })
+    }
+
+    pub fn reopen(&self) -> Result<()> {
+        if let Some((slot, path)) = self.paths.unavailable().into_iter().next() {
+            return Err(Error::other(format!(
+                "the {} folder is on a drive that is not mounted: {}",
+                slot.directory(),
+                path.display()
+            )));
+        }
+        let roots = open_roots(&self.paths)?;
+        *self.roots.write().unwrap() = roots;
+        Ok(())
     }
 
     pub fn paths(&self) -> &Paths {
@@ -60,32 +81,59 @@ impl FileManager {
         Ok(())
     }
 
-    fn relative<'a>(&self, path: &'a Path) -> Result<&'a Path> {
-        let relative = path.strip_prefix(&self.paths.root).map_err(|_| {
-            Error::other(format!(
-                "refusing to access unmanaged path {}",
-                path.display()
-            ))
-        })?;
-        if relative.components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        }) {
+    fn unmanaged(path: &Path) -> Error {
+        Error::other(format!(
+            "refusing to access unmanaged path {}",
+            path.display()
+        ))
+    }
+
+    fn resolve<'a>(&self, path: &'a Path) -> Result<(Arc<Dir>, &'a Path)> {
+        let roots = self.roots.read().unwrap().clone();
+        for (prefix, dir) in roots.iter() {
+            let Ok(relative) = path.strip_prefix(prefix) else {
+                continue;
+            };
+            if relative.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            }) {
+                return Err(Self::unmanaged(path));
+            }
+            return Ok((
+                dir.clone(),
+                if relative.as_os_str().is_empty() {
+                    Path::new(".")
+                } else {
+                    relative
+                },
+            ));
+        }
+        Err(Self::unmanaged(path))
+    }
+
+    fn resolve_pair<'a>(
+        &self,
+        source: &'a Path,
+        destination: &'a Path,
+    ) -> Result<(Arc<Dir>, &'a Path, &'a Path)> {
+        let (source_dir, source_relative) = self.resolve(source)?;
+        let (destination_dir, destination_relative) = self.resolve(destination)?;
+        if !Arc::ptr_eq(&source_dir, &destination_dir) {
             return Err(Error::other(format!(
-                "refusing to access unmanaged path {}",
-                path.display()
+                "refusing to move {} across data locations",
+                source.display()
             )));
         }
-        if relative.as_os_str().is_empty() {
-            return Ok(Path::new("."));
-        }
-        Ok(relative)
+        Ok((source_dir, source_relative, destination_relative))
     }
 
     pub fn ensure_dir(&self, path: impl AsRef<Path>) -> Result<()> {
-        self.root.create_dir_all(self.relative(path.as_ref())?)?;
+        let path = path.as_ref();
+        let (dir, relative) = self.resolve(path)?;
+        dir.create_dir_all(relative)?;
         Ok(())
     }
 
@@ -98,7 +146,8 @@ impl FileManager {
     }
 
     pub fn read(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
-        Ok(self.root.read(self.relative(path.as_ref())?)?)
+        let (dir, relative) = self.resolve(path.as_ref())?;
+        Ok(dir.read(relative)?)
     }
 
     pub fn read_external(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
@@ -144,7 +193,8 @@ impl FileManager {
         let files = self.clone();
         let path = path.as_ref().to_path_buf();
         tokio::task::spawn_blocking(move || {
-            Ok(files.root.read_to_string(files.relative(&path)?)?)
+            let (dir, relative) = files.resolve(&path)?;
+            Ok(dir.read_to_string(relative)?)
         })
         .await
         .map_err(|error| Error::other(format!("read task failed: {error}")))?
@@ -192,18 +242,22 @@ impl FileManager {
             return Ok(());
         }
 
-        let source_relative = self.relative(source)?;
-        self.relative(destination)?;
+        let (source_dir, source_relative) = self.resolve(source)?;
+        self.resolve(destination)?;
         if let Some(parent) = destination.parent() {
             self.ensure_dir(parent)?;
         }
 
         let temporary = temporary_path(destination);
-        let temporary_relative = self.relative(&temporary)?;
-        match self
-            .root
-            .hard_link(source_relative, &self.root, temporary_relative)
-        {
+        let hard_linked = match self.resolve_pair(&temporary, destination) {
+            Ok((temporary_dir, temporary_relative, _))
+                if Arc::ptr_eq(&source_dir, &temporary_dir) =>
+            {
+                temporary_dir.hard_link(source_relative, &temporary_dir, temporary_relative)
+            }
+            Ok(_) | Err(_) => Err(std::io::Error::from(std::io::ErrorKind::CrossesDevices)),
+        };
+        match hard_linked {
             Ok(()) => {
                 let result = self.replace_staged(&temporary, destination);
                 if result.is_err() {
@@ -246,7 +300,8 @@ impl FileManager {
     }
 
     pub fn exists(&self, path: impl AsRef<Path>) -> Result<bool> {
-        match self.root.metadata(self.relative(path.as_ref())?) {
+        let (dir, relative) = self.resolve(path.as_ref())?;
+        match dir.metadata(relative) {
             Ok(_) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
@@ -254,7 +309,8 @@ impl FileManager {
     }
 
     pub fn is_file(&self, path: impl AsRef<Path>) -> Result<bool> {
-        match self.root.metadata(self.relative(path.as_ref())?) {
+        let (dir, relative) = self.resolve(path.as_ref())?;
+        match dir.metadata(relative) {
             Ok(metadata) => Ok(metadata.is_file()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
@@ -285,24 +341,27 @@ impl FileManager {
 
     pub fn read_dir(&self, path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
         let path = path.as_ref();
-        let entries = self
-            .root
-            .read_dir(self.relative(path)?)?
+        let (dir, relative) = self.resolve(path)?;
+        let entries = dir
+            .read_dir(relative)?
             .map(|entry| entry.map(|entry| path.join(entry.file_name())))
             .collect::<std::io::Result<Vec<_>>>()?;
         Ok(entries)
     }
 
     pub fn metadata(&self, path: impl AsRef<Path>) -> Result<Metadata> {
-        Ok(self.root.metadata(self.relative(path.as_ref())?)?)
+        let (dir, relative) = self.resolve(path.as_ref())?;
+        Ok(dir.metadata(relative)?)
     }
 
     pub fn symlink_metadata(&self, path: impl AsRef<Path>) -> Result<Metadata> {
-        Ok(self.root.symlink_metadata(self.relative(path.as_ref())?)?)
+        let (dir, relative) = self.resolve(path.as_ref())?;
+        Ok(dir.symlink_metadata(relative)?)
     }
 
     pub fn open(&self, path: impl AsRef<Path>) -> Result<std::fs::File> {
-        Ok(self.root.open(self.relative(path.as_ref())?)?.into_std())
+        let (dir, relative) = self.resolve(path.as_ref())?;
+        Ok(dir.open(relative)?.into_std())
     }
 
     pub fn create(&self, path: impl AsRef<Path>) -> Result<std::fs::File> {
@@ -312,10 +371,8 @@ impl FileManager {
         }
         let mut options = OpenOptions::new();
         options.write(true).create(true).truncate(true);
-        Ok(self
-            .root
-            .open_with(self.relative(path)?, &options)?
-            .into_std())
+        let (dir, relative) = self.resolve(path)?;
+        Ok(dir.open_with(relative, &options)?.into_std())
     }
 
     pub fn copy_reader_into_sync(
@@ -327,22 +384,23 @@ impl FileManager {
     }
 
     pub fn rename(&self, source: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<()> {
-        let source = self.relative(source.as_ref())?;
+        let source = source.as_ref();
         let destination_path = destination.as_ref();
+        self.resolve_pair(source, destination_path)?;
         if let Some(parent) = destination_path.parent() {
             self.ensure_dir(parent)?;
         }
-        let destination = self.relative(destination_path)?;
-        self.root.rename(source, &self.root, destination)?;
+        let (dir, source, destination) = self.resolve_pair(source, destination_path)?;
+        dir.rename(source, &dir, destination)?;
         Ok(())
     }
 
     fn remove_dir_all_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
-        let path = self.relative(path.as_ref())?;
+        let (dir, path) = self.resolve(path.as_ref())?;
         if path == Path::new(".") {
-            return Err(Error::other("refusing to remove the managed root"));
+            return Err(Error::other("refusing to remove a managed root"));
         }
-        match self.root.remove_dir_all(path) {
+        match dir.remove_dir_all(path) {
             Ok(()) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
@@ -367,7 +425,7 @@ impl FileManager {
         append: bool,
     ) -> Result<tokio::fs::File> {
         let path = path.as_ref().to_path_buf();
-        self.relative(&path)?;
+        self.resolve(&path)?;
         if let Some(parent) = path.parent() {
             self.ensure_dir_async(parent).await?;
         }
@@ -378,10 +436,8 @@ impl FileManager {
         } else {
             options.truncate(true);
         }
-        let file = self
-            .root
-            .open_with(self.relative(&path)?, &options)?
-            .into_std();
+        let (dir, relative) = self.resolve(&path)?;
+        let file = dir.open_with(relative, &options)?.into_std();
         Ok(tokio::fs::File::from_std(file))
     }
 
@@ -392,8 +448,7 @@ impl FileManager {
     ) -> Result<()> {
         let partial = partial.as_ref().to_path_buf();
         let destination = destination.as_ref().to_path_buf();
-        self.relative(&partial)?;
-        self.relative(&destination)?;
+        self.resolve_pair(&partial, &destination)?;
         self.commit_staged(partial, destination).await
     }
 
@@ -405,8 +460,8 @@ impl FileManager {
     }
 
     pub fn remove_file_if_exists(&self, path: impl AsRef<Path>) -> Result<bool> {
-        let path = self.relative(path.as_ref())?;
-        match self.root.remove_file(path) {
+        let (dir, path) = self.resolve(path.as_ref())?;
+        match dir.remove_file(path) {
             Ok(()) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error.into()),
@@ -426,18 +481,15 @@ impl FileManager {
         destination: &Path,
         write: impl FnOnce(&mut std::fs::File) -> std::io::Result<T>,
     ) -> Result<T> {
-        self.relative(destination)?;
+        self.resolve(destination)?;
         if let Some(parent) = destination.parent() {
             self.ensure_dir(parent)?;
         }
         let temporary = temporary_path(destination);
-        let temporary_relative = self.relative(&temporary)?;
+        let (dir, temporary_relative) = self.resolve(&temporary)?;
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
-        let mut file = self
-            .root
-            .open_with(temporary_relative, &options)?
-            .into_std();
+        let mut file = dir.open_with(temporary_relative, &options)?.into_std();
 
         let result = (|| {
             let value = write(&mut file)?;
@@ -453,19 +505,28 @@ impl FileManager {
     }
 
     fn replace_staged(&self, temporary: &Path, destination: &Path) -> Result<()> {
-        let temporary = self.relative(temporary)?;
-        let destination = self.relative(destination)?;
-        self.root.rename(temporary, &self.root, destination)?;
+        let (dir, temporary, destination) = self.resolve_pair(temporary, destination)?;
+        dir.rename(temporary, &dir, destination)?;
         #[cfg(unix)]
         {
             let parent = destination
                 .parent()
                 .filter(|path| !path.as_os_str().is_empty())
                 .unwrap_or_else(|| Path::new("."));
-            self.root.open(parent)?.into_std().sync_all()?;
+            dir.open(parent)?.into_std().sync_all()?;
         }
         Ok(())
     }
+}
+
+fn open_roots(paths: &Paths) -> Result<Roots> {
+    let mut roots = Vec::new();
+    for path in paths.capability_roots() {
+        Dir::create_ambient_dir_all(&path, ambient_authority())?;
+        let dir = Dir::open_ambient_dir(&path, ambient_authority())?;
+        roots.push((path, Arc::new(dir)));
+    }
+    Ok(Arc::new(roots))
 }
 
 fn temporary_path(path: &Path) -> PathBuf {
@@ -479,15 +540,30 @@ fn temporary_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
     use super::FileManager;
-    use crate::paths::Paths;
+    use crate::paths::{DataRoot, Paths};
+
+    fn relocated(name: &str, slots: &[(DataRoot, &str)]) -> (PathBuf, FileManager) {
+        let base = std::env::temp_dir().join(format!("basalt-{name}-{}", uuid::Uuid::new_v4()));
+        let root = base.join("data");
+        let overrides = slots
+            .iter()
+            .map(|(slot, suffix)| (*slot, base.join(suffix)))
+            .collect::<BTreeMap<_, _>>();
+        for path in overrides.values() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        }
+        let files = FileManager::new(Paths::relocated(root, overrides)).unwrap();
+        (base, files)
+    }
 
     #[test]
     fn rejects_paths_outside_the_managed_root() {
-        let files = FileManager::new(Paths {
-            root: std::env::temp_dir().join("basalt-files-test"),
-        })
-        .unwrap();
+        let files =
+            FileManager::new(Paths::plain(std::env::temp_dir().join("basalt-files-test"))).unwrap();
         assert!(files.read("/tmp/not-basalt").is_err());
         assert!(files
             .write_atomic(files.paths().root.join("../escape"), b"no")
@@ -498,7 +574,7 @@ mod tests {
     #[test]
     fn atomic_write_creates_parents_and_replaces_content() {
         let root = std::env::temp_dir().join(format!("basalt-files-test-{}", uuid::Uuid::new_v4()));
-        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let files = FileManager::new(Paths::plain(root.clone())).unwrap();
         let path = root.join("nested").join("value");
         files.write_atomic(&path, b"first").unwrap();
         files.write_atomic(&path, b"second").unwrap();
@@ -509,7 +585,7 @@ mod tests {
     #[test]
     fn create_truncates_managed_files() {
         let root = std::env::temp_dir().join(format!("basalt-files-test-{}", uuid::Uuid::new_v4()));
-        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let files = FileManager::new(Paths::plain(root.clone())).unwrap();
         let path = root.join("logs").join("run.log");
 
         {
@@ -525,7 +601,7 @@ mod tests {
     #[test]
     fn links_managed_files_without_changing_their_contents() {
         let root = std::env::temp_dir().join(format!("basalt-link-test-{}", uuid::Uuid::new_v4()));
-        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let files = FileManager::new(Paths::plain(root.clone())).unwrap();
         let source = root.join("versions/1.21.1/1.21.1.jar");
         let destination = root.join("versions/neoforge/neoforge.jar");
         files.write_atomic(&source, b"minecraft").unwrap();
@@ -554,7 +630,7 @@ mod tests {
         let outside =
             std::env::temp_dir().join(format!("basalt-files-outside-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&outside).unwrap();
-        let files = FileManager::new(Paths { root: root.clone() }).unwrap();
+        let files = FileManager::new(Paths::plain(root.clone())).unwrap();
         symlink(&outside, root.join("escape")).unwrap();
 
         assert!(files
@@ -564,5 +640,112 @@ mod tests {
 
         std::fs::remove_dir_all(root).ok();
         std::fs::remove_dir_all(outside).ok();
+    }
+
+    #[test]
+    fn a_relocated_root_is_writable_and_lands_on_its_own_disk() {
+        let (base, files) = relocated("relocated", &[(DataRoot::Instances, "disk-two/games")]);
+        let path = files.paths().instance_dir("atm10").join("options.txt");
+
+        files.write_atomic(&path, b"fov:90").unwrap();
+
+        assert!(path.starts_with(base.join("disk-two/games")));
+        assert!(!path.starts_with(&files.paths().root));
+        assert_eq!(files.read(&path).unwrap(), b"fov:90");
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn paths_under_no_root_are_refused() {
+        let (base, files) = relocated("stranger", &[(DataRoot::Versions, "disk-two/versions")]);
+
+        assert!(files
+            .read(base.join("disk-two/somewhere-else/file"))
+            .is_err());
+        assert!(files
+            .write_atomic(base.join("disk-two/file"), b"no")
+            .is_err());
+        assert!(files.read("/etc/passwd").is_err());
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn traversal_out_of_a_relocated_root_is_refused() {
+        let (base, files) = relocated("traversal", &[(DataRoot::Assets, "disk-two/assets")]);
+        let escape = files.paths().assets().join("../../escape");
+
+        assert!(files.write_atomic(&escape, b"no").is_err());
+        assert!(files.ensure_dir(&escape).is_err());
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn nested_roots_resolve_against_the_longest_prefix() {
+        let (base, files) = relocated(
+            "nested",
+            &[
+                (DataRoot::Versions, "disk-two"),
+                (DataRoot::Libraries, "disk-two/libraries"),
+            ],
+        );
+        let library = files.paths().libraries().join("com/mojang/authlib.jar");
+        files.write_atomic(&library, b"jar").unwrap();
+
+        let (dir, relative) = files.resolve(&library).unwrap();
+        assert_eq!(relative, std::path::Path::new("com/mojang/authlib.jar"));
+        assert_eq!(dir.read(relative).unwrap(), b"jar");
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn reopening_moves_every_clone_onto_the_new_root() {
+        let base = std::env::temp_dir().join(format!("basalt-reopen-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&base).unwrap();
+        let paths = Paths::plain(base.join("data"));
+        let files = FileManager::new(paths.clone()).unwrap();
+        let clone = files.clone();
+        let before = paths.instance_dir("atm10").join("options.txt");
+        files.write_atomic(&before, b"fov:90").unwrap();
+
+        let moved = base.join("disk-two/games");
+        std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+        std::fs::rename(paths.instances(), &moved).unwrap();
+        paths.adopt(BTreeMap::from([(DataRoot::Instances, moved.clone())]));
+        files.reopen().unwrap();
+
+        let after = paths.instance_dir("atm10").join("options.txt");
+        assert!(after.starts_with(&moved));
+        assert_eq!(clone.read(&after).unwrap(), b"fov:90");
+        assert!(clone.read(&before).is_err());
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn an_unmounted_location_stops_startup_instead_of_recreating_it() {
+        let base = std::env::temp_dir().join(format!("basalt-unmounted-{}", uuid::Uuid::new_v4()));
+        let missing = base.join("never-mounted").join("games");
+        let paths = Paths::relocated(
+            base.join("data"),
+            BTreeMap::from([(DataRoot::Instances, missing.clone())]),
+        );
+
+        assert!(FileManager::new(paths).is_err());
+        assert!(!missing.exists());
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn moving_between_two_locations_is_refused() {
+        let (base, files) = relocated("crossing", &[(DataRoot::Versions, "disk-two/versions")]);
+        let source = files.paths().version_jar("1.21.1");
+        let destination = files.paths().instance_dir("atm10").join("1.21.1.jar");
+        files.write_atomic(&source, b"minecraft").unwrap();
+
+        assert!(files.rename(&source, &destination).is_err());
+        assert!(!destination.exists());
+
+        files.link_or_copy(&source, &destination).unwrap();
+        assert_eq!(files.read(&destination).unwrap(), b"minecraft");
+        std::fs::remove_dir_all(base).ok();
     }
 }

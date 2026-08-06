@@ -1,22 +1,158 @@
-use std::path::PathBuf;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
+};
 
 use tauri::{AppHandle, Manager};
 
 use crate::error::Result;
 
+pub const OVERRIDES_FILE: &str = "paths.json";
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum DataRoot {
+    Instances,
+    Versions,
+    Libraries,
+    Assets,
+    Natives,
+    Runtimes,
+    Snapshots,
+    Cache,
+}
+
+impl DataRoot {
+    pub const ALL: [DataRoot; 8] = [
+        DataRoot::Instances,
+        DataRoot::Versions,
+        DataRoot::Libraries,
+        DataRoot::Assets,
+        DataRoot::Natives,
+        DataRoot::Runtimes,
+        DataRoot::Snapshots,
+        DataRoot::Cache,
+    ];
+
+    pub fn directory(self) -> &'static str {
+        match self {
+            DataRoot::Instances => "instances",
+            DataRoot::Versions => "versions",
+            DataRoot::Libraries => "libraries",
+            DataRoot::Assets => "assets",
+            DataRoot::Natives => "natives",
+            DataRoot::Runtimes => "runtimes",
+            DataRoot::Snapshots => "snapshots",
+            DataRoot::Cache => "cache",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            DataRoot::Instances => "Instances",
+            DataRoot::Versions => "Game versions",
+            DataRoot::Libraries => "Libraries",
+            DataRoot::Assets => "Assets",
+            DataRoot::Natives => "Native libraries",
+            DataRoot::Runtimes => "Java runtimes",
+            DataRoot::Snapshots => "Snapshots",
+            DataRoot::Cache => "Cache",
+        }
+    }
+
+    pub fn summary(self) -> &'static str {
+        match self {
+            DataRoot::Instances => {
+                "Worlds, mods, configs and screenshots. The largest folder by far."
+            }
+            DataRoot::Versions => "The client jars Basalt downloads for each Minecraft version.",
+            DataRoot::Libraries => "Shared jars every instance links against.",
+            DataRoot::Assets => "Sounds, languages and textures, shared across every version.",
+            DataRoot::Natives => "Platform binaries unpacked next to each version.",
+            DataRoot::Runtimes => "Java builds Basalt installed for you.",
+            DataRoot::Snapshots => "Compressed instance backups.",
+            DataRoot::Cache => "Rebuildable downloads and metadata. Safe to lose.",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Paths {
     pub root: PathBuf,
+    overrides: Arc<RwLock<BTreeMap<DataRoot, PathBuf>>>,
 }
 
 impl Paths {
     pub fn resolve(app: &AppHandle) -> Result<Self> {
         let root = app.path().app_data_dir()?;
-        Ok(Self { root })
+        let overrides = read_overrides(&root);
+        Ok(Self::relocated(root, overrides))
+    }
+
+    #[cfg(test)]
+    pub fn plain(root: PathBuf) -> Self {
+        Self::relocated(root, BTreeMap::new())
+    }
+
+    pub fn relocated(root: PathBuf, overrides: BTreeMap<DataRoot, PathBuf>) -> Self {
+        Self {
+            root,
+            overrides: Arc::new(RwLock::new(overrides)),
+        }
+    }
+
+    pub fn adopt(&self, overrides: BTreeMap<DataRoot, PathBuf>) {
+        *self.overrides.write().unwrap() = overrides;
+    }
+
+    fn located(&self, slot: DataRoot) -> PathBuf {
+        self.overrides
+            .read()
+            .unwrap()
+            .get(&slot)
+            .cloned()
+            .unwrap_or_else(|| self.root.join(slot.directory()))
+    }
+
+    pub fn overrides(&self) -> BTreeMap<DataRoot, PathBuf> {
+        self.overrides.read().unwrap().clone()
+    }
+
+    pub fn located_at(&self, slot: DataRoot) -> PathBuf {
+        self.located(slot)
+    }
+
+    pub fn default_for(&self, slot: DataRoot) -> PathBuf {
+        self.root.join(slot.directory())
+    }
+
+    pub fn capability_roots(&self) -> Vec<PathBuf> {
+        let mut roots = vec![self.root.clone()];
+        for path in self.overrides.read().unwrap().values() {
+            if !path.starts_with(&self.root) {
+                roots.push(path.clone());
+            }
+        }
+        roots.sort_by_key(|path| std::cmp::Reverse(path.as_os_str().len()));
+        roots.dedup();
+        roots
+    }
+
+    pub fn unavailable(&self) -> Vec<(DataRoot, PathBuf)> {
+        self.overrides
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(_, path)| !parent_exists(path))
+            .map(|(slot, path)| (*slot, path.clone()))
+            .collect()
     }
 
     pub fn versions(&self) -> PathBuf {
-        self.root.join("versions")
+        self.located(DataRoot::Versions)
     }
     pub fn version_dir(&self, id: &str) -> PathBuf {
         self.versions().join(id)
@@ -28,10 +164,10 @@ impl Paths {
         self.version_dir(id).join(format!("{id}.jar"))
     }
     pub fn libraries(&self) -> PathBuf {
-        self.root.join("libraries")
+        self.located(DataRoot::Libraries)
     }
     pub fn assets(&self) -> PathBuf {
-        self.root.join("assets")
+        self.located(DataRoot::Assets)
     }
     pub fn assets_indexes(&self) -> PathBuf {
         self.assets().join("indexes")
@@ -40,16 +176,16 @@ impl Paths {
         self.assets().join("objects")
     }
     pub fn natives(&self) -> PathBuf {
-        self.root.join("natives")
+        self.located(DataRoot::Natives)
     }
     pub fn natives_dir(&self, id: &str) -> PathBuf {
         self.natives().join(id)
     }
     pub fn runtimes(&self) -> PathBuf {
-        self.root.join("runtimes")
+        self.located(DataRoot::Runtimes)
     }
     pub fn instances(&self) -> PathBuf {
-        self.root.join("instances")
+        self.located(DataRoot::Instances)
     }
     pub fn modpack_upgrade_journals(&self) -> PathBuf {
         self.root.join("modpack-upgrade-journals")
@@ -61,7 +197,10 @@ impl Paths {
         (path.parent() == Some(parent.as_path())).then_some(path)
     }
     pub fn snapshots(&self) -> PathBuf {
-        self.root.join("snapshots")
+        self.located(DataRoot::Snapshots)
+    }
+    pub fn cache(&self) -> PathBuf {
+        self.located(DataRoot::Cache)
     }
     pub fn snapshot_blobs(&self) -> PathBuf {
         self.snapshots().join("blobs")
@@ -168,6 +307,39 @@ impl Paths {
     }
 }
 
+pub fn parent_exists(path: &Path) -> bool {
+    match path.parent() {
+        Some(parent) => parent.is_dir(),
+        None => false,
+    }
+}
+
+fn read_overrides(root: &Path) -> BTreeMap<DataRoot, PathBuf> {
+    let Ok(bytes) = std::fs::read(root.join(OVERRIDES_FILE)) else {
+        return BTreeMap::new();
+    };
+    match serde_json::from_slice::<BTreeMap<DataRoot, PathBuf>>(&bytes) {
+        Ok(map) => map
+            .into_iter()
+            .filter(|(_, path)| path.is_absolute())
+            .collect(),
+        Err(error) => {
+            tracing::warn!(error = %error, "ignoring an unreadable {OVERRIDES_FILE}");
+            BTreeMap::new()
+        }
+    }
+}
+
+pub fn write_overrides(root: &Path, overrides: &BTreeMap<DataRoot, PathBuf>) -> Result<()> {
+    let path = root.join(OVERRIDES_FILE);
+    if overrides.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return Ok(());
+    }
+    std::fs::write(&path, serde_json::to_vec_pretty(overrides)?)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -175,9 +347,7 @@ mod tests {
     use super::Paths;
 
     fn paths() -> Paths {
-        Paths {
-            root: PathBuf::from("/tmp/basalt-test"),
-        }
+        Paths::plain(PathBuf::from("/tmp/basalt-test"))
     }
 
     #[test]

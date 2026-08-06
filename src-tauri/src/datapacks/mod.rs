@@ -519,7 +519,7 @@ mod tests {
     fn report_on_the_real_data_directory() {
         let root = PathBuf::from(std::env::var("HOME").unwrap())
             .join(".local/share/com.megalithofficial.basalt-launcher");
-        let paths = Paths { root };
+        let paths = Paths::plain(root);
         let files = FileManager::new(paths.clone()).unwrap();
         let db = Db::open(&files).unwrap();
 

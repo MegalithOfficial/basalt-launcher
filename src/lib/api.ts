@@ -61,6 +61,9 @@ import type {
   SkinEntry,
   SystemStats,
   SystemUsage,
+  DataLocation,
+  DataRoot,
+  LocationCandidate,
   Task,
   UpdateInfo,
   VersionEntry,
@@ -480,6 +483,11 @@ export const api = {
   inspectPaths: (paths: string[]) => call<PathKind[]>("inspect_paths", { paths }),
   getSystemStats: () => call<SystemStats>("get_system_stats"),
   getSystemUsage: () => call<SystemUsage>("get_system_usage"),
+  getDataLocations: () => call<DataLocation[]>("get_data_locations"),
+  inspectDataLocation: (slot: DataRoot, path: string) =>
+    call<LocationCandidate>("inspect_data_location", { slot, path }),
+  setDataLocation: (slot: DataRoot, path: string | null, moveExisting: boolean) =>
+    call<void>("set_data_location", { slot, path, moveExisting }),
   previewLaunchArgs: (settings: LauncherSettings) =>
     call<LaunchPreview>("preview_launch_args", { settings }),
   getAppearance: () => call<Appearance>("get_appearance"),
