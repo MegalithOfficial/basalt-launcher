@@ -181,7 +181,7 @@ fn worker(rx: mpsc::Receiver<Message>) {
             Message::Set(state) => {
                 if client.as_ref().is_some_and(|(id, _)| id != &state.app_id) {
                     if let Some((_, mut stale)) = client.take() {
-                        let _ = stale.close();
+                        stale.close();
                     }
                 }
 
@@ -242,9 +242,10 @@ mod tests {
     use super::*;
 
     fn settings() -> LauncherSettings {
-        let mut settings = LauncherSettings::default();
-        settings.discord_app_id = "1234567890".to_string();
-        settings
+        LauncherSettings {
+            discord_app_id: "1234567890".to_string(),
+            ..Default::default()
+        }
     }
 
     #[test]

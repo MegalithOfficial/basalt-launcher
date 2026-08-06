@@ -77,6 +77,17 @@ pub async fn fetch<T: DeserializeOwned>(
     Ok(value)
 }
 
+pub async fn post<T: DeserializeOwned>(state: &AppState, request: RequestBuilder) -> Result<T> {
+    let fetched = state.network.fetch_body(request).await?;
+    if !fetched.status.is_success() {
+        return Err(crate::error::Error::http_response(
+            fetched.status,
+            fetched.body.as_bytes(),
+        ));
+    }
+    Ok(serde_json::from_str(&fetched.body)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{rejects_key, servable_stale, MAX_STALE_FALLBACK};
@@ -108,15 +119,4 @@ mod tests {
         assert!(!rejects_key(StatusCode::TOO_MANY_REQUESTS));
         assert!(!rejects_key(StatusCode::SERVICE_UNAVAILABLE));
     }
-}
-
-pub async fn post<T: DeserializeOwned>(state: &AppState, request: RequestBuilder) -> Result<T> {
-    let fetched = state.network.fetch_body(request).await?;
-    if !fetched.status.is_success() {
-        return Err(crate::error::Error::http_response(
-            fetched.status,
-            fetched.body.as_bytes(),
-        ));
-    }
-    Ok(serde_json::from_str(&fetched.body)?)
 }

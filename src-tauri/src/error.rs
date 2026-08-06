@@ -140,6 +140,15 @@ fn clean_message(message: &str) -> Option<String> {
     Some(cleaned)
 }
 
+impl Serialize for Error {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use reqwest::StatusCode;
@@ -198,14 +207,5 @@ mod tests {
             b"<html><title>upstream unavailable</title></html>",
         );
         assert_eq!(error.to_string(), "http status 502 Bad Gateway");
-    }
-}
-
-impl Serialize for Error {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
     }
 }
