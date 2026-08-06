@@ -95,6 +95,8 @@ export const api = {
   updateSettings: (settings: LauncherSettings) =>
     call<void>("update_settings", { settings }),
   listInstances: () => call<Instance[]>("list_instances"),
+  getInstanceLaunchCommand: (instanceId: string) =>
+    call<string>("get_instance_launch_command", { instanceId }),
   getPlayStats: (days: number | null, page: number | null = null) =>
     call<PlayStats>("get_play_stats", { days, page }),
   reconnectDiscord: () => call<void>("reconnect_discord"),

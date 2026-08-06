@@ -63,3 +63,4 @@ keyring = "4.1.6"
 
 sysinfo = { version = "0.39", default-features = false, features = ["system", "disk"] }
 tauri-plugin-clipboard-manager = "2.3.2"
+clap = { version = "4.6.6", features = ["derive"] }

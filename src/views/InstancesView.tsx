@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   Boxes,
+  ClipboardCopy,
   Copy,
   MoreVertical,
   FileArchive,
@@ -29,6 +30,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EditInstanceModal } from "../components/EditInstanceModal";
 import { ImportPackModal } from "../components/ImportPackModal";
 import { cn } from "../lib/cn";
+import { api } from "../lib/api";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc } from "../lib/media";
 import {
@@ -234,6 +236,21 @@ export function InstancesView() {
       { label: "Open", icon: Boxes, onSelect: () => openInstance(instance.id) },
       { label: "Edit", icon: Pencil, onSelect: () => setEditing(instance) },
       { label: "Duplicate", icon: Copy, onSelect: () => void duplicate(instance) },
+      {
+        label: "Copy launch command",
+        icon: ClipboardCopy,
+        onSelect: () => {
+          api
+            .getInstanceLaunchCommand(instance.id)
+            .then(async (option) => {
+              await navigator.clipboard.writeText(option);
+              toast.success("Copied launch command", { description: option });
+            })
+            .catch((error) =>
+              toast.error("Could not copy the launch command", { description: String(error) }),
+            );
+        },
+      },
       ...(groups.length > 0
         ? [
             {

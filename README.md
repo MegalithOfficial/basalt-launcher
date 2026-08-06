@@ -99,6 +99,31 @@ To build the latest development source with development-only features enabled:
 nix run github:MegalithOfficial/basalt-launcher#dev
 ```
 
+## Launching an instance directly
+
+Use `-l` or `--launch` to start an instance without opening the launcher first:
+
+```bash
+basalt-launcher -l 4f9c2a81
+basalt-launcher --launch "My instance"
+```
+
+Names work when they are unique. ID prefixes are unambiguous and must be at least
+eight characters; Basalt accepts the full instance ID too.
+
+`-L` or `--list` prints every instance next to the selector that launches it, then
+exits without opening a window:
+
+```bash
+$ basalt-launcher --list
+d241539f	Fabulously Optimized 1.21.11
+36e80ff1	Just Create SMP
+```
+
+To skip the lookup entirely, open an instance's menu and choose
+**Copy launch argument**. Paste it into a desktop shortcut, a Steam launch
+option, or anything else that runs a command.
+
 ## Running from source
 
 To run it locally, install [Rust](https://rustup.rs/), [Bun](https://bun.sh/), and the

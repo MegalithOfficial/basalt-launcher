@@ -1,5 +1,6 @@
 mod auth;
 mod build_info;
+mod cli;
 mod commands;
 mod config;
 mod content;
@@ -40,15 +41,23 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let launch_request = cli::startup_request();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_window::init_with(
-            tauri_plugin_single_window::Config::new().with_target_window("main"),
+            tauri_plugin_single_window::Config::new()
+                .with_target_window("main")
+                .on_activate(|app, payload| cli::handle_activation(&app, payload.argv)),
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
+        .setup(move |app| {
+            if matches!(&launch_request, Ok(cli::Request::Launch(_) | cli::Request::List)) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))?;
                 let _ = window.set_icon(icon);
@@ -77,7 +86,8 @@ pub fn run() {
 
             storage::prune_window_cache(&files, storage::WINDOW_CACHE_CAP);
 
-            let log_state = logging::init(app.handle(), &files, logging::DEFAULT_LEVEL)?;
+            let quiet = matches!(&launch_request, Ok(cli::Request::List));
+            let log_state = logging::init(app.handle(), &files, logging::DEFAULT_LEVEL, !quiet)?;
             tracing::info!(
                 version = env!("CARGO_PKG_VERSION"),
                 data_dir = %paths.root.display(),
@@ -97,6 +107,18 @@ pub fn run() {
             }
 
             let state = AppState::new(files, db);
+            if matches!(&launch_request, Ok(cli::Request::List)) {
+                let code = match cli::print_instances(&state) {
+                    Ok(()) => 0,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        1
+                    }
+                };
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+                std::process::exit(code);
+            }
             if let Err(e) = snapshots::recover_interrupted(&state) {
                 tracing::warn!(error = %e, "could not recover interrupted snapshot restores");
             }
@@ -146,6 +168,13 @@ pub fn run() {
             app.manage(state);
             update::start_monitor(app.handle().clone());
             tracing::info!("startup complete");
+            match launch_request {
+                Ok(cli::Request::Launch(selector)) => {
+                    cli::start_launch(app.handle().clone(), selector, cli::Origin::Startup)
+                }
+                Ok(cli::Request::List) | Ok(cli::Request::Nothing) => {}
+                Err(error) => cli::show_error(app.handle(), error, cli::Origin::Startup),
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -156,6 +185,7 @@ pub fn run() {
             commands::app::list_javas,
             commands::app::install_java_runtime,
             commands::instances::list_instances,
+            commands::instances::get_instance_launch_command,
             commands::instances::get_instance_organization,
             commands::instances::create_instance_group,
             commands::instances::rename_instance_group,

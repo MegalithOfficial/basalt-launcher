@@ -3,6 +3,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
   Check,
+  ClipboardCopy,
   DatabaseBackup,
   FileBox,
   HardDriveUpload,
@@ -725,6 +726,21 @@ export function InstanceView() {
         duplicateInstance(instance.id).catch((error) =>
           toast.error(`Could not duplicate ${instance.name}`, { description: String(error) }),
         );
+      },
+    },
+    {
+      label: "Copy launch command",
+      icon: ClipboardCopy,
+      onSelect: () => {
+        api
+          .getInstanceLaunchCommand(instance.id)
+          .then(async (option) => {
+            await navigator.clipboard.writeText(option);
+            toast.success("Copied launch command", { description: option });
+          })
+          .catch((error) =>
+            toast.error("Could not copy the launch command", { description: String(error) }),
+          );
       },
     },
     {

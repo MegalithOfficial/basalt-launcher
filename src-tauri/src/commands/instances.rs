@@ -24,6 +24,11 @@ pub fn list_instances(state: State<AppState>) -> Result<Vec<Instance>> {
 }
 
 #[tauri::command]
+pub fn get_instance_launch_command(state: State<AppState>, instance_id: String) -> Result<String> {
+    crate::cli::launch_command(&state, &instance_id)
+}
+
+#[tauri::command]
 pub fn get_instance_organization(
     state: State<AppState>,
 ) -> Result<crate::db::InstanceOrganization> {

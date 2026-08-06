@@ -336,7 +336,7 @@ fn spawn_bridge(app: AppHandle, mut rx: Receiver<LogRecord>) {
     });
 }
 
-pub fn init(app: &AppHandle, files: &FileManager, level: &str) -> Result<LogState> {
+pub fn init(app: &AppHandle, files: &FileManager, level: &str, console: bool) -> Result<LogState> {
     let directory = files.paths().logs();
     files.ensure_dir(&directory)?;
 
@@ -366,9 +366,11 @@ pub fn init(app: &AppHandle, files: &FileManager, level: &str) -> Result<LogStat
         .with_ansi(false)
         .with_target(true)
         .with_writer(writer);
-    let console_layer = tracing_subscriber::fmt::layer()
-        .with_target(true)
-        .with_writer(std::io::stderr);
+    let console_layer = console.then(|| {
+        tracing_subscriber::fmt::layer()
+            .with_target(true)
+            .with_writer(std::io::stderr)
+    });
     let capture_layer = CaptureLayer {
         buffer: buffer.clone(),
         tx,
