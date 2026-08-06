@@ -158,4 +158,6 @@ pub struct PlayStats {
     pub instances: Vec<InstancePlayStat>,
     pub loaders: Vec<LoaderPlayStat>,
     pub recent: Vec<PlaySession>,
+    pub recent_total: i64,
+    pub recent_page: Option<u32>,
 }

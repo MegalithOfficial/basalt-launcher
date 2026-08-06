@@ -6,8 +6,8 @@ use crate::error::Result;
 
 use super::{DayBucket, Db, InstancePlayStat, LoaderPlayStat, PlaySession, PlayStats};
 
-const RECENT_LIMIT: usize = 40;
 const VANILLA: &str = "vanilla";
+pub const SESSIONS_PER_PAGE: usize = 50;
 
 pub(super) struct LiveInstance {
     pub name: String,
@@ -65,6 +65,7 @@ fn build_stats(
     lifetime_secs: i64,
     live: LiveInstances,
     days: Option<u32>,
+    page: Option<u32>,
     today: NaiveDate,
 ) -> PlayStats {
     let tracked_since = sessions.first().map(|session| session.started_at);
@@ -210,12 +211,14 @@ fn build_stats(
     let mut loaders: Vec<LoaderPlayStat> = per_loader.into_values().collect();
     loaders.sort_by(|a, b| b.secs.cmp(&a.secs).then_with(|| a.loader.cmp(&b.loader)));
 
-    let recent: Vec<PlaySession> = windowed
-        .iter()
-        .rev()
-        .take(RECENT_LIMIT)
-        .map(|session| (*session).clone())
-        .collect();
+    let newest = windowed.iter().rev().map(|session| (*session).clone());
+    let recent: Vec<PlaySession> = match page {
+        None => newest.collect(),
+        Some(page) => newest
+            .skip(page as usize * SESSIONS_PER_PAGE)
+            .take(SESSIONS_PER_PAGE)
+            .collect(),
+    };
 
     PlayStats {
         lifetime_secs,
@@ -236,11 +239,13 @@ fn build_stats(
         instances,
         loaders,
         recent,
+        recent_total: windowed.len() as i64,
+        recent_page: page,
     }
 }
 
 impl Db {
-    pub fn play_stats(&self, days: Option<u32>) -> Result<PlayStats> {
+    pub fn play_stats(&self, days: Option<u32>, page: Option<u32>) -> Result<PlayStats> {
         let sessions = self.play_sessions()?;
         let (lifetime_secs, live) = self.instance_playtime_totals()?;
         Ok(build_stats(
@@ -248,6 +253,7 @@ impl Db {
             lifetime_secs,
             live,
             days,
+            page,
             Local::now().date_naive(),
         ))
     }
@@ -378,7 +384,7 @@ mod tests {
             },
         );
 
-        let stats = build_stats(sessions, 90_000, live, Some(3), today);
+        let stats = build_stats(sessions, 90_000, live, Some(3), None, today);
 
         assert_eq!(stats.daily.len(), 3);
         assert_eq!(stats.daily[0].date, "2026-08-02");
@@ -416,7 +422,7 @@ mod tests {
             },
         );
 
-        let stats = build_stats(Vec::new(), 7200, live, Some(30), today);
+        let stats = build_stats(Vec::new(), 7200, live, Some(30), None, today);
 
         assert_eq!(stats.instances.len(), 1);
         assert_eq!(stats.instances[0].name, "Create");
@@ -429,7 +435,7 @@ mod tests {
     fn deleted_instances_keep_their_recorded_name() {
         let today = NaiveDate::parse_from_str("2026-08-04", "%Y-%m-%d").unwrap();
         let sessions = vec![session(1, "gone", at("2026-08-03", 12), 600, false)];
-        let stats = build_stats(sessions, 0, LiveInstances::new(), None, today);
+        let stats = build_stats(sessions, 0, LiveInstances::new(), None, None, today);
         assert_eq!(stats.instances[0].name, "gone name");
         assert!(stats.instances[0].deleted);
         assert_eq!(stats.instances[0].lifetime_secs, 0);
@@ -439,7 +445,7 @@ mod tests {
     fn sessions_land_in_their_local_hour_and_weekday() {
         let today = NaiveDate::parse_from_str("2026-08-04", "%Y-%m-%d").unwrap();
         let sessions = vec![session(1, "a", at("2026-08-03", 21), 1200, false)];
-        let stats = build_stats(sessions, 0, LiveInstances::new(), None, today);
+        let stats = build_stats(sessions, 0, LiveInstances::new(), None, None, today);
         assert_eq!(stats.hourly[21], 1200);
         assert_eq!(stats.weekday[0], 1200);
         assert_eq!(stats.loaders[0].loader, "fabric");
@@ -461,7 +467,7 @@ mod tests {
         db.record_playtime("i1", started_at, started_at + 3600, true)
             .unwrap();
 
-        let stats = db.play_stats(None).unwrap();
+        let stats = db.play_stats(None, None).unwrap();
         assert_eq!(stats.session_count, 1);
         assert_eq!(stats.window_secs, 3600);
         assert_eq!(stats.crash_count, 1);
@@ -473,9 +479,50 @@ mod tests {
     }
 
     #[test]
+    fn a_page_slices_the_newest_sessions_and_no_page_returns_everything() {
+        let today = NaiveDate::parse_from_str("2026-08-04", "%Y-%m-%d").unwrap();
+        let total = SESSIONS_PER_PAGE + 20;
+        let sessions: Vec<PlaySession> = (0..total)
+            .map(|index| {
+                session(
+                    index as i64,
+                    "a",
+                    at("2026-08-03", 10) + index as i64,
+                    600,
+                    false,
+                )
+            })
+            .collect();
+
+        let everything = build_stats(sessions.clone(), 0, LiveInstances::new(), None, None, today);
+        assert_eq!(everything.recent.len(), total);
+        assert_eq!(everything.recent_total, total as i64);
+        assert_eq!(everything.recent_page, None);
+
+        let first = build_stats(
+            sessions.clone(),
+            0,
+            LiveInstances::new(),
+            None,
+            Some(0),
+            today,
+        );
+        assert_eq!(first.recent.len(), SESSIONS_PER_PAGE);
+        assert_eq!(first.recent_total, total as i64);
+        assert_eq!(first.recent[0].id, everything.recent[0].id);
+
+        let second = build_stats(sessions, 0, LiveInstances::new(), None, Some(1), today);
+        assert_eq!(second.recent.len(), 20);
+        assert_eq!(second.recent[0].id, everything.recent[SESSIONS_PER_PAGE].id);
+
+        let past_the_end = build_stats(Vec::new(), 0, LiveInstances::new(), None, Some(9), today);
+        assert!(past_the_end.recent.is_empty());
+    }
+
+    #[test]
     fn empty_history_reports_zeroes_without_panicking() {
         let today = NaiveDate::parse_from_str("2026-08-04", "%Y-%m-%d").unwrap();
-        let stats = build_stats(Vec::new(), 0, LiveInstances::new(), Some(7), today);
+        let stats = build_stats(Vec::new(), 0, LiveInstances::new(), Some(7), None, today);
         assert_eq!(stats.daily.len(), 7);
         assert_eq!(stats.session_count, 0);
         assert_eq!(stats.average_session_secs, 0);

@@ -775,6 +775,8 @@ export interface PlayStats {
   instances: InstancePlayStat[];
   loaders: LoaderPlayStat[];
   recent: PlaySession[];
+  recent_total: number;
+  recent_page: number | null;
 }
 
 export interface UpdateInfo {

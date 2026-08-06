@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChartNoAxesColumn, TriangleAlert } from "lucide-react";
 import {
   Bar,
@@ -14,7 +15,7 @@ import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
 import { formatDuration, relativeTime } from "../lib/time";
-import type { PlayStats } from "../lib/types";
+import type { PlaySession, PlayStats } from "../lib/types";
 import { EmptyState } from "../components/ui";
 import { useStore } from "../store";
 
@@ -30,6 +31,9 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MINECRAFT_DAY_SECS = 1200;
 const DAILY_CHART_MIN_DAYS = 2;
 const RHYTHM_MIN_DAYS = 3;
+const SESSION_ROW_HEIGHT = 41;
+const VIRTUALISE_ABOVE = 40;
+const PAGE_SIZE = 50;
 
 const GRID = "var(--color-border-soft)";
 const TICK = { fill: "var(--color-content-faint)", fontSize: 11 };
@@ -171,9 +175,122 @@ function StatsHeader({
   );
 }
 
+
+const SESSION_COLUMNS = "grid grid-cols-[minmax(0,1fr)_130px_140px_80px] items-center gap-4";
+
+function SessionRow({ session }: { session: PlaySession }) {
+  return (
+    <div className={cn(SESSION_COLUMNS, "border-b border-border-soft py-2.5")}>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate font-medium text-content">{session.instance_name}</span>
+        {session.crashed && (
+          <span className="shrink-0 rounded bg-danger/15 px-1.5 py-0.5 font-pixel text-[9px] tracking-wider text-danger">
+            crashed
+          </span>
+        )}
+      </div>
+      <div className="truncate font-pixel text-[10px] tracking-wider text-content-faint">
+        {session.version_id || "unknown"}
+        {session.loader && ` \u00b7 ${session.loader}`}
+      </div>
+      <div className="text-right text-content-faint">
+        {new Date(session.started_at * 1000).toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </div>
+      <div className="text-right tabular-nums text-content">
+        {formatDuration(session.played_secs)}
+      </div>
+    </div>
+  );
+}
+
+function RecentSessions({
+  sessions,
+  total,
+  loading,
+  onLoadMore,
+}: {
+  sessions: PlaySession[];
+  total: number;
+  loading: boolean;
+  onLoadMore: () => void;
+}) {
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const virtualise = sessions.length > VIRTUALISE_ABOVE;
+
+  const virtualizer = useVirtualizer({
+    count: virtualise ? sessions.length : 0,
+    getScrollElement: () => scroller,
+    estimateSize: () => SESSION_ROW_HEIGHT,
+    overscan: 10,
+  });
+
+  const rows = virtualizer.getVirtualItems();
+  const remaining = total - sessions.length;
+
+  const footer = (
+    <div className="mt-3 flex items-center gap-3">
+      <span className="text-[11px] text-content-faint">
+        {remaining > 0
+          ? `${sessions.length.toLocaleString()} of ${total.toLocaleString()} sessions`
+          : `${total.toLocaleString()} sessions in this range`}
+      </span>
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={loading}
+          className="rounded-lg border border-border-soft bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-content-muted transition-colors hover:border-border hover:text-content disabled:opacity-50"
+        >
+          {loading ? "Loading" : `Show ${Math.min(remaining, PAGE_SIZE)} more`}
+        </button>
+      )}
+    </div>
+  );
+
+  if (!virtualise) {
+    return (
+      <>
+        <div className="mt-4 text-[13px]">
+          {sessions.map((session) => (
+            <SessionRow key={session.id} session={session} />
+          ))}
+        </div>
+        {footer}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div ref={setScroller} className="mt-4 max-h-[60vh] overflow-y-auto text-[13px]">
+        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {rows.map((row) => (
+            <div
+              key={sessions[row.index].id}
+              className="absolute inset-x-0 top-0"
+              style={{ transform: `translateY(${row.start}px)` }}
+            >
+              <SessionRow session={sessions[row.index]} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {footer}
+    </>
+  );
+}
+
 export function StatsView() {
   const [days, setDays] = useState<number | null>(30);
   const [stats, setStats] = useState<PlayStats | null>(null);
+  const [sessions, setSessions] = useState<PlaySession[]>([]);
+  const [page, setPage] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const openInstance = useStore((s) => s.openInstance);
@@ -181,8 +298,10 @@ export function StatsView() {
   const load = useCallback(async (window: number | null) => {
     setLoading(true);
     try {
-      const result = await api.getPlayStats(window);
+      const result = await api.getPlayStats(window, 0);
       setStats(result);
+      setSessions(result.recent);
+      setPage(0);
       setError(null);
     } catch (cause) {
       log.error("stats", `could not load play stats: ${String(cause)}`);
@@ -195,6 +314,20 @@ export function StatsView() {
   useEffect(() => {
     void load(days);
   }, [days, load]);
+
+  const loadMore = useCallback(() => {
+    if (loadingMore || !stats || sessions.length >= stats.recent_total) return;
+    setLoadingMore(true);
+    const next = page + 1;
+    void api
+      .getPlayStats(days, next)
+      .then((result) => {
+        setSessions((current) => [...current, ...result.recent]);
+        setPage(next);
+      })
+      .catch((cause) => log.error("stats", `could not load more sessions: ${String(cause)}`))
+      .finally(() => setLoadingMore(false));
+  }, [days, loadingMore, page, sessions.length, stats]);
 
   const hourly = useMemo(
     () =>
@@ -454,52 +587,15 @@ export function StatsView() {
             </section>
           )}
 
-          {stats.recent.length > 0 && (
+          {sessions.length > 0 && (
             <section className="mt-12">
               <SectionLabel>Recent sessions</SectionLabel>
-              <table className="mt-4 w-full text-left text-[13px]">
-                <thead className="sr-only">
-                  <tr>
-                    <th>Instance</th>
-                    <th>Version</th>
-                    <th>Started</th>
-                    <th>Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.recent.map((session) => (
-                    <tr key={session.id} className="border-b border-border-soft last:border-0">
-                      <td className="py-2.5 pr-4 align-middle">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-content">
-                            {session.instance_name}
-                          </span>
-                          {session.crashed && (
-                            <span className="shrink-0 rounded bg-danger/15 px-1.5 py-0.5 font-pixel text-[9px] tracking-wider text-danger">
-                              crashed
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="w-px whitespace-nowrap py-2.5 pl-4 align-middle font-pixel text-[10px] tracking-wider text-content-faint">
-                        {session.version_id || "unknown"}
-                        {session.loader && ` · ${session.loader}`}
-                      </td>
-                      <td className="w-px whitespace-nowrap py-2.5 pl-8 text-right align-middle text-content-faint">
-                        {new Date(session.started_at * 1000).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </td>
-                      <td className="w-px whitespace-nowrap py-2.5 pl-8 text-right align-middle tabular-nums text-content">
-                        {formatDuration(session.played_secs)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <RecentSessions
+                sessions={sessions}
+                total={stats.recent_total}
+                loading={loadingMore}
+                onLoadMore={loadMore}
+              />
             </section>
           )}
 

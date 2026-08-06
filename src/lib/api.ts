@@ -92,7 +92,8 @@ export const api = {
   updateSettings: (settings: LauncherSettings) =>
     call<void>("update_settings", { settings }),
   listInstances: () => call<Instance[]>("list_instances"),
-  getPlayStats: (days: number | null) => call<PlayStats>("get_play_stats", { days }),
+  getPlayStats: (days: number | null, page: number | null = null) =>
+    call<PlayStats>("get_play_stats", { days, page }),
   reconnectDiscord: () => call<void>("reconnect_discord"),
   getInstanceOrganization: () =>
     call<InstanceOrganization>("get_instance_organization"),
