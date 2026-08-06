@@ -3,7 +3,7 @@
   <h1>Basalt</h1>
   <p>A polished Minecraft launcher that puts form and function on equal footing.</p>
 
-  [![Status](https://img.shields.io/badge/status-alpha-orange)](#project-status)
+  [![Status](https://img.shields.io/badge/status-beta-orange)](#project-status)
   [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey)](#install)
   [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
 </div>
