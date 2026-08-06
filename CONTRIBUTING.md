@@ -1,276 +1,264 @@
 # Contributing to Basalt
 
-Thank you for helping improve Basalt.
+Basalt is a desktop launcher. Changes can touch account credentials, existing
+instances, downloaded code, game files, or child processes. A pull request must be
+based on the code that is here, not on how a typical Tauri application might work.
 
-Basalt is still in alpha, and the codebase is moving quickly. Contributions are
-welcome, whether they fix a small papercut, improve reliability, or add a larger
-launcher feature. The best changes are focused, fit the existing architecture, and
-are tested in the real application before review.
+Bug fixes and small, self-contained improvements can go straight to a pull request.
+Open an issue before starting a large feature, a new subsystem, a change to stored
+data, or anything that can migrate or delete user files.
 
-For large features, architecture changes, or work that affects user data, open an
-issue before investing in an implementation. This gives us a chance to agree on the
-direction and avoid duplicated work.
+Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue. Project
+spaces are covered by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-## Getting started
+## Running the project
 
-Basalt is a Tauri 2 application with a React and TypeScript frontend and a Rust
-backend.
-
-You will need:
-
-- [Rust](https://rustup.rs/)
-- [Bun](https://bun.sh/)
-- The [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) for your
-  platform
-
-Clone your fork, then install the frontend dependencies from the repository root:
+Install Rust, Bun, and the
+[native dependencies required by Tauri](https://v2.tauri.app/start/prerequisites/).
+From the repository root:
 
 ```bash
 bun install
-```
-
-Start the application in development mode:
-
-```bash
 bun run tauri dev
 ```
 
-The frontend uses Vite and supports hot module replacement. Tauri rebuilds and
-restarts the Rust application when backend code changes. Compiler output appears in
-the terminal running the development command.
+Linux is the primary development platform. If a change is intended for Windows or
+macOS, say which platform you actually ran it on.
 
-Basalt is currently developed and tested primarily on Linux. Changes for Windows or
-macOS are welcome, but explain what you were able to test on that platform.
+## Rust owns application behavior
 
-## Project structure
+**Rust is the source of truth for Basalt's data and behavior.** Put database access,
+aggregation, compatibility rules, provider normalization, install planning,
+validation, path decisions, filesystem work, networking, credentials, and process
+management in `src-tauri`.
 
-The repository is split into two main layers:
+**The frontend displays the result and handles interaction.** React may own form
+drafts, open or selected state, animation, presentational formatting, and cheap view-only
+operations. It should not reimplement a rule that decides what gets stored,
+downloaded, deleted, installed, or launched. If a calculation is based on application
+data or could be needed by another screen, do it in Rust and return the shaped result
+the UI needs. Existing commands return plans, previews, reports, and summaries for
+this reason.
 
-```text
-src/
-├── components/        Shared React components
-├── components/project/
-│   └── ...            Project and version browser components
-├── lib/               IPC bindings, types, logging, and UI helpers
-├── views/             Top-level application views
-└── store.ts           Shared Zustand state and application actions
+Do not move logic into TypeScript merely because the data is already visible there.
+Use TypeScript for a local display concern when sending the work through IPC would
+make the implementation needlessly complicated without improving correctness.
 
-src-tauri/src/
-├── auth/              Microsoft and Minecraft authentication
-├── commands/          Tauri IPC handlers grouped by feature
-├── content/           Installed content file operations
-├── db/                SQLite records, migrations, and domain operations
-├── download/          Download retries, verification, and cancellation
-├── files/             Capability-safe filesystem access and atomic writes
-├── install/           Minecraft installation
-├── launch/            Launch arguments and process supervision
-├── loaders/           Fabric, Quilt, NeoForge, and Forge support
-├── logging/           Structured logs and the in-app log buffer
-├── meta/              Minecraft version manifests and metadata
-├── modpack/           Modpack installation
-├── network/           Shared HTTP client, throttling, and retries
-├── paths/             Application and instance path construction
-├── search/            Modrinth and CurseForge integrations
-├── skin/              Skin and cape management
-├── tasks/             Long-running task state and progress
-└── lib.rs             Application setup and command registration
-```
+## Following a feature through the application
 
-Before introducing a new pattern, look for an existing feature with similar data
-flow. Reusing the established path usually produces a smaller and easier-to-review
-change.
+Most features cross the same boundary:
 
-## Architecture
+1. Domain behavior lives in the relevant module under `src-tauri/src/`.
+2. A command in `src-tauri/src/commands/` validates the request and calls that module.
+3. The command is registered in `src-tauri/src/lib.rs`.
+4. `src/lib/api.ts` exposes the typed call.
+5. Shared response types live in `src/lib/types.ts` and are consumed by the UI.
 
-Rust owns the parts of Basalt that interact with the system or define application
-behavior. This includes authentication, networking, persistence, filesystem access,
-Minecraft installation, loader support, process management, validation, and other
-business logic.
+Keep commands thin. Do not put a second implementation in the command or component.
+When a command shape changes, update registration, the API wrapper, TypeScript types,
+and every caller in the same pull request.
 
-React owns presentation, user interaction, navigation, and short-lived view state.
-Avoid duplicating backend rules in components or using the frontend as a second
-source of truth.
+`AppState` contains the shared database, managed filesystem, credential store,
+network manager, running processes, tasks, updates, and presence state. Reuse those
+objects instead of opening parallel connections or inventing feature-local global
+state.
 
-Tauri commands are the boundary between these layers. When adding or changing a
-command, follow the complete path:
+CPU-heavy parsing and blocking filesystem work must not occupy the async runtime.
+The commands use `tokio::task::spawn_blocking` for that work.
 
-1. Put the implementation in the relevant Rust module.
-2. Keep the function in `src-tauri/src/commands.rs` focused on the IPC boundary.
-3. Register new commands in `src-tauri/src/lib.rs`.
-4. Add or update the typed wrapper in `src/lib/api.ts`.
-5. Update the shared TypeScript types and every affected caller.
+## Long-running and destructive work
 
-Preserve compatibility across the boundary intentionally. A renamed field or changed
-nullability is a contract change, even if each side still compiles on its own.
+Installs, imports, repairs, updates, snapshots, and scans belong in the task system.
+A task provides progress, cancellation, retry information, activity UI, and records
+recoverable operations. Check the cancellation token inside long loops, finish the
+task on every result path, and clean up files written before cancellation.
 
-Long-running work must not block the UI thread. Use the existing task and event
-infrastructure for installs, downloads, updates, and launches so progress,
-cancellation, recovery, and errors remain consistent throughout the app.
+Before changing an instance, use the existing busy checks. A running game or another
+active task must not race an import, restore, upgrade, deletion, or repair.
 
-## Coding guidelines
+Operations that replace user data need a recoverable sequence. The snapshot and
+modpack upgrade code demonstrate the expected pattern: validate first, write into a
+staging location, record enough state to recover, switch paths atomically, and keep a
+backup until the database and filesystem agree. **Startup recovery is part of the
+feature, not optional follow-up work.**
 
-Match the surrounding code and keep the scope of the change easy to follow.
+Use transactions when several database writes form one operation. Database migrations
+must preserve existing rows, tolerate a partially migrated database, and be safe to
+run again. Add `serde` defaults when older stored data or IPC payloads can lack a new
+field.
 
-- Prefer a direct implementation over a new abstraction with only one use.
-- Keep unrelated cleanup and refactoring out of feature and bug-fix pull requests.
-- Follow the surrounding formatting and do not reformat unrelated files.
-- Use clear names and add comments only when they explain intent that the code cannot.
-- Do not leave dead code, placeholder behavior, debug output, or local workarounds in
-  a submitted change.
-- Preserve user data and configuration unless the change explicitly requires a
-  migration or deletion path.
-- Surface failures with useful context. Do not silently ignore an error that changes
-  user-visible behavior.
+## Files, paths, and media
 
-### Rust
+Use `FileManager` and the checked helpers in `Paths` for launcher-managed files.
+Validate identifiers before joining them into a path, reject traversal and symbolic
+link escapes, and do not silently overwrite user-selected content. External files
+chosen by the user remain untrusted input; inspect them in Rust before copying or
+extracting anything.
 
-- Keep filesystem, network, database, and launcher behavior in the relevant backend
-  module rather than in `commands.rs`.
-- Use the shared error types and existing state instead of creating parallel error or
-  storage paths.
-- Use `tracing` for backend diagnostics, with structured fields where possible:
+Archive handling must set limits before allocating or extracting. Reject absolute
+paths, traversal, ambiguous separators, links or special entries, duplicate targets,
+and data that expands beyond declared bounds. **A frontend file-extension filter is a
+convenience, not validation.**
 
-  ```rust
-  tracing::info!(instance_id, version_id, "install finished");
-  ```
+**Do not send image or video bytes through Tauri IPC.** In particular, do not encode
+binary media as Base64 or add new `data:` URL payloads to command responses. Return a
+filesystem path or remote URL plus metadata. In the frontend, use `mediaSrc` and
+`logoSrc` from `src/lib/media.ts`; they handle local asset paths and remote URLs
+consistently. Extend that shared module when another reusable media shape needs the
+same treatment instead of scattering direct `convertFileSrc` calls through
+components. Keep each required directory narrowly listed in the asset protocol scope
+in `src-tauri/tauri.conf.json`. Existing Base64-returning paths are legacy exceptions,
+not patterns to copy; convert them to path-based media when the feature is changed.
 
-- Instrument important operations consistently with the surrounding code.
-- Never log access tokens, API keys, complete settings objects, or other secrets.
-- Verify downloaded artifacts when the provider supplies a hash.
+Reuse the native picker and drag-and-drop patterns already used by `UploadModal` and
+the helpers in `src/lib/packs.ts`. The frontend should pass selected paths through
+IPC, not read the files into JavaScript. Rust must recheck file type, size, structure,
+and destination before acting on them. The same applies to save dialogs: let the
+frontend choose a destination path and let Rust produce the file.
 
-### React and TypeScript
+## Network, credentials, and logs
 
-- Keep components focused on rendering and interaction. Put shared IPC calls in
-  `src/lib/api.ts` and shared application state in `src/store.ts`.
-- Select individual Zustand values where practical. Avoid selectors that construct a
-  new object or array on every store update.
-- Keep TypeScript strict. Do not bypass a type error with `any` or suppression unless
-  the reason is unavoidable and documented.
-- The `cn` helper only joins class names. It does not resolve conflicting Tailwind
-  utilities, so place conflicting classes in mutually exclusive branches.
-- Follow the existing visual language. New UI should feel like part of Basalt, not a
-  separate design system.
+Use the shared `NetworkManager` and download functions. They centralize proxy and TLS
+settings, limits, retries, rate handling, resumable partial files, cancellation, and
+checksum verification. Do not create a separate HTTP client for one provider or
+write response bodies directly to their final destination.
 
-## Testing your change
+**Microsoft tokens, provider keys, and proxy passwords belong in `CredentialStore`,
+not SQLite, settings JSON, frontend state, or logs.** Values sent to settings screens
+are masked. Preserve that separation when adding a credential.
 
-Run the checks that apply to your work from the repository root:
+Use structured `tracing` fields and instrument commands where the operation benefits
+from it. Skip request fields that can contain secrets, large text, or private paths.
+The log redactor is a final safeguard, not permission to log sensitive data. Errors
+cross the IPC boundary as user-visible strings, so add useful context without leaking
+response bodies, tokens, or complete settings objects.
+
+## Frontend work
+
+Use `src/lib/api.ts` for commands and `src/store.ts` for state shared across views.
+Keep state local when it only controls one component. Reuse the existing modal,
+confirmation, picker, empty-state, and notification components before creating
+another version of the same interaction.
+
+The backend should return the authoritative result after a mutation. Update or
+refresh frontend state from that result instead of predicting backend behavior. Show
+loading, empty, failure, disabled, and success states where the operation has them.
+Destructive actions need an explicit confirmation and must remain locked while the
+request is running.
+
+Visual changes should match the surrounding screen rather than introduce an isolated
+design system. Include screenshots or a short recording in the pull request.
+
+## Tests and checks
+
+Run the full repository check from the root:
 
 ```bash
 bun run check
 ```
 
-This runs both `check:frontend` and `check:rust`. The frontend check compiles
-TypeScript and creates a production Vite build. The Rust check runs the test suite
-and checks every target with Clippy.
+It builds the frontend, checks Rust formatting, runs the Rust suite, and runs Clippy
+for every target. CI runs it on Linux, Windows, and macOS. Run `bun run format` when
+you change Rust and inspect the diff afterward for unrelated formatting.
 
-Rust tests live beside the code in `#[cfg(test)]` modules. Add focused tests for
-parsing, path handling, version rules, migrations, dependency resolution, and other
-deterministic behavior. Tests involving files or SQLite should use isolated temporary
-paths and must not touch a contributor's real launcher data.
+Rust tests live beside the implementation. Match the existing tests:
 
-There is currently no automated frontend test runner. For UI changes, run the app and
-manually verify the affected workflow, including loading, empty, success, and error
-states where relevant. For installation or launch changes, test with the Minecraft
-version and loader combinations your patch affects.
+- use temporary directories and in-memory databases rather than real launcher data;
+- test old and partially migrated data when changing persistence;
+- test cancellation, interruption, cleanup, and rollback for multi-step operations;
+- test unsafe paths, malformed archives, size limits, and checksum failures at input
+  boundaries;
+- use local test servers for retry, resume, timeout, and response behavior;
+- name tests after the behavior they prove.
 
-A test should prove the behavior under change. If you add a regression test, confirm
-that it fails without the fix.
+There is no automated frontend test runner. UI changes need a manual pass in the
+running application. Installation and launch changes need the relevant Minecraft,
+loader, Java, and operating-system combinations. State what you tested; do not imply
+coverage you did not perform.
 
-## Using AI tools
+## Pull requests
 
-AI tools may be used to assist with a contribution, but they are not a substitute for
-understanding the codebase or doing the engineering work. Do not submit generated
-changes that you have only prompted, skimmed, or tested through trial and error.
+Keep the change focused. Do not mix a feature with unrelated cleanup, formatting, or
+dependency updates. Review the complete diff for credentials, launcher data, build
+output, debug code, and accidental generated files.
 
-You are responsible for every line in your pull request. Read the complete diff,
-understand why the implementation works, remove generated clutter, and verify the
-result yourself. Do not submit code you cannot explain or maintain.
-
-Treat generated code as untrusted until you have reviewed and validated it. Check for
-invented APIs, unnecessary abstractions, missed call sites, tests that do not exercise
-the change, and behavior copied from a different architecture.
-
-Pull requests that appear to contain unread or unverified generated code may be
-closed. Review time is limited, and contributors are expected to do that review
-before asking maintainers to do it for them.
-
-## Commits
-
-Use [Conventional Commits](https://www.conventionalcommits.org/) with a concise,
-lowercase summary:
+**Commit messages must follow the Conventional Commits format.** Use a type such as
+`feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, or `chore`, add a scope
+when it makes the change clearer, and describe the actual change in the imperative
+mood. Pull request titles should follow the same format. For example:
 
 ```text
-feat(ui): add loader filters to discovery
-fix(core): preserve native libraries in inherited versions
-docs: clarify the local development workflow
+feat(stats): add a playtime stats page
+fix(network): surface provider messages for HTTP failures
+perf: stop re-reading whole files and cap caches
 ```
 
-Common scopes in this repository include `core`, `ui`, `settings`, and `accounts`.
-Use a different scope when it communicates the change more accurately. Add a commit
-body when the reason, migration, or tradeoff is not clear from the summary.
+The description should explain the problem, the implementation, and the observed
+result. Include the commands and real workflows you tested. Call out platform limits,
+data migrations, compatibility behavior, and follow-up work directly.
 
-Keep commits coherent. Reviewers should be able to understand why each commit exists
-without separating it from unrelated formatting or cleanup.
+## AI-assisted contributions
 
-## Opening a pull request
+**AI-assisted coding is allowed. Blind vibecoding is not.**
 
-Before opening a pull request:
+An AI tool may help investigate code, suggest a focused implementation, explain an
+API, or review work the contributor is actively directing. It must not replace the
+contributor's understanding or judgment. Do not hand an entire issue to a tool,
+repeatedly prompt it until the project compiles, and submit the result without doing
+the engineering work yourself. Passing CI does not prove that a change fits Basalt,
+preserves user data, or handles failure outside the happy path.
 
-- Rebase or merge the latest `main` branch and resolve conflicts in your branch.
-- Review the full diff for accidental files, debug code, secrets, and unrelated
-  changes.
-- Run `bun run format` so Rust code follows the repository's formatting.
-- Run the relevant checks and test the feature in the application.
-- Update documentation when behavior, setup, or contributor expectations change.
-- Keep generated files, build output, launcher data, and credentials out of the
-  repository.
+The contributor must inspect the relevant code, choose the approach, review every
+generated change, test the real workflow, and be able to explain and maintain the
+result. **Material use of generated code must be disclosed in the pull request.**
+Small autocomplete, spelling, and formatting assistance does not need disclosure.
 
-In the pull request description, explain:
-
-- What changed
-- Why the change is needed
-- How you tested it
-- Which platforms, Minecraft versions, and loaders were tested when relevant
-- Any known limitation, follow-up work, migration, or tradeoff
-
-Small, focused pull requests are easier to review and merge. If review reveals a
-broader cleanup opportunity, prefer a separate pull request unless it is required for
-the current change.
-
-Review is a technical conversation. Respond to feedback, ask when a request is
-unclear, and push follow-up commits that keep the discussion easy to trace.
+A pull request may be closed without further review when the author cannot explain
+the code, delegates the whole implementation to AI, relies on invented APIs or
+assumptions, introduces broad generated churn, adds tests that merely repeat the
+implementation, or passes review comments back to a tool without understanding the
+response. Repeated vibecoded submissions may be blocked.
 
 ## Reporting bugs
 
-Search the existing issues before opening a new report. Include enough information
-for someone else to reproduce the problem:
+Search existing issues, then use the
+[bug report form](https://github.com/MegalithOfficial/basalt-launcher/issues/new?template=bug_report.yml).
+A useful report gives someone else enough information to reproduce the failure
+without guessing.
 
-- What you expected and what happened instead
-- Exact steps to reproduce it
-- Your operating system and Basalt version or commit
-- The Minecraft version, loader, and loader version when relevant
-- Whether Java was selected automatically or configured manually
-- Relevant launcher logs and error messages
+Include:
 
-Logs are available from the Logs view and from the launcher's data directory. On
-Linux, the default data directory is:
+- what you did, what happened, and what should have happened instead;
+- the shortest sequence that reproduces it consistently;
+- the Basalt version from Settings, or the commit when running from source;
+- the operating system and installation format;
+- the Minecraft version, loader and loader version, and selected Java runtime when
+  they affect the problem;
+- whether the issue still occurs on the latest available build.
+
+Attach the relevant launcher log or game-output section when the problem involves a
+failed operation, crash, download, install, or launch. Do not attach an entire data
+directory or an unrelated full log. Logs are available from Basalt's Logs view. On
+Linux, the files are stored under:
 
 ```text
 ~/.local/share/com.megalithofficial.basalt-launcher/
 ```
 
-Set `BASALT_LOG=debug` before starting Basalt when a normal log does not contain
-enough detail:
+When the normal log does not show enough, run a source build with additional detail:
 
 ```bash
 BASALT_LOG=debug bun run tauri dev
 ```
 
-Remove access tokens, API keys, usernames, local paths, and any other private
-information before attaching logs.
+**The in-app Share Log flow redacts and previews logs before upload, but review the
+result yourself.** Logs copied or attached manually are not automatically sanitized.
+Remove access tokens, API keys, account identifiers, usernames, private paths,
+server addresses, and anything else you do not want posted publicly.
 
-## Thank you
+If the problem only occurs with a particular mod, modpack, world, or provider file,
+include its exact name and version. Explain why the failure appears to be in Basalt
+rather than in the content or Minecraft itself.
 
-Good launcher code has to handle unreliable networks, changing upstream services,
-many Minecraft versions, and real user data. Careful reports, focused patches, and
-thoughtful reviews all make Basalt better.
+**Never report a security vulnerability in a public issue.** Follow
+[SECURITY.md](SECURITY.md) and send the details privately.

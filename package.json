@@ -2,6 +2,7 @@
   "name": "basalt-launcher",
   "description": "A visually polished Minecraft launcher with practical instance and content management",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
   "author": "MegalithOfficial",
   "repository": {

@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "A visually polished Minecraft launcher with practical instance and content management"
 authors = ["MegalithOfficial"]
 edition = "2021"
+license = "GPL-3.0-only"
 repository = "https://github.com/MegalithOfficial/basalt-launcher"
 readme = "../README.md"
 keywords = ["minecraft", "launcher", "tauri", "modrinth", "curseforge"]

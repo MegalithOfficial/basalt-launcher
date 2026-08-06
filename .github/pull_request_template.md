@@ -31,4 +31,5 @@ fix(core): preserve native libraries in inherited versions
 - [ ] I added or updated tests where the changed behavior can be tested reliably.
 - [ ] I updated documentation when setup, behavior, or contributor expectations changed.
 - [ ] I did not include credentials, launcher data, build output, or debug code.
-- [ ] I understand and can maintain every line in this pull request, including AI-assisted code.
+- [ ] I directed and reviewed this work; it was not blindly or entirely delegated to AI.
+- [ ] I disclosed any material use of generated code in the summary.
