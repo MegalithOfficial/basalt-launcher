@@ -20,13 +20,8 @@ import { taskFraction, useInstanceTask } from "../lib/useTasks";
 import type { Instance, SnapshotSummary } from "../lib/types";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Modal, ModalBody, ModalHeader } from "./Modal";
+import { formatBytes } from "../lib/format";
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 function SnapshotRow({
   snapshot,

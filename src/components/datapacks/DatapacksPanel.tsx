@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
-import { formatBytes } from "../../lib/packs";
+import { formatBytes } from "../../lib/format";
 import { useStore } from "../../store";
 import type { Datapack, Instance, WorldPacks, WorldSummary } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";

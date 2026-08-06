@@ -14,17 +14,13 @@ import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
 import type { InstanceLogFile, RunningInfo } from "../../lib/types";
 import { useStore } from "../../store";
+import { formatBytes } from "../../lib/format";
 
 export type LogSelection =
   | { kind: "launcher" }
   | { kind: "run"; runningId: string }
   | { kind: "file"; instanceId: string; name: string; crash: boolean };
 
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function Section({ label }: { label: string }) {
   return (
@@ -228,7 +224,7 @@ export function LogSourceTree({
                     )}
                     <span className="min-w-0 flex-1 truncate font-mono">{file.name}</span>
                     <span className="shrink-0 tabular-nums text-[10px] text-content-faint">
-                      {formatSize(file.size_bytes)}
+                      {formatBytes(file.size_bytes)}
                     </span>
                   </Row>
                 ))}

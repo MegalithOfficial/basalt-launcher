@@ -22,13 +22,6 @@ export const PACK_FORMATS: Array<{
   },
 ];
 
-export function formatBytes(bytes: number): string {
-  if (bytes <= 0) return "0 KB";
-  if (bytes < 1024 ** 2) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-
 export async function pickPackFile(): Promise<string | null> {
   const chosen = await openFileDialog({
     multiple: false,

@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
-import { formatBytes } from "../../lib/packs";
+import { formatBytes } from "../../lib/format";
 import type { Reclaimable, StorageEntry, StorageReport } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DataLocations } from "./DataLocations";

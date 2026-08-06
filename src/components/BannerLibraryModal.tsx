@@ -3,7 +3,8 @@ import { Check, Film, ImagePlus, Images, Loader2, Trash2, TriangleAlert } from "
 
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
-import { formatBytes, pickBannerFile } from "../lib/packs";
+import { formatBytes } from "../lib/format";
+import { pickBannerFile } from "../lib/packs";
 import { relativeTime } from "../lib/time";
 import type { BannerEntry } from "../lib/types";
 import { Banner } from "./Banner";

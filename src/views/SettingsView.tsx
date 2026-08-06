@@ -47,6 +47,7 @@ import type {
 } from "../lib/types";
 import { StoragePanel } from "../components/storage/StoragePanel";
 import { useStore } from "../store";
+import { formatMegabytes } from "../lib/format";
 
 const TABS = [
   { id: "general", label: "General" },
@@ -161,11 +162,6 @@ function GithubMark({ className }: { className?: string }) {
   );
 }
 
-function formatGb(mb?: number | null) {
-  if (mb == null) return "unknown";
-  if (mb < 1024) return `${mb} MB`;
-  return `${(mb / 1024).toFixed(1)} GB`;
-}
 
 export function SettingsView() {
   const [migrateOpen, setMigrateOpen] = useState(false);
@@ -349,9 +345,9 @@ export function SettingsView() {
   const availableMb = stats?.available_memory_mb ?? 0;
   const memoryHint =
     installedMb > 0 && draft.max_memory_mb > installedMb
-      ? `more memory than this system has (${formatGb(installedMb)})`
+      ? `more memory than this system has (${formatMegabytes(installedMb)})`
       : availableMb > 0 && draft.max_memory_mb > availableMb
-        ? `more than is free right now (${formatGb(availableMb)})`
+        ? `more than is free right now (${formatMegabytes(availableMb)})`
         : "JVM heap ceiling";
 
   const parseNum = (value: string, fallback: number) => {

@@ -26,13 +26,8 @@ import type {
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Modal, ModalHeader } from "../Modal";
 import { UploadModal } from "../UploadModal";
+import { formatBytes } from "../../lib/format";
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
 
 function versionLabel(versionName: string | null, dataVersion: number | null): string {
   if (versionName) return versionName;
@@ -121,7 +116,7 @@ function CandidateRow({
         <span className="mt-0.5 block truncate text-[11px] text-content-faint">
           {candidate.archive_root || "Selected folder"} ·{" "}
           {versionLabel(candidate.version_name, candidate.data_version)} ·{" "}
-          {candidate.file_count.toLocaleString()} files · {formatSize(candidate.total_bytes)}
+          {candidate.file_count.toLocaleString()} files · {formatBytes(candidate.total_bytes)}
         </span>
         {candidate.error && (
           <span className="mt-1 block text-[11px] text-danger">{candidate.error}</span>

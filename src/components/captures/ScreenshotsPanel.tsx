@@ -23,23 +23,14 @@ import { notifyRemoved } from "../../lib/notify";
 import type { Instance, Screenshot } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button, EmptyState } from "../ui";
+import { formatBytes } from "../../lib/format";
+import { formatDateTime } from "../../lib/time";
 
 const GAP = 12;
 const MIN_CARD = 230;
 const FOOTER = 38;
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-}
 
-function takenAt(shot: Screenshot): string {
-  return new Date(shot.modified_ms).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
 
 function Shimmer({ className }: { className?: string }) {
   return <div className={cn("animate-pulse rounded bg-surface-3/50", className)} />;
@@ -357,7 +348,7 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
                         {shot.name}
                       </span>
                       <span className="shrink-0 tabular-nums text-[10px] text-content-faint">
-                        {formatSize(shot.size_bytes)}
+                        {formatBytes(shot.size_bytes)}
                       </span>
                     </div>
                   </div>
@@ -381,7 +372,7 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-mono text-xs text-content">{open.name}</p>
                 <p className="text-[11px] text-content-faint">
-                  {takenAt(open)} · {formatSize(open.size_bytes)} · {viewing! + 1} of{" "}
+                  {formatDateTime(open.modified_ms)} · {formatBytes(open.size_bytes)} · {viewing! + 1} of{" "}
                   {shots.length}
                 </p>
               </div>

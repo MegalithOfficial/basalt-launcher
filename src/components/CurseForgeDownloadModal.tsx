@@ -21,7 +21,7 @@ import { toast } from "sonner";
 
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
-import { formatBytes } from "../lib/packs";
+import { formatBytes } from "../lib/format";
 import type {
   InstallPlan,
   ManualDownload,

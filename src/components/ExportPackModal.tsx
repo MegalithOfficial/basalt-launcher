@@ -5,7 +5,8 @@ import { Check, FolderOpen, Loader2, Share, TriangleAlert } from "lucide-react";
 
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
-import { formatBytes, PACK_FORMATS, pickPackDestination } from "../lib/packs";
+import { formatBytes } from "../lib/format";
+import { PACK_FORMATS, pickPackDestination } from "../lib/packs";
 import type { Instance, PackExport, PackFormat } from "../lib/types";
 import { Modal, ModalFooter, ModalHeader } from "./Modal";
 

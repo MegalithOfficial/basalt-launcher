@@ -14,7 +14,7 @@ import {
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
-import { formatDuration, relativeTime } from "../lib/time";
+import { durationParts, formatDateTime, formatDuration, relativeTime } from "../lib/time";
 import type { PlaySession, PlayStats } from "../lib/types";
 import { EmptyState } from "../components/ui";
 import { useStore } from "../store";
@@ -54,15 +54,6 @@ function dayTick(date: string): string {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function durationParts(secs: number): Array<{ value: string; unit: string }> {
-  if (secs < 60) return [{ value: String(Math.max(0, secs)), unit: "s" }];
-  const hours = Math.floor(secs / 3600);
-  const minutes = Math.floor((secs % 3600) / 60);
-  if (hours === 0) return [{ value: String(minutes), unit: "m" }];
-  const parts = [{ value: String(hours), unit: "h" }];
-  if (minutes > 0) parts.push({ value: String(minutes), unit: "m" });
-  return parts;
-}
 
 type TickFormatter = (value: string | number) => string;
 type RechartsTickFormatter = React.ComponentProps<typeof XAxis>["tickFormatter"];
@@ -194,12 +185,7 @@ function SessionRow({ session }: { session: PlaySession }) {
         {session.loader && ` \u00b7 ${session.loader}`}
       </div>
       <div className="text-right text-content-faint">
-        {new Date(session.started_at * 1000).toLocaleString(undefined, {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+        {formatDateTime(session.started_at * 1000)}
       </div>
       <div className="text-right tabular-nums text-content">
         {formatDuration(session.played_secs)}

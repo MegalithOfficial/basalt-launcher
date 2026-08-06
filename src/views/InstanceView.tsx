@@ -66,6 +66,7 @@ import type {
 } from "../lib/types";
 import { useActiveProjectIds, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
+import { formatBytes } from "../lib/format";
 
 type InstanceTab = ContentKind | "worlds" | "screenshots";
 
@@ -169,11 +170,6 @@ function sortItems(items: ContentItem[], sort: ContentSort) {
   }
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function Toggle({
   on,
@@ -1271,7 +1267,7 @@ export function InstanceView() {
                     <div className="truncate text-[11px] text-content-faint">
                       {source?.title ? `${item.file_name} · ` : ""}
                       {source?.mod_version && `v${source.mod_version} · `}
-                      {formatSize(item.size)}
+                      {formatBytes(item.size)}
                       {!item.enabled && " · disabled"}
                     </div>
                   </div>

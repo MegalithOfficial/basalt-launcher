@@ -22,6 +22,7 @@ import type {
 } from "../lib/types";
 import { useStore } from "../store";
 import { Modal, ModalFooter, ModalHeader } from "./Modal";
+import { formatBytes } from "../lib/format";
 
 function shortPath(path: string): string {
   const home = path.match(/^(\/home\/[^/]+|\/Users\/[^/]+|[A-Z]:\\Users\\[^\\]+)/);
@@ -60,11 +61,6 @@ function SourceTab({
   );
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
 
 function CandidateRow({
   candidate,
@@ -122,7 +118,7 @@ function CandidateRow({
           {candidate.loader
             ? ` · ${LOADERS.find((l) => l.id === candidate.loader)?.label ?? candidate.loader}`
             : ""}
-          {` · ${candidate.mod_count} mods · ${formatSize(candidate.total_bytes)}`}
+          {` · ${candidate.mod_count} mods · ${formatBytes(candidate.total_bytes)}`}
           {candidate.last_played_ms
             ? ` · played ${relativeTime(Math.floor(candidate.last_played_ms / 1000))}`
             : ""}
@@ -400,7 +396,7 @@ export function MigrateModal({ open, onClose }: { open: boolean; onClose: () => 
       {!scanning && source && (
         <ModalFooter className="justify-between">
           <span className="text-xs text-content-faint">
-            {outcome ? "" : `${selected.size} selected · ${formatSize(totalBytes)} to copy`}
+            {outcome ? "" : `${selected.size} selected · ${formatBytes(totalBytes)} to copy`}
           </span>
           <div className="flex items-center gap-2">
             <button

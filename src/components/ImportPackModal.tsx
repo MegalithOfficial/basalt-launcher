@@ -11,7 +11,7 @@ import {
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { LOADERS } from "../lib/loader";
-import { formatBytes } from "../lib/packs";
+import { formatBytes } from "../lib/format";
 import type { Instance, PackPreview } from "../lib/types";
 import { useStore } from "../store";
 import { Modal, ModalFooter, ModalHeader } from "./Modal";

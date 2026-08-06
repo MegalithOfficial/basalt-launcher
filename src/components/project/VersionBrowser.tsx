@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "../../lib/cn";
-import { relativeTime } from "../../lib/time";
+import { formatDateTime, relativeTime } from "../../lib/time";
 import type {
   Changelog,
   ContentKind,
@@ -21,6 +21,7 @@ import type {
 import { formatCount } from "../ContentResults";
 import { Select } from "../Select";
 import { Markdown } from "./Markdown";
+import { formatBytes } from "../../lib/format";
 
 const PAGE_SIZE = 50;
 
@@ -39,11 +40,6 @@ const DEP_STYLE: Record<string, string> = {
   incompatible: "bg-warn/15 text-warn",
 };
 
-function formatSize(bytes: number | null): string {
-  if (bytes == null) return "";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -342,7 +338,7 @@ export function VersionBrowser({
                   <div className="hidden text-right text-[11px] leading-tight text-content-faint sm:block">
                     <div>{formatCount(v.downloads)} downloads</div>
                     <div>
-                      {v.size != null && `${formatSize(v.size)} · `}
+                      {v.size != null && `${formatBytes(v.size)} · `}
                       {v.date && relativeTime(Math.floor(new Date(v.date).getTime() / 1000))}
                     </div>
                   </div>
@@ -513,7 +509,7 @@ export function VersionBrowser({
 
                     <div className="mt-3 flex items-center gap-3 border-t border-border-soft pt-2 text-[10px] text-content-faint">
                       <span>{v.version_number}</span>
-                      {v.date && <span>{new Date(v.date).toLocaleString()}</span>}
+                      {v.date && <span>{formatDateTime(v.date)}</span>}
                       {websiteUrl && (
                         <button
                           onClick={() =>

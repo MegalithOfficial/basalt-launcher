@@ -12,12 +12,8 @@ import { cn } from "../lib/cn";
 import { Modal } from "./Modal";
 import type { InstallPlan, PlannedFile, Task } from "../lib/types";
 import { taskFraction } from "../lib/useTasks";
+import { formatBytes } from "../lib/format";
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return "";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function Thumb({ url, size = "size-8" }: { url: string | null; size?: string }) {
   return url ? (

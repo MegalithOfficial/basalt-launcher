@@ -6,15 +6,14 @@ import { toast } from "sonner";
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { formatMegabytes } from "../../lib/format";
 import { log } from "../../lib/log";
 import type { DataLocation, DiskInfo, LocationCandidate } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 
 function freeSpace(disk: DiskInfo | null) {
   if (!disk) return "free space unknown";
-  const free = disk.free_mb / 1024;
-  const total = disk.total_mb / 1024;
-  return `${free.toFixed(free < 10 ? 1 : 0)} GB free of ${total.toFixed(0)} GB`;
+  return `${formatMegabytes(disk.free_mb)} free of ${formatMegabytes(disk.total_mb)}`;
 }
 
 function diskName(disk: DiskInfo | null) {
