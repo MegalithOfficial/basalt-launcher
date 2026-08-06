@@ -4,7 +4,7 @@
   <p>A polished Minecraft launcher that puts form and function on equal footing.</p>
 
   [![Status](https://img.shields.io/badge/status-alpha-orange)](#project-status)
-  [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)](#project-status)
+  [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey)](#install)
   [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
 </div>
 
@@ -71,17 +71,20 @@ settings.
 
 ## Project status
 
-Basalt is alpha software under active development. Linux is the primary development
-and testing platform.
-
-Windows and macOS paths exist through Tauri but have not been properly tested.
-CurseForge modpacks are not supported yet, and Mojang's low-resolution version
-artwork may appear soft on large windows.
+Basalt is cross-platform alpha software for Linux, Windows, and macOS. Testing
+coverage still varies between platforms, so platform-specific bug reports are
+especially useful during the beta.
 
 ## Install
 
-Release builds are available as AppImage and Debian packages. Arch users can
-install `basalt-launcher-bin` from the AUR for stable releases, or
+[GitHub Releases](https://github.com/MegalithOfficial/basalt-launcher/releases) provide
+installers for every supported desktop platform:
+
+- **Windows:** `.exe` and `.msi`
+- **macOS:** `.dmg`
+- **Linux:** AppImage and Debian package
+
+Arch users can install `basalt-launcher-bin` from the AUR for stable releases, or
 `basalt-launcher-dev-bin` for the latest development prerelease.
 
 Nix and NixOS users can build and run Basalt directly from source:
