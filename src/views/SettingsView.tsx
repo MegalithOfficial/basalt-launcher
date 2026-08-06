@@ -444,6 +444,10 @@ export function SettingsView() {
                     </span>
                   )}
                 </div>
+                <p className="mt-3 max-w-md text-[11px] leading-relaxed text-content-faint">
+                  NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED
+                  WITH MOJANG OR MICROSOFT.
+                </p>
               </div>
             </div>
 

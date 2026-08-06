@@ -132,6 +132,14 @@ Never commit an API key or include one in a bug report.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. It covers the
 project architecture, code expectations, validation commands, and review process.
 
+## Disclaimer
+
+NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR
+MICROSOFT.
+
+Basalt downloads game files from Mojang's own servers and never redistributes
+them. Minecraft is a trademark of Mojang AB.
+
 ## Support
 
 Use [GitHub Issues](https://github.com/MegalithOfficial/basalt-launcher/issues) to
