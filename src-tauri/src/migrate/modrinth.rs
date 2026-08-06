@@ -95,29 +95,26 @@ fn read_profiles(root: &Path) -> Result<Vec<Profile>> {
         })
         .map_err(|error| Error::other(format!("reading Modrinth instances: {error}")))?;
 
-    Ok(rows.filter_map(|row| row.ok()).collect())
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|error| Error::other(format!("reading a Modrinth instance row: {error}")))
 }
 
-fn read_files(root: &Path, instance_id: &str) -> Vec<(String, String, bool)> {
-    let Ok(conn) = open(root) else {
-        return Vec::new();
-    };
-    let Ok(mut statement) = conn
+fn read_files(root: &Path, instance_id: &str) -> Result<Vec<(String, String, bool)>> {
+    let conn = open(root)?;
+    let mut statement = conn
         .prepare("SELECT relative_path, sha1, enabled FROM instance_files WHERE instance_id = ?1")
-    else {
-        return Vec::new();
-    };
-    let rows = statement.query_map([instance_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, i64>(2)? != 0,
-        ))
-    });
-    match rows {
-        Ok(rows) => rows.filter_map(|row| row.ok()).collect(),
-        Err(_) => Vec::new(),
-    }
+        .map_err(|error| Error::other(format!("reading Modrinth instance files: {error}")))?;
+    let rows = statement
+        .query_map([instance_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)? != 0,
+            ))
+        })
+        .map_err(|error| Error::other(format!("reading Modrinth instance files: {error}")))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|error| Error::other(format!("reading a Modrinth instance file row: {error}")))
 }
 
 fn read_icon(files: &FileManager, icon: Option<&str>) -> Option<String> {
@@ -172,7 +169,7 @@ pub fn scan(files: &FileManager, root: &Path) -> Result<MigrationScan> {
     let profiles = profiles_dir(root);
     let mut candidates: Vec<MigrationCandidate> = read_profiles(root)?
         .into_iter()
-        .map(|profile| {
+        .map(|profile| -> Result<MigrationCandidate> {
             let dir = profiles.join(&profile.path);
             let present = files
                 .external_symlink_metadata(&dir)
@@ -191,7 +188,12 @@ pub fn scan(files: &FileManager, root: &Path) -> Result<MigrationScan> {
                 warnings.push("No Minecraft version recorded.".to_string());
             }
 
-            MigrationCandidate {
+            let mod_count = read_files(root, &profile.id)?
+                .iter()
+                .filter(|(path, _, _)| path.starts_with("mods/"))
+                .count();
+
+            Ok(MigrationCandidate {
                 name: profile.name.clone(),
                 id: profile.id.clone(),
                 version_id: profile.game_version.clone(),
@@ -202,19 +204,16 @@ pub fn scan(files: &FileManager, root: &Path) -> Result<MigrationScan> {
                     .pack_project
                     .as_ref()
                     .map(|_| "modrinth".to_string()),
-                mod_count: read_files(root, &profile.id)
-                    .iter()
-                    .filter(|(path, _, _)| path.starts_with("mods/"))
-                    .count(),
+                mod_count,
                 file_count: entries.len(),
                 total_bytes: entries.iter().map(|(_, size)| size).sum(),
                 last_played_ms: profile.last_played.map(|value| value * 1000),
                 importable: present && !profile.game_version.is_empty(),
                 imported: false,
                 warnings,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
 
     candidates.sort_by(|a, b| {
         b.last_played_ms
@@ -230,9 +229,15 @@ pub fn scan(files: &FileManager, root: &Path) -> Result<MigrationScan> {
     })
 }
 
-fn record_files(db: &Db, root: &Path, source_id: &str, instance_id: &str, pack: Option<&str>) {
+fn record_files(
+    db: &Db,
+    root: &Path,
+    source_id: &str,
+    instance_id: &str,
+    pack: Option<&str>,
+) -> Result<()> {
     let now = chrono::Utc::now().timestamp();
-    for (relative, sha1, _enabled) in read_files(root, source_id) {
+    for (relative, sha1, _enabled) in read_files(root, source_id)? {
         let Some(kind) = kind_of(&relative) else {
             continue;
         };
@@ -256,8 +261,9 @@ fn record_files(db: &Db, root: &Path, source_id: &str, instance_id: &str, pack: 
             pack_version_id: pack.map(str::to_string),
             installed_at: now,
         };
-        let _ = db.record_content_file(instance_id, kind, &record);
+        db.record_content_file(instance_id, kind, &record)?;
     }
+    Ok(())
 }
 
 pub fn import(
@@ -363,7 +369,7 @@ pub fn import(
                 &profile.id,
                 &instance_id,
                 profile.pack_version.as_deref(),
-            );
+            )?;
             Ok(())
         })();
 
@@ -402,4 +408,52 @@ pub fn import(
     }
 
     Ok(outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    use super::read_profiles;
+
+    #[test]
+    fn a_corrupt_profile_row_is_reported() {
+        let root = std::env::temp_dir().join(format!("basalt-modrinth-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let connection = Connection::open(root.join("app.db")).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE instances (
+                    id TEXT,
+                    path TEXT,
+                    name TEXT,
+                    icon_path TEXT,
+                    last_played INTEGER,
+                    submitted_time_played INTEGER,
+                    recent_time_played INTEGER
+                );
+                CREATE TABLE instance_content_sets (
+                    instance_id TEXT,
+                    game_version TEXT,
+                    loader TEXT,
+                    loader_version TEXT
+                );
+                CREATE TABLE instance_links (
+                    instance_id TEXT,
+                    link_kind TEXT,
+                    modrinth_project_id TEXT,
+                    modrinth_version_id TEXT
+                );
+                INSERT INTO instances VALUES (
+                    'broken', 'profile', x'FF', NULL, NULL, 0, 0
+                );",
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = read_profiles(&root).unwrap_err();
+        assert!(error.to_string().contains("Modrinth instance row"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
