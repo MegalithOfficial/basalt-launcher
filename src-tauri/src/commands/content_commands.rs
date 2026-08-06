@@ -21,7 +21,7 @@ pub async fn list_instance_content(
 ) -> Result<Vec<ContentItem>> {
     find_instance(&state, &instance_id)?;
     if reconcile.unwrap_or(false) {
-        let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
+        search::identify::reconcile(&state, &instance_id, &kind).await?;
     }
 
     let mut items = content::list(&state.files, &instance_id, &kind)?;
@@ -67,7 +67,7 @@ pub async fn list_instance_content_bundle(
     let mut bundle = std::collections::HashMap::with_capacity(kinds.len());
     for kind in kinds {
         if reconcile {
-            let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
+            search::identify::reconcile(&state, &instance_id, &kind).await?;
         }
 
         let mut items = content::list(&state.files, &instance_id, &kind)?;
@@ -171,7 +171,9 @@ pub async fn add_instance_content(
 ) -> Result<usize> {
     find_instance(&state, &instance_id)?;
     let copied = content::add(&state.files, &instance_id, &kind, &sources)?;
-    let _ = search::identify::reconcile(&state, &instance_id, &kind).await;
+    if let Err(error) = search::identify::reconcile(&state, &instance_id, &kind).await {
+        tracing::warn!(%error, "could not identify added content");
+    }
     tracing::info!(copied, offered = sources.len(), "content added from disk");
     Ok(copied)
 }

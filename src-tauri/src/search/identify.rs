@@ -250,7 +250,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         let Ok(identity) = identify_file(&state.files, &path) else {
             continue;
         };
-        let _ = state.db.merge_identity(
+        state.db.merge_identity(
             instance_id,
             kind,
             &item.file_name,
@@ -259,12 +259,12 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
             Some(identity.murmur2 as i64),
             identity.mod_id.as_deref(),
             identity.mod_version.as_deref(),
-        );
+        )?;
         if existing.is_none() {
             if let Some(name) = &identity.display_name {
-                let _ = state
+                state
                     .db
-                    .set_fallback_title(instance_id, kind, &item.file_name, name);
+                    .set_fallback_title(instance_id, kind, &item.file_name, name)?;
             }
         }
         hashed.push((item.file_name.clone(), identity.sha1, identity.murmur2));
@@ -302,7 +302,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
                 let Some(project) = project_info.get(project_id.as_str()) else {
                     continue;
                 };
-                let _ = state.db.merge_provider_identity(
+                state.db.merge_provider_identity(
                     instance_id,
                     kind,
                     file_name,
@@ -311,7 +311,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
                     None,
                     Some(&project.title),
                     project.icon_url.as_deref(),
-                );
+                )?;
             }
         }
     }
@@ -347,7 +347,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         match by_hash.get(sha1) {
             Some(version) => {
                 let project = info.get(version.project_id.as_str());
-                let _ = state.db.merge_provider_identity(
+                state.db.merge_provider_identity(
                     instance_id,
                     kind,
                     file_name,
@@ -356,7 +356,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
                     Some(&version.id),
                     project.map(|p| p.title.as_str()),
                     project.and_then(|p| p.icon_url.as_deref()),
-                );
+                )?;
             }
             None => still_unknown.push((file_name.clone(), *fingerprint)),
         }
@@ -386,7 +386,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         };
         let project_id = entry.file.mod_id.to_string();
         let project = cf_info.get(project_id.as_str());
-        let _ = state.db.merge_provider_identity(
+        state.db.merge_provider_identity(
             instance_id,
             kind,
             file_name,
@@ -395,7 +395,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
             Some(&entry.file.id.to_string()),
             project.map(|p| p.title.as_str()),
             project.and_then(|p| p.icon_url.as_deref()),
-        );
+        )?;
     }
 
     Ok(())
