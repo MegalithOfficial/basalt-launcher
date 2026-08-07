@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 12;
+pub(super) const SCHEMA_VERSION: i64 = 13;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -219,6 +219,16 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
     }
     add_column_if_missing(conn, "skins", "hash", "TEXT")?;
     add_column_if_missing(conn, "skins", "remote_hash", "TEXT")?;
+    add_column_if_missing(
+        conn,
+        "active_runs",
+        "checkpointed_at",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    conn.execute(
+        "UPDATE active_runs SET checkpointed_at = started_at WHERE checkpointed_at = 0",
+        [],
+    )?;
 
     if table_exists(conn, "content_sources")? {
         conn.execute_batch(
@@ -252,10 +262,38 @@ mod tests {
         assert!(column_exists(&conn, "content_files", "origin").unwrap());
         assert!(super::table_exists(&conn, "api_cache").unwrap());
         assert!(super::table_exists(&conn, "active_runs").unwrap());
+        assert!(column_exists(&conn, "active_runs", "checkpointed_at").unwrap());
         assert!(super::table_exists(&conn, "instance_groups").unwrap());
         assert!(super::table_exists(&conn, "play_sessions").unwrap());
         assert!(column_exists(&conn, "instances", "group_id").unwrap());
         assert!(!column_exists(&conn, "accounts", "mc_access_token").unwrap());
+    }
+
+    #[test]
+    fn migrate_initializes_existing_active_run_checkpoints() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE active_runs(
+                running_id TEXT PRIMARY KEY,
+                instance_id TEXT NOT NULL,
+                pid INTEGER NOT NULL,
+                process_started_at INTEGER NOT NULL,
+                started_at INTEGER NOT NULL
+            );
+            INSERT INTO active_runs VALUES ('run-1', 'instance-1', 42, 100, 1200);",
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let checkpointed_at: i64 = conn
+            .query_row(
+                "SELECT checkpointed_at FROM active_runs WHERE running_id = 'run-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(checkpointed_at, 1200);
     }
 
     #[test]

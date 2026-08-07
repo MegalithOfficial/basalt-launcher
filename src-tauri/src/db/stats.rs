@@ -322,6 +322,7 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::ActiveRun;
 
     fn session(id: i64, instance: &str, started_at: i64, secs: i64, crashed: bool) -> PlaySession {
         PlaySession {
@@ -464,8 +465,18 @@ mod tests {
             .unwrap();
 
         let started_at = Local::now().timestamp() - 3600;
-        db.record_playtime("i1", started_at, started_at + 3600, true)
-            .unwrap();
+        db.save_active_run(&ActiveRun {
+            running_id: "run-1".into(),
+            instance_id: "i1".into(),
+            pid: 42,
+            process_started_at: 1,
+            started_at,
+            checkpointed_at: started_at,
+        })
+        .unwrap();
+        assert!(db
+            .finalize_active_run("run-1", started_at + 3600, true)
+            .unwrap());
 
         let stats = db.play_stats(None, None).unwrap();
         assert_eq!(stats.session_count, 1);

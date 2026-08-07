@@ -1,8 +1,59 @@
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension, Transaction};
 
 use crate::{config::Instance, error::Result, files::FileManager};
 
 use super::Db;
+
+fn record_playtime_tx(
+    tx: &Transaction<'_>,
+    instance_id: &str,
+    started_at: i64,
+    ended_at: i64,
+    crashed: bool,
+) -> Result<()> {
+    let ended_at = ended_at.max(started_at);
+    let played_secs = ended_at.saturating_sub(started_at);
+    let snapshot = tx
+        .query_row(
+            "SELECT name, version_id, loader FROM instances WHERE id = ?1",
+            params![instance_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .ok();
+    let (name, version_id, loader) = match snapshot {
+        Some(values) => values,
+        None => (instance_id.to_string(), String::new(), None),
+    };
+    tx.execute(
+        "INSERT INTO play_sessions
+            (instance_id, instance_name, started_at, ended_at, played_secs,
+             crashed, version_id, loader)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            instance_id,
+            name,
+            started_at,
+            ended_at,
+            played_secs,
+            crashed as i64,
+            version_id,
+            loader,
+        ],
+    )?;
+    tx.execute(
+        "UPDATE instances
+         SET playtime_secs = playtime_secs + ?2, last_played_at = ?3
+         WHERE id = ?1",
+        params![instance_id, played_secs, ended_at],
+    )?;
+    Ok(())
+}
 
 impl Db {
     pub fn list_instances(&self, files: &FileManager) -> Result<Vec<Instance>> {
@@ -304,56 +355,30 @@ impl Db {
         Ok(())
     }
 
-    pub fn record_playtime(
+    pub fn finalize_active_run(
         &self,
-        instance_id: &str,
-        started_at: i64,
+        running_id: &str,
         ended_at: i64,
         crashed: bool,
-    ) -> Result<()> {
-        let played_secs = ended_at.saturating_sub(started_at).max(0);
+    ) -> Result<bool> {
         let mut conn = self.0.lock().unwrap();
         let tx = conn.transaction()?;
-        let snapshot = tx
+        let run = tx
             .query_row(
-                "SELECT name, version_id, loader FROM instances WHERE id = ?1",
-                params![instance_id],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                    ))
-                },
+                "SELECT instance_id, started_at FROM active_runs WHERE running_id = ?1",
+                params![running_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
             )
-            .ok();
-        let (name, version_id, loader) = match snapshot {
-            Some(values) => values,
-            None => (instance_id.to_string(), String::new(), None),
+            .optional()?;
+        let Some((instance_id, started_at)) = run else {
+            return Ok(false);
         };
+        record_playtime_tx(&tx, &instance_id, started_at, ended_at, crashed)?;
         tx.execute(
-            "INSERT INTO play_sessions
-                (instance_id, instance_name, started_at, ended_at, played_secs,
-                 crashed, version_id, loader)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                instance_id,
-                name,
-                started_at,
-                ended_at,
-                played_secs,
-                crashed as i64,
-                version_id,
-                loader,
-            ],
-        )?;
-        tx.execute(
-            "UPDATE instances
-             SET playtime_secs = playtime_secs + ?2, last_played_at = ?3
-             WHERE id = ?1",
-            params![instance_id, played_secs, ended_at],
+            "DELETE FROM active_runs WHERE running_id = ?1",
+            params![running_id],
         )?;
         tx.commit()?;
-        Ok(())
+        Ok(true)
     }
 }

@@ -27,6 +27,7 @@ pub struct ActiveRun {
     pub pid: u32,
     pub process_started_at: u64,
     pub started_at: i64,
+    pub checkpointed_at: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

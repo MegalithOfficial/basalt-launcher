@@ -20,6 +20,7 @@ use crate::{
 const MAX_LOG_LINES: usize = 6000;
 const LOG_EVENT_BATCH_LINES: usize = 256;
 const RECOVERY_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+const PLAYTIME_CHECKPOINT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 const LOG_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
 const RUN_MARKER_PREFIX: &str = "-Dbasalt.running_id=";
 
@@ -226,6 +227,29 @@ fn spawn_log_tailer(
     });
 }
 
+fn spawn_playtime_checkpointer(db: Db, running_id: String, status: Arc<Mutex<RunStatus>>) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(PLAYTIME_CHECKPOINT_INTERVAL).await;
+            if status.lock().unwrap().state != "running" {
+                break;
+            }
+            let checkpointed_at = chrono::Utc::now().timestamp();
+            match db.checkpoint_active_run(&running_id, checkpointed_at) {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(error) => {
+                    tracing::warn!(
+                        running_id,
+                        error = %error,
+                        "could not checkpoint active game playtime"
+                    );
+                }
+            }
+        }
+    });
+}
+
 pub struct ProcessLaunch<'a> {
     pub instance_id: &'a str,
     pub running_id: &'a str,
@@ -279,6 +303,7 @@ pub fn spawn_process(
         pid,
         process_started_at,
         started_at,
+        checkpointed_at: started_at,
     }) {
         let _ = child.start_kill();
         return Err(error);
@@ -305,6 +330,7 @@ pub fn spawn_process(
         status.clone(),
         logs.clone(),
     );
+    spawn_playtime_checkpointer(db.clone(), running_id.to_string(), status.clone());
     spawn_log_tailer(
         app.clone(),
         files,
@@ -342,9 +368,6 @@ pub fn spawn_process(
         }
         let ended_at = chrono::Utc::now().timestamp();
         let played_secs = ended_at - started_at;
-        if let Err(error) = db.remove_active_run(&sup_running_id) {
-            tracing::warn!(error = %error, "could not remove the active run record");
-        }
         if state == "crashed" {
             let tail = {
                 let buffer = sup_logs.lock().unwrap();
@@ -376,7 +399,18 @@ pub fn spawn_process(
             );
         }
         presence.clear();
-        let _ = db.record_playtime(&sup_instance_id, started_at, ended_at, state == "crashed");
+        match db.finalize_active_run(&sup_running_id, ended_at, state == "crashed") {
+            Ok(true) => {}
+            Ok(false) => tracing::warn!(
+                running_id = %sup_running_id,
+                "active run disappeared before playtime could be finalized"
+            ),
+            Err(error) => tracing::warn!(
+                running_id = %sup_running_id,
+                error = %error,
+                "could not finalize game playtime"
+            ),
+        }
         if let Some(command) = post_exit {
             if let Err(error) =
                 super::tools::run_hook("post-exit", &command, &sup_cwd, &sup_env).await
@@ -446,13 +480,8 @@ fn monitor_recovered_process(
             let ended_at = chrono::Utc::now().timestamp();
             let played_secs = ended_at.saturating_sub(run.started_at);
             presence.clear();
-            if let Err(error) =
-                db.record_playtime(&run.instance_id, run.started_at, ended_at, false)
-            {
-                tracing::warn!(error = %error, "could not record recovered game playtime");
-            }
-            if let Err(error) = db.remove_active_run(&run.running_id) {
-                tracing::warn!(error = %error, "could not remove recovered active run");
+            if let Err(error) = db.finalize_active_run(&run.running_id, ended_at, false) {
+                tracing::warn!(error = %error, "could not finalize recovered game playtime");
             }
             let _ = app.emit(
                 "process:state",
@@ -489,14 +518,18 @@ pub fn recover_processes(
     let instances = db.list_instances(files).unwrap_or_default();
     for run in db.active_runs()? {
         if !process_matches(run.pid, run.process_started_at, &run.running_id) {
+            let ended_at = run.checkpointed_at.max(run.started_at);
+            let played_secs = ended_at.saturating_sub(run.started_at);
             tracing::info!(
                 running_id = %run.running_id,
                 pid = run.pid,
-                "removing stale active run"
+                played_secs,
+                "finalizing interrupted game playtime from its last checkpoint"
             );
-            db.remove_active_run(&run.running_id)?;
+            db.finalize_active_run(&run.running_id, ended_at, false)?;
             continue;
         }
+        db.checkpoint_active_run(&run.running_id, chrono::Utc::now().timestamp())?;
 
         let status = Arc::new(Mutex::new(RunStatus {
             state: "running".to_string(),
@@ -532,6 +565,7 @@ pub fn recover_processes(
             status.clone(),
             logs,
         );
+        spawn_playtime_checkpointer(db.clone(), run.running_id.clone(), status.clone());
         if let Some(settings) = settings.as_ref() {
             let instance = instances
                 .iter()
