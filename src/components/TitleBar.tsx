@@ -52,7 +52,7 @@ export function TitleBar({ immersive = false }: { immersive?: boolean }) {
       data-tauri-drag-region
       className={cn(
         "absolute inset-x-0 top-0 z-50 flex h-9 items-center justify-between",
-        !immersive && "border-b border-border-soft bg-base/80 backdrop-blur",
+        !immersive && "border-b border-border-soft bg-void/80 backdrop-blur",
       )}
     >
       {immersive && (

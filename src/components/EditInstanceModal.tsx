@@ -160,7 +160,7 @@ function loaderWarning(
 }
 
 const inputCls =
-  "rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors focus:border-(--accent)";
+  "rounded-lg border border-border bg-void px-3 py-2 text-sm text-content outline-none transition-colors focus:border-(--accent)";
 
 const chipCls =
   "inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content";
@@ -509,7 +509,7 @@ export function EditInstanceModal({
                   onChange={(e) => set({ notes: e.target.value })}
                   rows={6}
                   placeholder="Nothing noted yet"
-                  className="selectable w-full resize-y rounded-lg border border-border bg-base px-3 py-2 text-sm leading-relaxed text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+                  className="selectable w-full resize-y rounded-lg border border-border bg-void px-3 py-2 text-sm leading-relaxed text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
                 />
               </div>
             </SettingGroup>

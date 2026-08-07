@@ -68,7 +68,7 @@ export function Select({
         type="button"
         onClick={toggle}
         className={cn(
-          "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-base text-content outline-none transition-colors focus:border-(--accent)",
+          "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-void text-content outline-none transition-colors focus:border-(--accent)",
           compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
         )}
       >

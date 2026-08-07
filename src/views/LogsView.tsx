@@ -265,7 +265,7 @@ export function LogsView() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter lines"
-            className="w-full rounded-lg border border-border bg-base py-1.5 pl-8 pr-2.5 text-xs text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+            className="w-full rounded-lg border border-border bg-void py-1.5 pl-8 pr-2.5 text-xs text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
           />
         </div>
 
@@ -457,7 +457,7 @@ export function LogsView() {
               autoscroll={autoscroll}
             />
           ) : (
-            <div className="grid flex-1 place-items-center bg-base text-sm text-content-muted">
+            <div className="grid flex-1 place-items-center bg-void text-sm text-content-muted">
               That run is gone.
             </div>
           ))}

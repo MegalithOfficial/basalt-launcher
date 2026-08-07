@@ -493,7 +493,7 @@ export function DiscoverView() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Search ${KINDS.find((k) => k.id === kind)?.label.toLowerCase()}`}
             autoFocus
-            className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
+            className="w-full rounded-lg border border-border bg-void py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
           />
         </div>
 
@@ -775,7 +775,7 @@ export function DiscoverView() {
                   value={worldFilter}
                   onChange={(event) => setWorldFilter(event.target.value)}
                   placeholder="Filter worlds"
-                  className="h-9 w-full rounded-lg border border-border bg-base pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+                  className="h-9 w-full rounded-lg border border-border bg-void pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
                 />
               </div>
             </div>

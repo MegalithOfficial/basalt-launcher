@@ -68,7 +68,7 @@ export function ConfirmDialog({
   if (presentation === "inline") {
     if (!open) return null;
     return (
-      <div className="absolute inset-0 z-10 flex items-center gap-3 rounded-2xl border border-danger/40 bg-base/95 px-3.5 backdrop-blur">
+      <div className="absolute inset-0 z-10 flex items-center gap-3 rounded-2xl border border-danger/40 bg-void/95 px-3.5 backdrop-blur">
         <TriangleAlert className="size-4 shrink-0 text-danger" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-semibold text-content">{title}</div>
@@ -132,7 +132,7 @@ export function ConfirmDialog({
             onChange={(e) => setTyped(e.target.value)}
             autoFocus
             spellCheck={false}
-            className="mt-1.5 w-full rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors focus:border-danger"
+            className="mt-1.5 w-full rounded-lg border border-border bg-void px-3 py-2 text-sm text-content outline-none transition-colors focus:border-danger"
           />
         </div>
       )}

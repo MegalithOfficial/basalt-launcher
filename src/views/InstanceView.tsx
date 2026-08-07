@@ -876,7 +876,7 @@ export function InstanceView() {
         ) : (
           <div className="absolute inset-0 bg-surface-2" />
         )}
-        <div className="absolute inset-0 bg-linear-to-t from-base via-base/40 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-void via-void/40 to-transparent" />
         <div className="absolute inset-0 bg-linear-to-r from-black/60 via-transparent to-transparent" />
 
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 px-6 pb-4">
@@ -1069,7 +1069,7 @@ export function InstanceView() {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={`Filter ${tabMeta.label.toLowerCase()}`}
-                className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
+                className="w-full rounded-lg border border-border bg-void py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
               />
             </div>
 

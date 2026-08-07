@@ -72,7 +72,7 @@ function SnapshotRow({
               value={editingName}
               onChange={(event) => onEditingName(event.target.value)}
               maxLength={80}
-              className="h-7 min-w-0 flex-1 rounded-md border border-(--accent)/40 bg-base px-2 text-sm font-medium text-content outline-none"
+              className="h-7 min-w-0 flex-1 rounded-md border border-(--accent)/40 bg-void px-2 text-sm font-medium text-content outline-none"
             />
             <button
               type="submit"
@@ -301,7 +301,7 @@ export function SnapshotsModal({
               disabled={unavailable}
               maxLength={80}
               placeholder="Name this restore point (optional)"
-              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-base px-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent) disabled:opacity-40"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-void px-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent) disabled:opacity-40"
             />
             <button
               onClick={() => void create()}

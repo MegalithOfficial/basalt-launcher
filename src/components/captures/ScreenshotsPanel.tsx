@@ -306,10 +306,10 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
                           alt={shot.name}
                           decoding="async"
                           draggable={false}
-                          className="aspect-video w-full bg-base object-cover"
+                          className="aspect-video w-full bg-void object-cover"
                         />
                       ) : (
-                        <span className="block aspect-video w-full bg-base" />
+                        <span className="block aspect-video w-full bg-void" />
                       )}
                     </button>
 
@@ -320,7 +320,7 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
                         "absolute left-2 top-2 grid size-6 place-items-center rounded-md border transition-opacity",
                         selected
                           ? "border-(--accent) bg-(--accent) text-black"
-                          : "border-border bg-base/80 text-transparent opacity-0 group-hover:opacity-100",
+                          : "border-border bg-void/80 text-transparent opacity-0 group-hover:opacity-100",
                       )}
                     >
                       <Check className="size-3.5" />
@@ -330,14 +330,14 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
                       <button
                         onClick={() => void copy(shot)}
                         title="Copy the image"
-                        className="grid size-6 place-items-center rounded-md border border-border bg-base/80 text-content-muted transition-colors hover:text-content"
+                        className="grid size-6 place-items-center rounded-md border border-border bg-void/80 text-content-muted transition-colors hover:text-content"
                       >
                         <Copy className="size-3.5" />
                       </button>
                       <button
                         onClick={() => void openPath(shot.path)}
                         title="Open outside Basalt"
-                        className="grid size-6 place-items-center rounded-md border border-border bg-base/80 text-content-muted transition-colors hover:text-content"
+                        className="grid size-6 place-items-center rounded-md border border-border bg-void/80 text-content-muted transition-colors hover:text-content"
                       >
                         <ExternalLink className="size-3.5" />
                       </button>

@@ -78,7 +78,7 @@ function App() {
     <ContentInstallerProvider>
     <div
       className={cn(
-        "flex h-full w-full overflow-hidden bg-base text-content",
+        "flex h-full w-full overflow-hidden bg-void text-content",
         !maximized && "rounded-xl border border-border-soft",
       )}
     >

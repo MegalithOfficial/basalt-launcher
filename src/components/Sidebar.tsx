@@ -158,7 +158,7 @@ function RecentTile({
           )}
         />
         {pinned && (
-          <span className="pointer-events-none absolute -right-1 -top-1 grid size-3.75 place-items-center rounded-full bg-surface-3 text-content-muted ring-2 ring-base">
+          <span className="pointer-events-none absolute -right-1 -top-1 grid size-3.75 place-items-center rounded-full bg-surface-3 text-content-muted ring-2 ring-void">
             <Pin className="size-2.5" />
           </span>
         )}
@@ -422,7 +422,7 @@ export function Sidebar() {
           <span className="relative">
             <SquareChartGantt className="size-5.25" />
             {anyRunning && view !== "logs" && (
-              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-base" />
+              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-void" />
             )}
           </span>
         </RailButton>

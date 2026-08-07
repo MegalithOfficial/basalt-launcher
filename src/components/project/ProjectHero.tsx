@@ -63,7 +63,7 @@ export function ProjectHero({
             className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
             draggable={false}
           />
-          <div className="absolute inset-0 bg-linear-to-t from-base via-base/85 to-base/60" />
+          <div className="absolute inset-0 bg-linear-to-t from-void via-void/85 to-void/60" />
         </>
       ) : (
         <div

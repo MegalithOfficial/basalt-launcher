@@ -245,7 +245,7 @@ export function Onboarding() {
   const last = at >= steps.length - 1;
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-base">
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-void">
       <div
         aria-hidden
         className="pointer-events-none absolute -top-52 left-1/2 size-136 -translate-x-1/2 rounded-full opacity-[0.12] blur-3xl"

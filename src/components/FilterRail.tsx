@@ -152,7 +152,7 @@ export function FilterRail({
 
   return (
     <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-border-soft px-4 pb-6">
-      <div className="sticky top-0 z-10 flex items-center justify-between bg-base py-3">
+      <div className="sticky top-0 z-10 flex items-center justify-between bg-void py-3">
         <span className="text-xs font-semibold text-content">Filters</span>
         {active > 0 && (
           <button
@@ -188,7 +188,7 @@ export function FilterRail({
               value={versionQuery}
               onChange={(e) => setVersionQuery(e.target.value)}
               placeholder="Filter"
-              className="w-full rounded-md border border-border bg-base py-1 pl-6 pr-2 text-[11px] text-content outline-none focus:border-(--accent)"
+              className="w-full rounded-md border border-border bg-void py-1 pl-6 pr-2 text-[11px] text-content outline-none focus:border-(--accent)"
             />
           </div>
           {versions.map((version) => (

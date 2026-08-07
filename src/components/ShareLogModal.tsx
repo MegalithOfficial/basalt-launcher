@@ -107,7 +107,7 @@ export function ShareLogModal({
             Reading the log
           </div>
         ) : (
-          <pre className="selectable h-full overflow-auto whitespace-pre-wrap break-words bg-base px-4 py-3 font-mono text-[11px] leading-relaxed text-content-muted">
+          <pre className="selectable h-full overflow-auto whitespace-pre-wrap break-words bg-void px-4 py-3 font-mono text-[11px] leading-relaxed text-content-muted">
             {text || "This log is empty."}
           </pre>
         )}

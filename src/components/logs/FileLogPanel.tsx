@@ -57,7 +57,7 @@ export function FileLogPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="selectable min-h-0 flex-1 overflow-auto bg-base px-4 py-2.5 font-mono text-xs leading-relaxed">
+      <div className="selectable min-h-0 flex-1 overflow-auto bg-void px-4 py-2.5 font-mono text-xs leading-relaxed">
         {error && <div className="py-10 text-center text-danger">{error}</div>}
         {!error && !result && loading && (
           <div className="py-10 text-center text-content-faint">Reading</div>

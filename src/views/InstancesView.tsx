@@ -517,7 +517,7 @@ export function InstancesView() {
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-6">
           {(groups.length > 0 || creatingGroup) && (
-            <div className="sticky top-0 z-10 -mx-8 flex flex-wrap items-center gap-1.5 bg-base/95 px-8 py-3 backdrop-blur">
+            <div className="sticky top-0 z-10 -mx-8 flex flex-wrap items-center gap-1.5 bg-void/95 px-8 py-3 backdrop-blur">
               {[
                 { id: "all", name: "All", group: undefined as InstanceGroup | undefined },
                 ...groups.map((group) => ({ id: group.id, name: group.name, group })),

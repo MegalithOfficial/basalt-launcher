@@ -139,7 +139,7 @@ function SkinTile({
               setEditing(false);
             }
           }}
-          className="w-full min-w-0 rounded border border-(--accent) bg-base px-1 py-0.5 text-center text-xs text-content outline-none"
+          className="w-full min-w-0 rounded border border-(--accent) bg-void px-1 py-0.5 text-center text-xs text-content outline-none"
         />
       ) : (
         <button
@@ -444,7 +444,7 @@ export function AppearancePanel({ accountName }: { accountName: string }) {
                   onChange={(e) => setPlayer(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && void importPlayer()}
                   placeholder="Player name, UUID, texture link, NameMC link or a /give command"
-                  className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+                  className="w-full rounded-lg border border-border bg-void py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
                 />
               </div>
               <button
@@ -513,7 +513,7 @@ Your current skin is saved here automatically. Upload a PNG or pull one in by
                       : "border-border-soft bg-surface-2/60 hover:border-border",
                   )}
                 >
-                  <span className="grid h-14 w-[2.2rem] place-items-center rounded bg-base/50 text-content-faint">
+                  <span className="grid h-14 w-[2.2rem] place-items-center rounded bg-void/50 text-content-faint">
                     <UserRoundX className="size-4" />
                   </span>
                   <span className="text-[10px] text-content-muted">None</span>

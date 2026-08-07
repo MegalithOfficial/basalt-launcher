@@ -92,7 +92,7 @@ function CandidateRow({
         "flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors",
         selected
           ? "border-(--accent)/60 bg-(--accent-glow)"
-          : "border-border-soft bg-base/60 hover:border-border",
+          : "border-border-soft bg-void/60 hover:border-border",
         disabled && "cursor-not-allowed opacity-55",
       )}
     >
@@ -520,7 +520,7 @@ export function WorldsPanel({
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Filter worlds"
-              className="w-full rounded-lg border border-border bg-base py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
+              className="w-full rounded-lg border border-border bg-void py-2 pl-9 pr-3 text-sm text-content outline-none transition-colors focus:border-(--accent)"
             />
           </div>
         )}

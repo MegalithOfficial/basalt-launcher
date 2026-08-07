@@ -143,7 +143,7 @@ const AUTO_DETECT = "Auto-detect";
 const CUSTOM_PATH = "Custom path";
 
 const inputCls =
-  "rounded-lg border border-border bg-base px-3 py-2 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)";
+  "rounded-lg border border-border bg-void px-3 py-2 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)";
 
 const numberCls =
   "w-24 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";

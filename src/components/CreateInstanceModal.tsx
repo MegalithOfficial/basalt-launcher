@@ -177,7 +177,7 @@ export function CreateInstanceModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Instance name (optional)"
-                className="w-full rounded-lg border border-border bg-base px-3 py-2.5 text-sm text-content outline-none focus:border-lava"
+                className="w-full rounded-lg border border-border bg-void px-3 py-2.5 text-sm text-content outline-none focus:border-lava"
               />
 
               <div className="flex items-center gap-2">
@@ -187,7 +187,7 @@ export function CreateInstanceModal({
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search versions"
-                    className="w-full rounded-lg border border-border bg-base py-2.5 pl-9 pr-3 text-sm text-content outline-none focus:border-lava"
+                    className="w-full rounded-lg border border-border bg-void py-2.5 pl-9 pr-3 text-sm text-content outline-none focus:border-lava"
                   />
                 </div>
                 <button

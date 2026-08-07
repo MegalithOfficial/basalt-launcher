@@ -158,7 +158,7 @@ export function LinkModpackModal({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search modpacks"
-              className="h-9 w-full rounded-lg border border-border bg-base pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
+              className="h-9 w-full rounded-lg border border-border bg-void pl-9 pr-3 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)"
             />
           </div>
         </div>

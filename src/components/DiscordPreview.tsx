@@ -32,7 +32,7 @@ export function DiscordPreview({
   return (
     <div
       className={cn(
-        "w-full max-w-xs shrink-0 rounded-xl border border-border-soft bg-base p-3.5 transition-opacity",
+        "w-full max-w-xs shrink-0 rounded-xl border border-border-soft bg-void p-3.5 transition-opacity",
         !enabled && "opacity-40",
       )}
     >
