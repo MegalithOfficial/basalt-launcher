@@ -16,7 +16,7 @@ publish = false
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "basalt_launcher_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -31,7 +31,8 @@ tauri-plugin-updater = "2"
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "fs", "io-util", "sync", "time"] }
 tokio-util = { version = "0.7.19", features = ["rt"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart", "socks"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "form", "query", "stream", "multipart", "socks"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 futures = "0.3"
 cap-std = "4.0.2"
 bytes = "1"
@@ -46,7 +47,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v3", "v4", "serde"] }
 
-zip = "2"
+zip = { version = "2", default-features = false, features = ["flate2", "deflate-flate2"] }
 flate2 = "1"
 zstd = "0.13"
 tar = "0.4"
@@ -61,6 +62,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 keyring = "4.1.6"
 
-sysinfo = { version = "0.39", default-features = false, features = ["system", "disk"] }
+sysinfo = { version = "0.33.1", default-features = false, features = ["system", "disk"] }
 tauri-plugin-clipboard-manager = "2.3.2"
 clap = { version = "4.6.6", features = ["derive"] }
+
+[profile.release]
+strip = "symbols"

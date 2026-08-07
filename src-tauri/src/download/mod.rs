@@ -649,7 +649,7 @@ mod tests {
     use super::{sha1_hex, *};
 
     fn network() -> NetworkManager {
-        NetworkManager::with_client(reqwest::Client::new())
+        NetworkManager::new()
     }
 
     fn files(root: &std::path::Path) -> FileManager {

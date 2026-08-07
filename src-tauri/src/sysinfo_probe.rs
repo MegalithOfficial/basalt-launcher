@@ -74,7 +74,9 @@ pub fn collect(paths: &Paths) -> SystemStats {
         os,
         kernel: System::kernel_version(),
         cpu,
-        cores: System::physical_core_count().unwrap_or_else(|| system.cpus().len()),
+        cores: system
+            .physical_core_count()
+            .unwrap_or_else(|| system.cpus().len()),
         total_memory_mb: system.total_memory() / MB,
         available_memory_mb: system.available_memory() / MB,
         data_dir_free_mb,

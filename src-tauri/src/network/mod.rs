@@ -32,6 +32,7 @@ pub struct NetworkManager {
 }
 
 pub fn build_client(settings: &crate::config::LauncherSettings) -> Result<reqwest::Client> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let mut builder =
         reqwest::Client::builder()
             .user_agent(USER_AGENT)
@@ -437,9 +438,13 @@ mod tests {
     use reqwest::Method;
 
     use super::{
-        backoff, method_is_retryable, parse_retry_after, NetworkManager, RateLimiter, MAX_BACKOFF,
-        MAX_CONCURRENT_REQUESTS, MAX_RETRY_AFTER, REQUESTS_PER_MINUTE,
+        backoff, build_client, method_is_retryable, parse_retry_after, NetworkManager, RateLimiter,
+        MAX_BACKOFF, MAX_CONCURRENT_REQUESTS, MAX_RETRY_AFTER, REQUESTS_PER_MINUTE,
     };
+
+    fn client() -> reqwest::Client {
+        build_client(&crate::config::LauncherSettings::default()).unwrap()
+    }
 
     #[test]
     fn window_allows_up_to_limit_then_asks_for_a_wait() {
@@ -503,7 +508,7 @@ mod tests {
             }
         });
 
-        let network = NetworkManager::with_client(reqwest::Client::new());
+        let network = NetworkManager::with_client(client());
         let body = network
             .send(network.get(format!("http://{address}/body")))
             .await
@@ -531,7 +536,7 @@ mod tests {
                 .unwrap();
         });
 
-        let network = NetworkManager::with_client(reqwest::Client::new());
+        let network = NetworkManager::with_client(client());
         let body = reqwest::Body::wrap_stream(futures::stream::once(async {
             Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"payload"))
         }));
@@ -578,7 +583,7 @@ mod tests {
                 .unwrap();
         });
 
-        let network = NetworkManager::with_client(reqwest::Client::new());
+        let network = NetworkManager::with_client(client());
         let mut api_leases = Vec::new();
         for _ in 0..MAX_CONCURRENT_REQUESTS {
             api_leases.push(network.limiter.acquire().await);
