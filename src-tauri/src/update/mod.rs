@@ -50,6 +50,7 @@ fn linux_install_source(
     snap: bool,
     nix_store: bool,
     aur_marker: bool,
+    eopkg_marker: bool,
 ) -> InstallSource {
     if appimage {
         return source(
@@ -81,6 +82,14 @@ fn linux_install_source(
             "AUR package",
             UpdatePolicy::PackageManaged,
             "Update using your AUR helper.",
+        );
+    }
+    if distribution == "eopkg" || eopkg_marker {
+        return source(
+            "eopkg",
+            "Solus package",
+            UpdatePolicy::PackageManaged,
+            "Updates are installed by eopkg.",
         );
     }
     if distribution == "nix" || nix_store {
@@ -129,6 +138,7 @@ pub fn install_source() -> InstallSource {
             std::env::var_os("SNAP").is_some(),
             nix_store,
             std::path::Path::new("/usr/share/basalt-launcher/aur-package").is_file(),
+            std::path::Path::new("/usr/share/basalt-launcher/eopkg-package").is_file(),
         )
     }
 
@@ -786,23 +796,26 @@ mod tests {
 
     #[test]
     fn linux_appimage_is_self_managed() {
-        let source = linux_install_source("linux_bundle", true, false, false, false, false);
+        let source = linux_install_source("linux_bundle", true, false, false, false, false, false);
         assert_eq!(source.id, "appimage");
         assert_eq!(source.policy, UpdatePolicy::SelfManaged);
     }
 
     #[test]
     fn linux_packages_take_precedence_over_bundle_fallback() {
-        let aur = linux_install_source("linux_bundle", false, false, false, false, true);
-        let nix = linux_install_source("nix", false, false, false, true, false);
+        let aur = linux_install_source("linux_bundle", false, false, false, false, true, false);
+        let nix = linux_install_source("nix", false, false, false, true, false, false);
+        let eopkg = linux_install_source("linux_bundle", false, false, false, false, false, true);
         assert_eq!(aur.id, "aur");
         assert_eq!(nix.id, "nix");
+        assert_eq!(eopkg.id, "eopkg");
         assert_eq!(aur.policy, UpdatePolicy::PackageManaged);
+        assert_eq!(eopkg.policy, UpdatePolicy::PackageManaged);
     }
 
     #[test]
     fn linux_bundle_without_appimage_is_a_manual_debian_package() {
-        let source = linux_install_source("linux_bundle", false, false, false, false, false);
+        let source = linux_install_source("linux_bundle", false, false, false, false, false, false);
         assert_eq!(source.id, "deb");
         assert_eq!(source.policy, UpdatePolicy::Manual);
     }

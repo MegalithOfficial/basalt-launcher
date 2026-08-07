@@ -1,7 +1,8 @@
 # Distribution packaging
 
 Linux release builds produce AppImage and Debian packages. RPM is intentionally
-disabled in `src-tauri/tauri.linux.conf.json`.
+disabled in `src-tauri/tauri.linux.conf.json`. Releases also contain a neutral
+Linux payload used by distribution recipes.
 
 ## Arch User Repository
 
@@ -39,3 +40,18 @@ nix profile install github:MegalithOfficial/basalt-launcher
 
 The corresponding development profile package is
 `github:MegalithOfficial/basalt-launcher#basalt-launcher-dev`.
+
+## Solus
+
+Each release includes `basalt-launcher-solus.package.yml` and the Linux payload
+referenced by that recipe. On a configured Solus packaging checkout, copy the
+recipe into the package directory as `package.yml` and run:
+
+```sh
+go-task
+```
+
+The resulting `.eopkg` installs the same application files as the other Linux
+packages and leaves updates to eopkg. Development releases use the separate
+`basalt-launcher-dev` package name so they cannot replace a stable installation
+by accident.

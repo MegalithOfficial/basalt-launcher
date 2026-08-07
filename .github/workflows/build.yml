@@ -228,6 +228,25 @@ jobs:
             channel_args=(--latest)
           fi
 
+          mapfile -t debs < <(find release-assets -type f -name '*.deb')
+          if [ "${#debs[@]}" -ne 1 ]; then
+            echo "Expected exactly one Debian package, found ${#debs[@]}."
+            exit 1
+          fi
+          linux_payload="release-assets/Basalt.Launcher_${VERSION}_linux_x86_64.tar.gz"
+          bash .github/scripts/create-linux-payload.sh "${debs[0]}" "$VERSION" "$linux_payload"
+          payload_sha256="$(sha256sum "$linux_payload" | cut -d ' ' -f 1)"
+          if [ "$BUILD_TYPE" = "dev" ]; then
+            solus_channel="dev"
+            solus_build="${RUN_NUMBER}.${RUN_ATTEMPT}"
+          else
+            solus_channel="stable"
+            solus_build=""
+          fi
+          node .github/scripts/update-solus-package.mjs \
+            "$solus_channel" "$VERSION" "$payload_sha256" \
+            release-assets/basalt-launcher-solus.package.yml "$solus_build"
+
           node .github/scripts/release-notes.mjs "$GITHUB_REPOSITORY" "$tag" > release-notes.md
 
           node .github/scripts/create-update-manifest.mjs \
@@ -238,6 +257,7 @@ jobs:
             find release-assets -type f \
               \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' \
               -o -name '*.msi' -o -name '*.exe' -o -name '*.app.tar.gz' \
+              -o -name '*_linux_x86_64.tar.gz' -o -name '*.package.yml' \
               -o -name '*.sig' -o -name 'latest.json' \)
           )
           if [ "${#files[@]}" -eq 0 ]; then
