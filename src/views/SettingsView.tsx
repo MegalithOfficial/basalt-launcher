@@ -440,10 +440,6 @@ export function SettingsView() {
                     </span>
                   )}
                 </div>
-                <p className="mt-3 max-w-md text-[11px] leading-relaxed text-content-faint">
-                  NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED
-                  WITH MOJANG OR MICROSOFT.
-                </p>
               </div>
             </div>
 
@@ -582,6 +578,11 @@ export function SettingsView() {
           </Section>
           </div>
           </div>
+
+          <p className="mt-10 border-t border-border-soft pt-5 text-[11px] leading-relaxed text-content-faint">
+            Not an official Minecraft product. Not approved by or associated with Mojang
+            or Microsoft.
+          </p>
           </div>
         )}
 
