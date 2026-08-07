@@ -400,7 +400,8 @@ export type TaskKind =
   | "snapshot_create"
   | "snapshot_restore"
   | "storage_scan"
-  | "datapack_install";
+  | "datapack_install"
+  | "data_move";
 
 export interface RepairReport {
   checked_content: number;

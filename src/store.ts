@@ -37,6 +37,7 @@ import type {
   SearchPage,
   SearchProvider,
   SortOrder,
+  TaskKind,
   VersionMedia,
   View,
 } from "./lib/types";
@@ -44,6 +45,14 @@ import type {
 const MAX_LOG_RECORDS = 5000;
 const MAX_GAME_LOG_LINES = 6000;
 const PROCESS_LOG_FLUSH_MS = 80;
+
+const UNANNOUNCED = new Set<TaskKind>([
+  "app_update",
+  "instance_repair",
+  "snapshot_create",
+  "snapshot_restore",
+  "storage_scan",
+]);
 
 export interface DiscoverBrowse {
   provider: SearchProvider;
@@ -663,10 +672,7 @@ export const useStore = create<AppStore>((set) => ({
         if (
           justFinished &&
           !quiet &&
-          task.kind !== "app_update" &&
-          task.kind !== "instance_repair" &&
-          task.kind !== "snapshot_create" &&
-          task.kind !== "snapshot_restore" &&
+          !UNANNOUNCED.has(task.kind) &&
           task.state === "succeeded"
         ) {
           notifyTaskFinished(task);
