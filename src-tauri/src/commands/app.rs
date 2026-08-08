@@ -261,11 +261,14 @@ pub fn install_app_update(app: AppHandle, state: State<'_, AppState>) -> Result<
     update::install_ready(app, &state)
 }
 
+const DISCORD_INVITE: &str = "https://discord.gg/6QBS2vgnCC";
+
 #[derive(Serialize)]
 pub struct AboutLinks {
     pub repository: String,
     pub issues: String,
     pub releases: String,
+    pub discord: String,
 }
 
 #[tauri::command]
@@ -274,6 +277,7 @@ pub fn get_about_links() -> AboutLinks {
         repository: update::REPO_URL.to_string(),
         issues: format!("{}/issues/new", update::REPO_URL),
         releases: format!("{}/releases", update::REPO_URL),
+        discord: DISCORD_INVITE.to_string(),
     }
 }
 const MAX_INSPECTED_PATHS: usize = 256;

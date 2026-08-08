@@ -811,6 +811,7 @@ export interface AboutLinks {
   repository: string;
   issues: string;
   releases: string;
+  discord: string;
 }
 
 export type SkinVariant = "classic" | "slim";
