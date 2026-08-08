@@ -9,21 +9,29 @@ function walk(directory) {
   });
 }
 
-function updaterArtifact(platform, files) {
+function updaterArtifacts(platform, files) {
   const signed = (file) => existsSync(`${file}.sig`);
   if (platform.startsWith("linux-")) {
-    return files.find((file) => file.endsWith(".AppImage") && signed(file));
+    const artifact = files.find((file) => file.endsWith(".AppImage") && signed(file));
+    return artifact ? [[platform, artifact]] : [];
   }
   if (platform.startsWith("darwin-")) {
-    return files.find((file) => file.endsWith(".app.tar.gz") && signed(file));
+    const artifact = files.find((file) => file.endsWith(".app.tar.gz") && signed(file));
+    return artifact ? [[platform, artifact]] : [];
   }
   if (platform.startsWith("windows-")) {
-    return (
+    const nsis =
       files.find((file) => file.endsWith("-setup.exe") && signed(file)) ??
-      files.find((file) => file.endsWith(".exe") && signed(file))
-    );
+      files.find((file) => file.endsWith(".exe") && signed(file));
+    const msi = files.find((file) => file.endsWith(".msi") && signed(file));
+    if (!nsis || !msi) return [];
+    return [
+      [`${platform}-nsis`, nsis],
+      [`${platform}-msi`, msi],
+      [platform, nsis],
+    ];
   }
-  return undefined;
+  return [];
 }
 
 export function createManifest(assetsDirectory, repository, tag, version) {
@@ -35,15 +43,19 @@ export function createManifest(assetsDirectory, repository, tag, version) {
   for (const marker of markers) {
     const platform = readFileSync(marker, "utf8").trim();
     const files = walk(dirname(marker));
-    const artifact = updaterArtifact(platform, files);
-    if (!artifact) throw new Error(`No signed updater artifact was found for ${platform}`);
-    if (platforms[platform]) throw new Error(`Duplicate updater platform ${platform}`);
+    const artifacts = updaterArtifacts(platform, files);
+    if (artifacts.length === 0) {
+      throw new Error(`No complete set of signed updater artifacts was found for ${platform}`);
+    }
+    for (const [target, artifact] of artifacts) {
+      if (platforms[target]) throw new Error(`Duplicate updater platform ${target}`);
 
-    const name = basename(artifact);
-    platforms[platform] = {
-      signature: readFileSync(`${artifact}.sig`, "utf8").trim(),
-      url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(name)}`,
-    };
+      const name = basename(artifact);
+      platforms[target] = {
+        signature: readFileSync(`${artifact}.sig`, "utf8").trim(),
+        url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(name)}`,
+      };
+    }
   }
 
   return {
