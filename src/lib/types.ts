@@ -360,9 +360,10 @@ export interface MigrationOutcome {
 }
 
 export type PackFormat = "mrpack" | "curseforge";
+export type PackPreviewFormat = PackFormat | "packwiz";
 
 export interface PackPreview {
-  format: PackFormat;
+  format: PackPreviewFormat;
   name: string;
   version: string | null;
   author: string | null;

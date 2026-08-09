@@ -404,8 +404,11 @@ export const api = {
   migrateInstances: (kind: string, root: string, ids: string[]) =>
     call<MigrationOutcome>("migrate_instances", { kind, root, ids }),
   inspectPackFile: (path: string) => call<PackPreview>("inspect_pack_file", { path }),
+  inspectPackwizUrl: (url: string) => call<PackPreview>("inspect_packwiz_url", { url }),
   importPackFile: (path: string, name: string | null) =>
     call<Instance>("import_pack_file", { path, name }),
+  importPackwizUrl: (url: string, name: string | null) =>
+    call<Instance>("import_packwiz_url", { url, name }),
   exportInstancePack: (instanceId: string, format: PackFormat, path: string) =>
     call<PackExport>("export_instance_pack", { instanceId, format, path }),
   packExportName: (name: string, format: PackFormat) =>

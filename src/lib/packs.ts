@@ -2,6 +2,10 @@ import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plug
 
 import type { PackFormat } from "./types";
 
+export type PackImportSource =
+  | { kind: "file"; value: string }
+  | { kind: "url"; value: string };
+
 export const PACK_FORMATS: Array<{
   id: PackFormat;
   label: string;
@@ -27,7 +31,17 @@ export async function pickPackFile(): Promise<string | null> {
     multiple: false,
     directory: false,
     title: "Choose a modpack file",
-    filters: [{ name: "Modpack", extensions: ["mrpack", "zip"] }],
+    filters: [{ name: "Modpack", extensions: ["mrpack", "zip", "toml"] }],
+  });
+  return typeof chosen === "string" ? chosen : null;
+}
+
+export async function pickPackwizFile(): Promise<string | null> {
+  const chosen = await openFileDialog({
+    multiple: false,
+    directory: false,
+    title: "Choose pack.toml",
+    filters: [{ name: "packwiz pack", extensions: ["toml"] }],
   });
   return typeof chosen === "string" ? chosen : null;
 }

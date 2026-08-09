@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use reqwest::Url;
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
@@ -11,6 +12,25 @@ use crate::{
 
 use super::find_instance;
 
+fn validate_packwiz_url(value: &str) -> Result<()> {
+    let url =
+        Url::parse(value).map_err(|error| Error::other(format!("invalid packwiz URL: {error}")))?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(Error::other("packwiz URLs must use HTTP or HTTPS"));
+    }
+    Ok(())
+}
+
+fn finish_import_in_background(app: &AppHandle, prepared: packs::PreparedImport) -> Instance {
+    let instance = prepared.instance().clone();
+    let handle = app.clone();
+    tokio::spawn(async move {
+        let state = handle.state::<AppState>();
+        packs::finish_import(&handle, &state, prepared).await;
+    });
+    instance
+}
+
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub async fn inspect_pack_file(state: State<'_, AppState>, path: String) -> Result<PackPreview> {
@@ -18,7 +38,21 @@ pub async fn inspect_pack_file(state: State<'_, AppState>, path: String) -> Resu
     if !state.files.is_external_file(&path) {
         return Err(Error::NotFound(path.display().to_string()));
     }
+    if path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("toml"))
+    {
+        return packs::inspect_packwiz(&state, &path.display().to_string()).await;
+    }
     packs::inspect_pack(&state, &path).await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state, url), err)]
+pub async fn inspect_packwiz_url(state: State<'_, AppState>, url: String) -> Result<PackPreview> {
+    validate_packwiz_url(&url)?;
+    packs::inspect_packwiz(&state, &url).await
 }
 
 #[tauri::command]
@@ -34,16 +68,29 @@ pub async fn import_pack_file(
         return Err(Error::NotFound(path.display().to_string()));
     }
 
-    let prepared = packs::prepare_import(&app, &state, &path, name).await?;
-    let instance = prepared.instance().clone();
+    let prepared = if path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("toml"))
+    {
+        packs::prepare_packwiz_import(&app, &state, &path.display().to_string(), name).await?
+    } else {
+        packs::prepare_import(&app, &state, &path, name).await?
+    };
+    Ok(finish_import_in_background(&app, prepared))
+}
 
-    let handle = app.clone();
-    tokio::spawn(async move {
-        let state = handle.state::<AppState>();
-        packs::finish_import(&handle, &state, prepared).await;
-    });
-
-    Ok(instance)
+#[tauri::command]
+#[tracing::instrument(skip(app, state, url), err)]
+pub async fn import_packwiz_url(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    name: Option<String>,
+) -> Result<Instance> {
+    validate_packwiz_url(&url)?;
+    let prepared = packs::prepare_packwiz_import(&app, &state, &url, name).await?;
+    Ok(finish_import_in_background(&app, prepared))
 }
 
 #[tauri::command]

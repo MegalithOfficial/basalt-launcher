@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { useEscape } from "../lib/useEscape";
@@ -20,17 +20,28 @@ export function ModalHeader({
   title,
   subtitle,
   icon,
+  onBack,
   onClose,
   id,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   icon?: React.ReactNode;
+  onBack?: () => void;
   onClose?: () => void;
   id?: string;
 }) {
   return (
     <div className="flex items-start gap-3 border-b border-border-soft px-5 py-4">
+      {onBack && (
+        <button
+          onClick={onBack}
+          aria-label="Back"
+          className="-ml-1.5 grid size-8 shrink-0 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+        >
+          <ArrowLeft className="size-4" />
+        </button>
+      )}
       {icon && <div className="mt-0.5 shrink-0">{icon}</div>}
       <div className="min-w-0 flex-1">
         <h2 id={id} className="font-display text-[1rem] font-semibold text-content">

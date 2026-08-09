@@ -1,10 +1,12 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::Read,
     path::{Component, Path, PathBuf},
 };
 
+use md5::Md5;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256, Sha512};
 use tauri::{AppHandle, Manager};
 
 use crate::{
@@ -48,12 +50,140 @@ pub(crate) struct MrFile {
     pub env: Option<MrEnv>,
     #[serde(skip)]
     pub local_source: Option<PathBuf>,
+    #[serde(skip)]
+    pub preserve: bool,
 }
 
 #[derive(Deserialize, Default)]
 pub(crate) struct MrHashes {
     #[serde(default)]
     pub sha1: Option<String>,
+    #[serde(skip)]
+    pub expected: Option<ExpectedHash>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ExpectedHash {
+    Sha256(String),
+    Sha512(String),
+    Sha1(String),
+    Md5(String),
+    Murmur2(String),
+}
+
+impl ExpectedHash {
+    pub(crate) fn parse(format: &str, value: &str) -> Result<Self> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(Error::other("pack declared an empty hash"));
+        }
+        match format.trim().to_ascii_lowercase().as_str() {
+            "sha256" => Ok(Self::Sha256(value.to_ascii_lowercase())),
+            "sha512" => Ok(Self::Sha512(value.to_ascii_lowercase())),
+            "sha1" => Ok(Self::Sha1(value.to_ascii_lowercase())),
+            "md5" => Ok(Self::Md5(value.to_ascii_lowercase())),
+            "murmur2" => Ok(Self::Murmur2(value.to_string())),
+            other => Err(Error::other(format!("unsupported hash format: {other}"))),
+        }
+    }
+
+    pub(crate) fn sha256(&self) -> Option<String> {
+        match self {
+            Self::Sha256(value) => Some(value.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn sha1(&self) -> Option<String> {
+        match self {
+            Self::Sha1(value) => Some(value.clone()),
+            _ => None,
+        }
+    }
+
+    fn expected(&self) -> &str {
+        match self {
+            Self::Sha256(value)
+            | Self::Sha512(value)
+            | Self::Sha1(value)
+            | Self::Md5(value)
+            | Self::Murmur2(value) => value,
+        }
+    }
+
+    fn actual(&self, bytes: &[u8]) -> String {
+        match self {
+            Self::Sha256(_) => format!("{:x}", Sha256::digest(bytes)),
+            Self::Sha512(_) => format!("{:x}", Sha512::digest(bytes)),
+            Self::Sha1(_) => crate::download::sha1_hex(bytes),
+            Self::Md5(_) => format!("{:x}", Md5::digest(bytes)),
+            Self::Murmur2(_) => crate::search::identify::curseforge_fingerprint(bytes).to_string(),
+        }
+    }
+
+    pub(crate) fn verify(&self, bytes: &[u8], label: &str) -> Result<()> {
+        self.verify_actual(self.actual(bytes), label)
+    }
+
+    fn verify_actual(&self, actual: String, label: &str) -> Result<()> {
+        let matches = match self {
+            Self::Murmur2(_) => actual == self.expected(),
+            _ => actual.eq_ignore_ascii_case(self.expected()),
+        };
+        if matches {
+            return Ok(());
+        }
+        Err(Error::Checksum {
+            path: label.to_string(),
+            expected: self.expected().to_string(),
+            actual,
+        })
+    }
+
+    pub(crate) fn needs_post_install_check(&self, copied_from_disk: bool) -> bool {
+        match self {
+            Self::Sha1(_) => false,
+            Self::Sha256(_) => copied_from_disk,
+            Self::Sha512(_) | Self::Md5(_) | Self::Murmur2(_) => true,
+        }
+    }
+
+    fn verify_file(&self, files: &crate::files::FileManager, path: &Path) -> Result<()> {
+        let mut file = files.open(path)?;
+        let actual = match self {
+            Self::Murmur2(_) => {
+                crate::search::identify::curseforge_fingerprint_reader(&mut file)?.to_string()
+            }
+            Self::Sha256(_) => {
+                let mut hasher = Sha256::new();
+                std::io::copy(&mut file, &mut hasher)?;
+                format!("{:x}", hasher.finalize())
+            }
+            Self::Sha512(_) => {
+                let mut hasher = Sha512::new();
+                std::io::copy(&mut file, &mut hasher)?;
+                format!("{:x}", hasher.finalize())
+            }
+            Self::Sha1(_) => {
+                let mut hasher = sha1_smol::Sha1::new();
+                let mut buffer = [0_u8; 64 * 1024];
+                loop {
+                    let read = file.read(&mut buffer)?;
+                    if read == 0 {
+                        break;
+                    }
+                    hasher.update(&buffer[..read]);
+                }
+                hasher.digest().to_string()
+            }
+            Self::Md5(_) => {
+                let mut hasher = Md5::new();
+                std::io::copy(&mut file, &mut hasher)?;
+                format!("{:x}", hasher.finalize())
+            }
+        };
+        self.verify_actual(actual, &path.display().to_string())
+    }
 }
 
 #[derive(Deserialize)]
@@ -114,7 +244,10 @@ pub(crate) fn loader_from_dependencies(
     Ok(None)
 }
 
-fn sanitize_relative(path: &str) -> Result<PathBuf> {
+pub(crate) fn sanitize_relative(path: &str) -> Result<PathBuf> {
+    if path.contains('\\') {
+        return Err(Error::other(format!("unsafe path in pack: {path}")));
+    }
     let p = Path::new(path);
     if p.is_absolute() {
         return Err(Error::other(format!("unsafe path in pack: {path}")));
@@ -512,11 +645,13 @@ pub(super) async fn prepare_pack(
             path: requirement.instance_path.clone(),
             hashes: MrHashes {
                 sha1: requirement.sha1.clone(),
+                expected: None,
             },
             downloads: Vec::new(),
             file_size: requirement.size,
             env: None,
             local_source: stage_manual_files.then(|| source_path.clone()),
+            preserve: false,
         });
         if stage_manual_files {
             consumed_sources.push(source_path);
@@ -731,7 +866,7 @@ pub async fn install_modpack(
         Some((provider, project_id)),
         &instance,
         &instance_dir,
-        &archive_path,
+        Some(&archive_path),
         &index,
         &task,
     )
@@ -806,6 +941,7 @@ pub(crate) fn unique_instance_name(state: &AppState, base: &str) -> Result<Strin
 pub(crate) struct PackInstallArtifacts {
     pub(crate) launch_id: String,
     pub(crate) linkable: Vec<(String, String)>,
+    pub(crate) preserved: HashSet<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -815,7 +951,7 @@ pub(crate) async fn install_pack_body(
     icon_source: Option<(Provider, &str)>,
     instance: &Instance,
     instance_dir: &Path,
-    archive_path: &Path,
+    archive_path: Option<&Path>,
     index: &MrIndex,
     task: &crate::tasks::TaskHandle,
 ) -> Result<PackInstallArtifacts> {
@@ -831,6 +967,8 @@ pub(crate) async fn install_pack_body(
     let mut specs = Vec::new();
     let mut local_specs = Vec::new();
     let mut linkable: Vec<(String, String)> = Vec::new();
+    let mut integrity_checks = Vec::new();
+    let mut preserved = HashSet::new();
     for file in &index.files {
         if file
             .env
@@ -842,6 +980,15 @@ pub(crate) async fn install_pack_body(
         }
         let relative = sanitize_relative(&file.path)?;
         let destination = instance_dir.join(relative);
+        if file.preserve && state.files.exists(&destination)? {
+            preserved.insert(file.path.clone());
+            continue;
+        }
+        if let Some(hash) = &file.hashes.expected {
+            if hash.needs_post_install_check(file.local_source.is_some()) {
+                integrity_checks.push((destination.clone(), hash.clone()));
+            }
+        }
         if let Some(source) = &file.local_source {
             local_specs.push((
                 source.clone(),
@@ -854,7 +1001,7 @@ pub(crate) async fn install_pack_body(
                 url: url.clone(),
                 dest: destination,
                 sha1: file.hashes.sha1.clone(),
-                sha256: None,
+                sha256: file.hashes.expected.as_ref().and_then(ExpectedHash::sha256),
                 size: file.file_size,
             });
         } else {
@@ -912,8 +1059,24 @@ pub(crate) async fn install_pack_body(
         );
     }
 
-    task.stage("modpack-overrides");
-    {
+    if !integrity_checks.is_empty() {
+        let files = state.files.clone();
+        let token = task.token();
+        tokio::task::spawn_blocking(move || {
+            for (path, hash) in integrity_checks {
+                if token.is_cancelled() {
+                    return Err(Error::Cancelled);
+                }
+                hash.verify_file(&files, &path)?;
+            }
+            Result::<()>::Ok(())
+        })
+        .await
+        .map_err(|error| Error::other(format!("file verification task failed: {error}")))??;
+    }
+
+    if let Some(archive_path) = archive_path {
+        task.stage("modpack-overrides");
         let archive = archive_path.to_path_buf();
         let dest = instance_dir.to_path_buf();
         let files = state.files.clone();
@@ -942,6 +1105,7 @@ pub(crate) async fn install_pack_body(
     Ok(PackInstallArtifacts {
         launch_id,
         linkable,
+        preserved,
     })
 }
 
@@ -951,8 +1115,29 @@ mod tests {
 
     use super::{
         kind_for_path, loader_from_dependencies, matches_download_name, sanitize_relative,
-        unavailable_curseforge_files,
+        unavailable_curseforge_files, MrIndex,
     };
+
+    #[test]
+    fn mrpack_files_do_not_enable_packwiz_install_rules() {
+        let index: MrIndex = serde_json::from_str(
+            r#"{
+                "name": "Modrinth pack",
+                "files": [{
+                    "path": "mods/sodium.jar",
+                    "hashes": { "sha1": "abc123" },
+                    "downloads": ["https://example.com/sodium.jar"]
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        let file = &index.files[0];
+        assert_eq!(file.hashes.sha1.as_deref(), Some("abc123"));
+        assert!(file.hashes.expected.is_none());
+        assert!(!file.preserve);
+        assert!(file.local_source.is_none());
+    }
 
     #[test]
     fn rejects_unsafe_paths() {

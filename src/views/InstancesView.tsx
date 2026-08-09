@@ -39,6 +39,7 @@ import {
   useActiveTasksByInstance,
 } from "../lib/useTasks";
 import { formatPlaytime, relativeTime } from "../lib/time";
+import type { PackImportSource } from "../lib/packs";
 import type { Instance, InstanceGroup, Task, VersionMedia } from "../lib/types";
 import { PlayButton } from "../components/PlayButton";
 import { useStore } from "../store";
@@ -159,7 +160,7 @@ export function InstancesView() {
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [packPath, setPackPath] = useState<string | null>(null);
+  const [packSource, setPackSource] = useState<PackImportSource | null>(null);
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
   const [removing, setRemoving] = useState<Instance | null>(null);
@@ -459,7 +460,7 @@ export function InstancesView() {
           <button
             onClick={choosePack}
             aria-label="Import a pack file"
-            title="Import a .mrpack or CurseForge pack"
+            title="Import an .mrpack, CurseForge pack, or pack.toml"
             className="grid size-8 place-items-center rounded-lg border border-border-soft bg-surface-2/60 text-content-faint transition-colors hover:text-content"
           >
             <FileArchive className="size-4" />
@@ -758,22 +759,26 @@ export function InstancesView() {
         onClose={() => setModalOpen(false)}
         onCreated={() => {}}
         onImportFile={choosePack}
+        onImportPackwiz={setPackSource}
       />
       <UploadModal
         open={picking}
         onClose={() => setPicking(false)}
         title="Import a modpack"
-        subtitle="An .mrpack from Modrinth, or a CurseForge pack zip"
-        extensions={["mrpack", "zip"]}
+        subtitle="An .mrpack, CurseForge zip, or local pack.toml"
+        extensions={["mrpack", "zip", "toml"]}
         filterName="Modpack"
         confirmLabel="Import"
         onConfirm={(paths) => {
           setPicking(false);
-          setPackPath(paths[0]);
+          setPackSource({ kind: "file", value: paths[0] });
         }}
       />
 
-      <ImportPackModal path={packPath} onClose={() => setPackPath(null)} />
+      <ImportPackModal
+        source={packSource}
+        onClose={() => setPackSource(null)}
+      />
       <EditInstanceModal instance={editing} onClose={() => setEditing(null)} />
 
       <ConfirmDialog

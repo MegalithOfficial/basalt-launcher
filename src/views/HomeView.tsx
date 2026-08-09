@@ -23,6 +23,7 @@ import { UploadModal } from "../components/UploadModal";
 import { ImportPackModal } from "../components/ImportPackModal";
 import { InstanceSheet } from "../components/InstanceSheet";
 import { instanceTaskLabel, taskFraction, useInstanceTask } from "../lib/useTasks";
+import type { PackImportSource } from "../lib/packs";
 import { useStore } from "../store";
 
 const gridStyle: React.CSSProperties = {
@@ -99,7 +100,7 @@ export function HomeView() {
   const selectInstance = useStore((s) => s.selectInstance);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [packPath, setPackPath] = useState<string | null>(null);
+  const [packSource, setPackSource] = useState<PackImportSource | null>(null);
   const [picking, setPicking] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [java, setJava] = useState<JavaStatus | null>(null);
@@ -389,23 +390,24 @@ export function HomeView() {
         onClose={() => setModalOpen(false)}
         onCreated={(id) => selectInstance(id)}
         onImportFile={() => setPicking(true)}
+        onImportPackwiz={setPackSource}
       />
       <UploadModal
         open={picking}
         onClose={() => setPicking(false)}
         title="Import a modpack"
-        subtitle="An .mrpack from Modrinth, or a CurseForge pack zip"
-        extensions={["mrpack", "zip"]}
+        subtitle="An .mrpack, CurseForge zip, or local pack.toml"
+        extensions={["mrpack", "zip", "toml"]}
         filterName="Modpack"
         confirmLabel="Import"
         onConfirm={(paths) => {
           setPicking(false);
-          setPackPath(paths[0]);
+          setPackSource({ kind: "file", value: paths[0] });
         }}
       />
       <ImportPackModal
-        path={packPath}
-        onClose={() => setPackPath(null)}
+        source={packSource}
+        onClose={() => setPackSource(null)}
         onImported={(instance) => selectInstance(instance.id)}
       />
     </div>

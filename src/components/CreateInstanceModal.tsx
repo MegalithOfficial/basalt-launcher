@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, ChevronRight, FileArchive, Loader2, Package, Search, Wrench } from "lucide-react";
+import { Check, ChevronRight, FileArchive, Link2, Loader2, Package, Search, Wrench } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { LOADERS } from "../lib/loader";
+import { pickPackwizFile, type PackImportSource } from "../lib/packs";
 import { Modal, ModalHeader } from "./Modal";
 import { Select } from "./Select";
 import type { LoaderKind, VersionEntry } from "../lib/types";
 import { useStore } from "../store";
 
-type Mode = "blank" | null;
+type Mode = "blank" | "packwiz" | null;
 
 function Choice({
   icon: Icon,
@@ -46,15 +47,18 @@ export function CreateInstanceModal({
   onClose,
   onCreated,
   onImportFile,
+  onImportPackwiz,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (id: string) => void;
   onImportFile?: () => void;
+  onImportPackwiz?: (source: PackImportSource) => void;
 }) {
   const createInstance = useStore((s) => s.createInstance);
 
   const [mode, setMode] = useState<Mode>(null);
+  const [packwizUrl, setPackwizUrl] = useState("");
 
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [includeSnapshots, setIncludeSnapshots] = useState(false);
@@ -69,7 +73,10 @@ export function CreateInstanceModal({
   const [loaderLoading, setLoaderLoading] = useState(false);
 
   useEffect(() => {
-    if (open) setMode(null);
+    if (open) {
+      setMode(null);
+      setPackwizUrl("");
+    }
   }, [open]);
 
   useEffect(() => {
@@ -107,6 +114,14 @@ export function CreateInstanceModal({
   );
 
   const createDisabled = !selected || busy || (loader !== null && !loaderVersion);
+  const packwizSource = packwizUrl.trim();
+  const validPackwizUrl = /^https?:\/\//i.test(packwizSource);
+
+  const importPackwizUrl = () => {
+    if (!validPackwizUrl) return;
+    onImportPackwiz?.({ kind: "url", value: packwizSource });
+    onClose();
+  };
 
   const create = async () => {
     if (!selected || (loader && !loaderVersion)) return;
@@ -134,7 +149,14 @@ export function CreateInstanceModal({
       <ModalHeader
         id="new-instance-title"
         title="New instance"
-        subtitle={mode === "blank" ? "Pick a game version and a loader" : "Where should it come from?"}
+        subtitle={
+          mode === "blank"
+            ? "Pick a game version and a loader"
+            : mode === "packwiz"
+              ? "Choose a local pack or enter its hosted URL"
+              : "Where should it come from?"
+        }
+        onBack={mode === null ? undefined : () => setMode(null)}
         onClose={onClose}
       />
 
@@ -153,11 +175,19 @@ export function CreateInstanceModal({
             <Choice
               icon={FileArchive}
               title="Import a pack file"
-              description="Open an .mrpack or a CurseForge zip you already have on disk."
+              description="Open an .mrpack, CurseForge zip, or local pack.toml."
               onClick={() => {
                 onClose();
                 onImportFile();
               }}
+            />
+          )}
+          {onImportPackwiz && (
+            <Choice
+              icon={Link2}
+              title="Install from packwiz"
+              description="Use a hosted pack.toml URL or choose a local packwiz pack."
+              onClick={() => setMode("packwiz")}
             />
           )}
           <Choice
@@ -166,6 +196,62 @@ export function CreateInstanceModal({
             description="Choose a Minecraft version and a mod loader, then add content yourself."
             onClick={() => setMode("blank")}
           />
+        </div>
+      )}
+
+      {mode === "packwiz" && (
+        <div className="flex flex-col gap-4 px-5 py-5">
+          <button
+            onClick={async () => {
+              const source = await pickPackwizFile();
+              if (!source) return;
+              onImportPackwiz?.({ kind: "file", value: source });
+              onClose();
+            }}
+            className="flex items-center gap-3 rounded-xl border border-border-soft bg-surface-2/50 px-4 py-3.5 text-left transition-colors hover:border-border hover:bg-surface-2"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-border-soft bg-surface-3 text-content-muted">
+              <FileArchive className="size-4.5" />
+            </span>
+            <span>
+              <span className="block text-sm font-medium text-content">Choose local pack.toml</span>
+              <span className="mt-0.5 block text-[11px] text-content-muted">
+                Basalt resolves the index and bundled files from the same folder.
+              </span>
+            </span>
+          </button>
+
+          <div className="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wide text-content-faint">
+            <span className="h-px flex-1 bg-border-soft" />
+            or use a URL
+            <span className="h-px flex-1 bg-border-soft" />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-2">
+              <input
+                value={packwizUrl}
+                onChange={(event) => setPackwizUrl(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") importPackwizUrl();
+                }}
+                placeholder="https://example.org/modpack/pack.toml"
+                className="min-w-0 flex-1 rounded-lg border border-border bg-void px-3 py-2.5 text-sm text-content outline-none transition-colors focus:border-(--accent)"
+              />
+              <button
+                onClick={importPackwizUrl}
+                disabled={!validPackwizUrl}
+                className="rounded-lg bg-(--accent) px-4 py-2.5 text-sm font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Continue
+              </button>
+            </div>
+            {packwizSource !== "" && !validPackwizUrl && (
+              <p className="text-[11px] text-warn">
+                Paste the full address, starting with https://
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -290,14 +376,7 @@ export function CreateInstanceModal({
               )}
             </div>
 
-            <div className="flex items-center gap-2 border-t border-border-soft px-5 py-4">
-              <button
-                onClick={() => setMode(null)}
-                className="mr-auto inline-flex items-center gap-1.5 text-xs font-medium text-content-muted transition-colors hover:text-content"
-              >
-                <ArrowLeft className="size-3.5" />
-                Back
-              </button>
+            <div className="flex items-center justify-end gap-2 border-t border-border-soft px-5 py-4">
               <button
                 onClick={onClose}
                 className="rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-content hover:bg-surface-3"

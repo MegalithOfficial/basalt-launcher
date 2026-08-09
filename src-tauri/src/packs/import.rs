@@ -1,4 +1,8 @@
-use std::{collections::HashMap, io::Read, path::Path};
+use std::{
+    collections::HashMap,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -14,11 +18,11 @@ use crate::{
     tasks::{TaskKind, TaskSpec},
 };
 
-use super::PackFormat;
+use super::PackPreviewFormat;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PackPreview {
-    pub format: PackFormat,
+    pub format: PackPreviewFormat,
     pub name: String,
     pub version: Option<String>,
     pub author: Option<String>,
@@ -175,7 +179,7 @@ fn preview(archive: &Archive) -> PackPreview {
             }
 
             PackPreview {
-                format: PackFormat::Mrpack,
+                format: PackPreviewFormat::Mrpack,
                 name: index.name.clone(),
                 version: None,
                 author: None,
@@ -213,7 +217,7 @@ fn preview(archive: &Archive) -> PackPreview {
             );
 
             PackPreview {
-                format: PackFormat::Curseforge,
+                format: PackPreviewFormat::Curseforge,
                 name: manifest.name.clone(),
                 version: manifest.version.clone(),
                 author: manifest.author.clone().filter(|text| !text.is_empty()),
@@ -350,11 +354,15 @@ async fn resolve_curseforge(state: &AppState, manifest: &CfManifest) -> Result<R
         if let Some(url) = file.download_url.clone() {
             files.push(MrFile {
                 path,
-                hashes: MrHashes { sha1 },
+                hashes: MrHashes {
+                    sha1,
+                    expected: None,
+                },
                 downloads: vec![url],
                 file_size: file.file_length,
                 env: None,
                 local_source: None,
+                preserve: false,
             });
         } else if let Some(page) = download_pages.get(&entry.project_id.to_string()) {
             manual_downloads.push(ManualDownload {
@@ -428,11 +436,23 @@ pub(crate) async fn plan_curseforge_archive(
 pub struct PreparedImport {
     instance: Instance,
     instance_dir: std::path::PathBuf,
-    staged: std::path::PathBuf,
+    staged_archive: Option<PathBuf>,
     index: MrIndex,
     links: Vec<(String, String, ContentFile)>,
     skipped: Vec<String>,
     task: crate::tasks::TaskHandle,
+}
+
+enum ImportOrigin {
+    Archive(PathBuf),
+    Packwiz { source: String, revision: String },
+}
+
+struct ResolvedImport {
+    index: MrIndex,
+    links: Vec<(String, String, ContentFile)>,
+    skipped: Vec<String>,
+    origin: ImportOrigin,
 }
 
 impl PreparedImport {
@@ -470,6 +490,56 @@ pub async fn prepare_import(
         }
     };
 
+    prepare_resolved_import(
+        app,
+        state,
+        ResolvedImport {
+            index,
+            links,
+            skipped,
+            origin: ImportOrigin::Archive(path.to_path_buf()),
+        },
+        name_override,
+    )
+    .await
+}
+
+pub async fn prepare_packwiz_import(
+    app: &AppHandle,
+    state: &AppState,
+    source: &str,
+    name_override: Option<String>,
+) -> Result<PreparedImport> {
+    let resolved = super::packwiz::resolve(state, source).await?;
+    prepare_resolved_import(
+        app,
+        state,
+        ResolvedImport {
+            index: resolved.index,
+            links: resolved.links,
+            skipped: Vec::new(),
+            origin: ImportOrigin::Packwiz {
+                source: resolved.source,
+                revision: resolved.revision,
+            },
+        },
+        name_override,
+    )
+    .await
+}
+
+async fn prepare_resolved_import(
+    app: &AppHandle,
+    state: &AppState,
+    resolved: ResolvedImport,
+    name_override: Option<String>,
+) -> Result<PreparedImport> {
+    let ResolvedImport {
+        index,
+        links,
+        skipped,
+        origin,
+    } = resolved;
     let game_version = index
         .dependencies
         .get("minecraft")
@@ -478,11 +548,13 @@ pub async fn prepare_import(
         .ok_or_else(|| Error::other("The pack does not declare a Minecraft version."))?;
     let loader = modpack::loader_from_dependencies(&index.dependencies)?;
 
-    let staged = state
-        .paths
-        .cache()
-        .join("modpacks")
-        .join(format!("import-{}.zip", uuid::Uuid::new_v4()));
+    let staged_archive = matches!(&origin, ImportOrigin::Archive(_)).then(|| {
+        state
+            .paths
+            .cache()
+            .join("modpacks")
+            .join(format!("import-{}.zip", uuid::Uuid::new_v4()))
+    });
 
     let base = name_override
         .map(|name| name.trim().to_string())
@@ -508,9 +580,16 @@ pub async fn prepare_import(
         launch_version_id: None,
         pack_provider: None,
         pack_project_id: None,
-        pack_version_id: None,
-        import_source: None,
-        import_source_id: None,
+        pack_version_id: match &origin {
+            ImportOrigin::Archive(_) => None,
+            ImportOrigin::Packwiz { revision, .. } => Some(revision.clone()),
+        },
+        import_source: matches!(&origin, ImportOrigin::Packwiz { .. })
+            .then(|| "packwiz".to_string()),
+        import_source_id: match &origin {
+            ImportOrigin::Archive(_) => None,
+            ImportOrigin::Packwiz { source, .. } => Some(source.clone()),
+        },
         banner_id: None,
         notes: None,
         wrapper_command: None,
@@ -543,14 +622,18 @@ pub async fn prepare_import(
     )?;
 
     let setup = async {
-        state.files.copy_external_into(path, &staged).await?;
+        if let (ImportOrigin::Archive(source), Some(staged)) = (&origin, staged_archive.as_ref()) {
+            state.files.copy_external_into(source, staged).await?;
+        }
         state.files.ensure_dir(&instance_dir)?;
         state.db.insert_instance(&instance)?;
         Result::<()>::Ok(())
     }
     .await;
     if let Err(error) = setup {
-        let _ = state.files.remove_file_if_exists(&staged);
+        if let Some(staged) = &staged_archive {
+            let _ = state.files.remove_file_if_exists(staged);
+        }
         let _ = state.db.delete_instance(&instance.id);
         let _ = state.files.remove_instance_dir(&instance.id);
         task.fail(&error);
@@ -560,7 +643,7 @@ pub async fn prepare_import(
     Ok(PreparedImport {
         instance,
         instance_dir,
-        staged,
+        staged_archive,
         index,
         links,
         skipped,
@@ -572,7 +655,7 @@ pub async fn finish_import(app: &AppHandle, state: &AppState, prepared: Prepared
     let PreparedImport {
         instance,
         instance_dir,
-        staged,
+        staged_archive,
         index,
         links,
         skipped,
@@ -585,13 +668,15 @@ pub async fn finish_import(app: &AppHandle, state: &AppState, prepared: Prepared
         None,
         &instance,
         &instance_dir,
-        &staged,
+        staged_archive.as_deref(),
         &index,
         &task,
     )
     .await;
 
-    let _ = state.files.remove_file_if_exists(&staged);
+    if let Some(staged) = &staged_archive {
+        let _ = state.files.remove_file_if_exists(staged);
+    }
 
     let artifacts = match outcome {
         Ok(artifacts) => artifacts,
@@ -611,7 +696,10 @@ pub async fn finish_import(app: &AppHandle, state: &AppState, prepared: Prepared
         state
             .db
             .set_launch_version(&instance.id, &artifacts.launch_id)?;
-        for (kind, _, file) in &links {
+        for (kind, path, file) in &links {
+            if artifacts.preserved.contains(path) {
+                continue;
+            }
             state.db.record_content_file(&instance.id, kind, file)?;
         }
         Result::<()>::Ok(())
@@ -633,7 +721,40 @@ pub async fn finish_import(app: &AppHandle, state: &AppState, prepared: Prepared
 
 #[cfg(test)]
 mod tests {
-    use super::{directory_for, split_loader};
+    use crate::{modpack::MrIndex, packs::PackPreviewFormat};
+
+    use super::{directory_for, preview, split_loader, Archive, CfManifest, Parsed};
+
+    #[test]
+    fn archive_previews_keep_their_provider_formats() {
+        let mrpack = Archive {
+            parsed: Parsed::Mrpack(
+                serde_json::from_str::<MrIndex>(
+                    r#"{"name":"Modrinth pack","dependencies":{"minecraft":"1.21.1"}}"#,
+                )
+                .unwrap(),
+            ),
+            override_files: 0,
+            override_bytes: 0,
+        };
+        let curseforge = Archive {
+            parsed: Parsed::Curseforge(
+                serde_json::from_str::<CfManifest>(
+                    r#"{
+                        "name":"CurseForge pack",
+                        "minecraft":{"version":"1.21.1","modLoaders":[]},
+                        "files":[]
+                    }"#,
+                )
+                .unwrap(),
+            ),
+            override_files: 0,
+            override_bytes: 0,
+        };
+
+        assert_eq!(preview(&mrpack).format, PackPreviewFormat::Mrpack);
+        assert_eq!(preview(&curseforge).format, PackPreviewFormat::Curseforge);
+    }
 
     #[test]
     fn parses_curseforge_loader_ids() {

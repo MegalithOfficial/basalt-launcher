@@ -1,8 +1,12 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    io::{Read, Seek, SeekFrom},
+    path::Path,
+};
 
 use serde::Deserialize;
 
-use super::{curseforge, model::Provider, modrinth};
+use super::{curseforge, model::Provider, modrinth, resolve_projects};
 use crate::{content, db::ContentFile, error::Result, state::AppState};
 
 const MURMUR_M: u32 = 0x5bd1_e995;
@@ -51,6 +55,66 @@ pub fn curseforge_fingerprint(bytes: &[u8]) -> u32 {
         .filter(|b| !is_ignored_byte(*b))
         .collect();
     murmur2(&stripped, CURSEFORGE_SEED)
+}
+
+pub(crate) fn curseforge_fingerprint_reader<R: Read + Seek>(
+    reader: &mut R,
+) -> std::io::Result<u32> {
+    let mut filtered_len = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        filtered_len += buffer[..read]
+            .iter()
+            .filter(|byte| !is_ignored_byte(**byte))
+            .count() as u64;
+    }
+
+    reader.seek(SeekFrom::Start(0))?;
+    let mut hash = CURSEFORGE_SEED ^ filtered_len as u32;
+    let mut block = [0_u8; 4];
+    let mut block_len = 0;
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        for byte in buffer[..read]
+            .iter()
+            .copied()
+            .filter(|byte| !is_ignored_byte(*byte))
+        {
+            block[block_len] = byte;
+            block_len += 1;
+            if block_len == block.len() {
+                let mut value = u32::from_le_bytes(block);
+                value = value.wrapping_mul(MURMUR_M);
+                value ^= value >> MURMUR_R;
+                value = value.wrapping_mul(MURMUR_M);
+                hash = hash.wrapping_mul(MURMUR_M);
+                hash ^= value;
+                block_len = 0;
+            }
+        }
+    }
+
+    if block_len >= 3 {
+        hash ^= (block[2] as u32) << 16;
+    }
+    if block_len >= 2 {
+        hash ^= (block[1] as u32) << 8;
+    }
+    if block_len >= 1 {
+        hash ^= block[0] as u32;
+        hash = hash.wrapping_mul(MURMUR_M);
+    }
+    hash ^= hash >> 13;
+    hash = hash.wrapping_mul(MURMUR_M);
+    hash ^= hash >> 15;
+    Ok(hash)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -270,49 +334,54 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         hashed.push((item.file_name.clone(), identity.sha1, identity.murmur2));
     }
 
-    let curseforge_missing_metadata: Vec<(&String, &String)> = known
-        .iter()
-        .filter_map(|(file_name, file)| {
-            (file.provider.as_deref() == Some(Provider::Curseforge.as_str())
-                && (file.title.is_none() || file.icon_url.is_none()))
-            .then(|| {
-                file.project_id
-                    .as_ref()
-                    .map(|project_id| (file_name, project_id))
+    for provider in [Provider::Modrinth, Provider::Curseforge] {
+        if provider == Provider::Curseforge && curseforge::key(state).is_err() {
+            continue;
+        }
+        let missing_metadata: Vec<(&String, &String)> = known
+            .iter()
+            .filter_map(|(file_name, file)| {
+                if file.provider.as_deref() != Some(provider.as_str())
+                    || (file.title.is_some() && file.icon_url.is_some())
+                {
+                    return None;
+                }
+                Some((file_name, file.project_id.as_ref()?))
             })
-            .flatten()
-        })
-        .collect();
+            .collect();
+        if missing_metadata.is_empty() {
+            continue;
+        }
 
-    if !curseforge_missing_metadata.is_empty() && curseforge::key(state).is_ok() {
-        let mut project_ids: Vec<String> = curseforge_missing_metadata
+        let mut project_ids: Vec<String> = missing_metadata
             .iter()
             .map(|(_, project_id)| (*project_id).clone())
             .collect();
         project_ids.sort();
         project_ids.dedup();
 
-        if let Ok(projects) = curseforge::resolve_projects(state, &project_ids).await {
-            let project_info: HashMap<&str, &super::ProjectSummary> = projects
-                .iter()
-                .map(|project| (project.id.as_str(), project))
-                .collect();
+        let Ok(projects) = resolve_projects(state, provider, &project_ids).await else {
+            continue;
+        };
+        let project_info: HashMap<&str, &super::ProjectSummary> = projects
+            .iter()
+            .map(|project| (project.id.as_str(), project))
+            .collect();
 
-            for (file_name, project_id) in curseforge_missing_metadata {
-                let Some(project) = project_info.get(project_id.as_str()) else {
-                    continue;
-                };
-                state.db.merge_provider_identity(
-                    instance_id,
-                    kind,
-                    file_name,
-                    Provider::Curseforge.as_str(),
-                    project_id,
-                    None,
-                    Some(&project.title),
-                    project.icon_url.as_deref(),
-                )?;
-            }
+        for (file_name, project_id) in missing_metadata {
+            let Some(project) = project_info.get(project_id.as_str()) else {
+                continue;
+            };
+            state.db.merge_provider_identity(
+                instance_id,
+                kind,
+                file_name,
+                provider.as_str(),
+                project_id,
+                None,
+                Some(&project.title),
+                project.icon_url.as_deref(),
+            )?;
         }
     }
 
@@ -403,7 +472,9 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{curseforge_fingerprint, is_ignored_byte, murmur2};
+    use std::io::Cursor;
+
+    use super::{curseforge_fingerprint, curseforge_fingerprint_reader, is_ignored_byte, murmur2};
 
     #[test]
     fn murmur_is_deterministic_and_content_sensitive() {
@@ -430,6 +501,23 @@ mod tests {
             curseforge_fingerprint(b"abc"),
             curseforge_fingerprint(b"abd")
         );
+    }
+
+    #[test]
+    fn streaming_fingerprint_matches_the_in_memory_implementation() {
+        let mut cases = (0..=8).map(|length| vec![b'x'; length]).collect::<Vec<_>>();
+        cases.push(b" a\tb\r\nc ".to_vec());
+        let mut across_buffer = vec![b'x'; 64 * 1024 - 1];
+        across_buffer.extend_from_slice(b" \txyz\r\nmore");
+        cases.push(across_buffer);
+
+        for bytes in cases {
+            let mut reader = Cursor::new(&bytes);
+            assert_eq!(
+                curseforge_fingerprint_reader(&mut reader).unwrap(),
+                curseforge_fingerprint(&bytes)
+            );
+        }
     }
 
     #[test]

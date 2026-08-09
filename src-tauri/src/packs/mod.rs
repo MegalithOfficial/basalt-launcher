@@ -1,9 +1,16 @@
 mod export;
 mod import;
+pub(crate) mod packwiz;
 
 pub use export::{export_instance, PackExport};
-pub(crate) use import::plan_curseforge_archive;
-pub use import::{finish_import, inspect_pack, prepare_import, PackPreview};
+pub use import::{
+    finish_import, inspect_pack, prepare_import, prepare_packwiz_import, PackPreview,
+};
+pub(crate) use import::{plan_curseforge_archive, PreparedImport};
+
+pub async fn inspect_packwiz(state: &crate::state::AppState, source: &str) -> Result<PackPreview> {
+    Ok(packwiz::resolve(state, source).await?.preview)
+}
 
 use std::path::Path;
 
@@ -46,6 +53,14 @@ impl PackFormat {
             Self::Curseforge => "zip",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PackPreviewFormat {
+    Mrpack,
+    Curseforge,
+    Packwiz,
 }
 
 pub(super) fn loader_dependency_key(loader: &str) -> Option<&'static str> {
@@ -96,5 +111,7 @@ mod tests {
         assert_eq!(loader_dependency_key("neoforge"), Some("neoforge"));
         assert_eq!(loader_dependency_key("vanilla"), None);
         assert_eq!(PackFormat::parse("mrpack").unwrap().extension(), "mrpack");
+        assert_eq!(PackFormat::parse("curseforge").unwrap().extension(), "zip");
+        assert!(PackFormat::parse("packwiz").is_err());
     }
 }

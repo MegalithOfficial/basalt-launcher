@@ -809,7 +809,7 @@ pub async fn upgrade_modpack(
             None,
             &upgraded,
             &staging,
-            &prepared.archive_path,
+            Some(&prepared.archive_path),
             &prepared.index,
             &task,
         )

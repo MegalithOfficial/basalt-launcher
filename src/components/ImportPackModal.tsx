@@ -1,17 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { motion } from "motion/react";
-import {
-  Check,
-  FileArchive,
-  Loader2,
-  Package,
-  TriangleAlert,
-} from "lucide-react";
+import { FileArchive, Loader2, Package, TriangleAlert } from "lucide-react";
 
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { LOADERS } from "../lib/loader";
 import { formatBytes } from "../lib/format";
+import { notifyPackImported } from "../lib/notify";
+import type { PackImportSource } from "../lib/packs";
 import type { Instance, PackPreview } from "../lib/types";
 import { useStore } from "../store";
 import { Modal, ModalFooter, ModalHeader } from "./Modal";
@@ -32,11 +27,11 @@ function Detail({ label, value }: { label: string; value: string }) {
 }
 
 export function ImportPackModal({
-  path,
+  source,
   onClose,
   onImported,
 }: {
-  path: string | null;
+  source: PackImportSource | null;
   onClose: () => void;
   onImported?: (instance: Instance) => void;
 }) {
@@ -47,16 +42,16 @@ export function ImportPackModal({
   const [name, setName] = useState("");
   const [reading, setReading] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [imported, setImported] = useState<Instance | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const read = useCallback(async (target: string) => {
+  const read = useCallback(async (target: PackImportSource) => {
     setReading(true);
     setError(null);
     setPreview(null);
-    setImported(null);
     try {
-      const result = await api.inspectPackFile(target);
+      const result = target.kind === "url"
+        ? await api.inspectPackwizUrl(target.value)
+        : await api.inspectPackFile(target.value);
       setPreview(result);
       setName(result.name);
     } catch (cause) {
@@ -67,18 +62,21 @@ export function ImportPackModal({
   }, []);
 
   useEffect(() => {
-    if (path) void read(path);
-  }, [path, read]);
+    if (source) void read(source);
+  }, [source, read]);
 
   const submit = async () => {
-    if (!path || !preview) return;
+    if (!source || !preview) return;
     setImporting(true);
     setError(null);
     try {
-      const instance = await api.importPackFile(path, name.trim() || null);
+      const instance = source.kind === "url"
+        ? await api.importPackwizUrl(source.value, name.trim() || null)
+        : await api.importPackFile(source.value, name.trim() || null);
       await refreshInstances();
-      setImported(instance);
       onImported?.(instance);
+      onClose();
+      notifyPackImported(instance, () => openInstance(instance.id));
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -92,7 +90,7 @@ export function ImportPackModal({
 
   return (
     <Modal
-      open={!!path}
+      open={!!source}
       onClose={onClose}
       size="wide"
       className="h-[min(560px,calc(100vh-48px))]"
@@ -101,8 +99,8 @@ export function ImportPackModal({
     >
       <ModalHeader
         id="import-pack-title"
-        title="Import a modpack file"
-        subtitle={path ? baseName(path) : undefined}
+        title="Import a modpack"
+        subtitle={source ? (source.kind === "url" ? source.value : baseName(source.value)) : undefined}
         icon={
           <div className="grid size-9 place-items-center rounded-xl border border-border-soft bg-surface-2 text-(--accent)">
             <FileArchive className="size-4" />
@@ -119,7 +117,7 @@ export function ImportPackModal({
           </div>
         )}
 
-        {!reading && preview && !imported && (
+        {!reading && preview && (
           <div className="flex min-h-0 flex-1 flex-col gap-4">
             <div className="rounded-xl border border-border-soft bg-surface-2/60 p-4">
               <div className="flex items-start gap-3">
@@ -132,7 +130,11 @@ export function ImportPackModal({
                       {preview.name || "Untitled pack"}
                     </span>
                     <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
-                      {preview.format === "mrpack" ? "Modrinth" : "CurseForge"}
+                      {preview.format === "mrpack"
+                        ? "Modrinth"
+                        : preview.format === "packwiz"
+                          ? "packwiz"
+                          : "CurseForge"}
                     </span>
                   </div>
                   <div className="mt-0.5 truncate text-[11px] text-content-faint">
@@ -190,41 +192,6 @@ export function ImportPackModal({
           </div>
         )}
 
-        {imported && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
-            <motion.span
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 220, damping: 16 }}
-              className="grid size-16 place-items-center rounded-2xl bg-ok/15 text-ok"
-            >
-              <Check className="size-8" strokeWidth={2.5} />
-            </motion.span>
-            <div>
-              <div className="font-display text-xl font-semibold text-content">
-                {imported.name} was imported
-              </div>
-              <p className="mt-1 text-xs text-content-muted">
-                {imported.version_id}
-                {imported.loader ? ` · ${imported.loader}` : ""}
-              </p>
-              <p className="mt-3 flex items-center justify-center gap-2 text-xs text-content-faint">
-                <Loader2 className="size-3.5 animate-spin text-(--accent)" />
-                The files are downloading in the background.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                openInstance(imported.id);
-                onClose();
-              }}
-              className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
-            >
-              Open the instance
-            </button>
-          </div>
-        )}
-
         {error && (
           <div className="mt-4 flex shrink-0 gap-2.5 rounded-xl border border-danger/25 bg-danger/[0.07] px-3.5 py-3 text-xs text-danger">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
@@ -235,8 +202,10 @@ export function ImportPackModal({
 
       <ModalFooter className="justify-between">
         <span className="text-xs text-content-faint">
-          {preview && !imported
-            ? "Mods download on import, the rest is copied out of the file."
+          {preview
+            ? preview.format === "packwiz"
+              ? "Every file is verified against the hashes declared by the pack."
+              : "Mods download on import, the rest is copied out of the file."
             : ""}
         </span>
         <div className="flex items-center gap-2">
@@ -245,22 +214,20 @@ export function ImportPackModal({
             disabled={importing}
             className="rounded-lg px-3 py-2 text-sm font-medium text-content-muted transition-colors hover:text-content disabled:opacity-50"
           >
-            {imported ? "Done" : "Cancel"}
+            Cancel
           </button>
-          {!imported && (
-            <button
-              onClick={submit}
-              disabled={!preview?.importable || importing || reading}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all",
-                "[background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
-                "disabled:cursor-not-allowed disabled:opacity-45",
-              )}
-            >
-              {importing && <Loader2 className="size-3.5 animate-spin" />}
-              Import pack
-            </button>
-          )}
+          <button
+            onClick={submit}
+            disabled={!preview?.importable || importing || reading}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-black shadow-md shadow-(color:--accent-glow) transition-all",
+              "[background:linear-gradient(to_bottom,var(--accent),var(--accent-deep))] hover:[background:linear-gradient(to_bottom,var(--accent-bright),var(--accent))]",
+              "disabled:cursor-not-allowed disabled:opacity-45",
+            )}
+          >
+            {importing && <Loader2 className="size-3.5 animate-spin" />}
+            Import pack
+          </button>
         </div>
       </ModalFooter>
     </Modal>
