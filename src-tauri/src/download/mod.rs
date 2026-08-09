@@ -91,7 +91,7 @@ async fn already_valid(files: &FileManager, spec: &DownloadSpec) -> bool {
 
 const RETRY_BASE: Duration = Duration::from_millis(300);
 const RETRY_CEILING: Duration = Duration::from_secs(8);
-const PART_SUFFIX: &str = ".basalt-part";
+pub(crate) const PART_SUFFIX: &str = ".basalt-part";
 
 static DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Weak<AsyncMutex<()>>>>> = OnceLock::new();
 

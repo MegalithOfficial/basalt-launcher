@@ -67,6 +67,9 @@ pub fn list(files: &FileManager, instance_id: &str, kind: &str) -> Result<Vec<Co
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
+        if raw.ends_with(crate::download::PART_SUFFIX) {
+            continue;
+        }
         let enabled = !raw.ends_with(DISABLED_SUFFIX);
         let file_name = raw
             .strip_suffix(DISABLED_SUFFIX)
@@ -157,4 +160,38 @@ pub fn add(
         }
     }
     Ok(copied)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_hides_incomplete_downloads() {
+        let root = std::env::temp_dir().join(format!("basalt-content-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let files = FileManager::new(Paths::plain(root.clone())).unwrap();
+        let mods = files.paths().instance_dir("test").join("mods");
+        files.ensure_dir(&mods).unwrap();
+        files
+            .write_atomic(mods.join("ready.jar"), b"ready")
+            .unwrap();
+        files
+            .write_atomic(
+                mods.join(format!("downloading.jar{}", crate::download::PART_SUFFIX)),
+                b"partial",
+            )
+            .unwrap();
+
+        let items = list(&files, "test", "mods").unwrap();
+
+        assert_eq!(
+            items
+                .into_iter()
+                .map(|item| item.file_name)
+                .collect::<Vec<_>>(),
+            ["ready.jar"]
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

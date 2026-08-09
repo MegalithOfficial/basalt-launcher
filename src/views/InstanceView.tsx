@@ -351,6 +351,31 @@ export function InstanceView() {
     };
   }, [busyWithTask, instance?.id, refreshContentSources, refreshUpdates]);
 
+  useEffect(() => {
+    if (!instance || !busyWithTask || !isContentTab(tab)) return;
+    const instanceId = instance.id;
+    const kind = tab;
+    let live = true;
+    let reading = false;
+
+    const refreshVisibleContent = async () => {
+      if (reading) return;
+      reading = true;
+      try {
+        const listed = await api.listInstanceContent(instanceId, kind);
+        if (live) setItemsByTab((current) => ({ ...current, [kind]: listed }));
+      } catch {}
+      reading = false;
+    };
+
+    void refreshVisibleContent();
+    const timer = window.setInterval(() => void refreshVisibleContent(), 1_000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [busyWithTask, instance?.id, tab]);
+
   const modItems = itemsByTab.mods;
 
   useEffect(() => {
@@ -401,9 +426,7 @@ export function InstanceView() {
   const tabMeta = allTabs.find((t) => t.kind === tab) ?? allTabs[0];
   const tabUpdates = isContent ? updates.filter((u) => u.kind === tab) : NO_UPDATES;
   const items = itemsByTab[tab] ?? EMPTY_ITEMS;
-  const loading =
-    (loadingTab !== null && itemsByTab[tab] === undefined) ||
-    (busyWithTask && items.length === 0);
+  const loading = loadingTab !== null && itemsByTab[tab] === undefined;
   const query = filter.trim().toLowerCase();
   const matching = query
     ? items.filter(
@@ -1148,7 +1171,9 @@ export function InstanceView() {
               No {tabMeta.label.toLowerCase()} yet
             </div>
             <p className="max-w-sm text-xs text-content-faint">
-              Browse Modrinth and CurseForge with Add content, or drop in your own files.
+              {busyWithTask
+                ? "Installed files will appear here as the current task progresses."
+                : "Browse Modrinth and CurseForge with Add content, or drop in your own files."}
             </p>
             <button
               onClick={addContent}
