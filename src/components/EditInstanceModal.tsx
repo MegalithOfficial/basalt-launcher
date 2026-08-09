@@ -180,6 +180,7 @@ export function EditInstanceModal({
   const updateInstance = useStore((s) => s.updateInstance);
   const deleteInstance = useStore((s) => s.deleteInstance);
   const organization = useStore((s) => s.instanceOrganization);
+  const settings = useStore((s) => s.settings);
   const moveInstanceToGroup = useStore((s) => s.moveInstanceToGroup);
   const refreshInstances = useStore((s) => s.refreshInstances);
 
@@ -292,7 +293,7 @@ export function EditInstanceModal({
     };
   }, [loader, gameVersion, instance?.id]);
 
-  if (!instance || !draft) return null;
+  if (!instance || !draft || !settings) return null;
   const { name, minMem, maxMem, javaPath, javaCustom, loaderVersion, jvmArgs, jvmArgsMode, envVars, envVarsMode, notes } = draft;
   const placedIn =
     draft.groupId !== null
@@ -307,8 +308,8 @@ export function EditInstanceModal({
 
   const memoryCeiling = Math.max(4096, stats?.total_memory_mb ?? 16384);
   const usingDefaults = !minMem.trim() && !maxMem.trim();
-  const sliderMin = Number(minMem) > 0 ? Number(minMem) : 512;
-  const sliderMax = Number(maxMem) > 0 ? Number(maxMem) : 4096;
+  const sliderMin = Number(minMem) > 0 ? Number(minMem) : settings.min_memory_mb;
+  const sliderMax = Number(maxMem) > 0 ? Number(maxMem) : settings.max_memory_mb;
 
   const parseMem = (value: string) => {
     const trimmed = value.trim();

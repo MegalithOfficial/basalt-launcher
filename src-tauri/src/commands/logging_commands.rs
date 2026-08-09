@@ -181,8 +181,10 @@ pub fn diagnose_instance(
 ) -> Result<Vec<crate::diagnose::Diagnosis>> {
     let instance = super::find_instance(&state, &instance_id)?;
     let settings = state.db.load_settings()?;
+    let memory = instance.memory_limits(&settings)?;
     let context = crate::diagnose::Context {
-        max_memory_mb: instance.max_memory_mb.unwrap_or(settings.max_memory_mb),
+        memory,
+        total_memory_mb: crate::sysinfo_probe::usage(&state.paths).total_memory_mb,
     };
 
     if let Some(name) = name {

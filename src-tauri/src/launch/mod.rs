@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
     auth::{account::Account, microsoft},
-    config::{Instance, LauncherSettings},
+    config::{Instance, LauncherSettings, MemoryLimits},
     error::{Error, Result},
     install, java,
     meta::version::{rules_allow, Arg, ArgValue, VersionJson},
@@ -224,13 +224,13 @@ pub struct LaunchPreview {
     pub game: Vec<String>,
 }
 
-pub fn sample_placeholders(
+fn sample_placeholders(
     paths: &crate::paths::Paths,
-    settings: &crate::config::LauncherSettings,
+    memory: MemoryLimits,
 ) -> HashMap<&'static str, String> {
     HashMap::from([
-        ("min_ram", settings.min_memory_mb.to_string()),
-        ("max_ram", settings.max_memory_mb.to_string()),
+        ("min_ram", memory.min_mb.to_string()),
+        ("max_ram", memory.max_mb.to_string()),
         (
             "natives_directory",
             paths.natives_dir("1.21.4").display().to_string(),
@@ -306,8 +306,8 @@ fn instance_env(
 pub fn preview(
     paths: &crate::paths::Paths,
     settings: &crate::config::LauncherSettings,
-) -> LaunchPreview {
-    let values = sample_placeholders(paths, settings);
+) -> Result<LaunchPreview> {
+    let values = sample_placeholders(paths, settings.memory_limits()?);
     let template = if settings.jvm_args.trim().is_empty() {
         crate::config::DEFAULT_JVM_ARGS
     } else {
@@ -334,12 +334,12 @@ pub fn preview(
         .map(str::trim)
         .filter(|p| !p.is_empty());
 
-    LaunchPreview {
+    Ok(LaunchPreview {
         java: pinned.unwrap_or("java").to_string(),
         pinned: pinned.is_some(),
         jvm: split_args(&render_placeholders(template, &values)),
         game,
-    }
+    })
 }
 
 pub fn render_placeholders(raw: &str, values: &HashMap<&str, String>) -> String {
@@ -479,8 +479,9 @@ pub async fn launch_instance(
     let game_dir = state.paths.instance_dir(&instance.id);
     state.files.ensure_dir(&game_dir)?;
 
-    let min_mb = instance.min_memory_mb.unwrap_or(settings.min_memory_mb);
-    let max_mb = instance.max_memory_mb.unwrap_or(settings.max_memory_mb);
+    let memory = instance.memory_limits(&settings)?;
+    let min_mb = memory.min_mb;
+    let max_mb = memory.max_mb;
 
     let mut subs: HashMap<&str, String> = HashMap::new();
     subs.insert("natives_directory", natives_dir.display().to_string());

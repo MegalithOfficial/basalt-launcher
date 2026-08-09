@@ -92,6 +92,7 @@ pub async fn install_java_runtime(
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn update_settings(state: State<AppState>, settings: LauncherSettings) -> Result<()> {
+    settings.memory_limits()?;
     if logging::normalize_level(&settings.log_level) != logging::current_level() {
         logging::set_level(&settings.log_level)?;
     }
@@ -326,7 +327,7 @@ pub fn preview_launch_args(
     state: State<AppState>,
     settings: LauncherSettings,
 ) -> Result<launch::LaunchPreview> {
-    Ok(launch::preview(&state.paths, &settings))
+    launch::preview(&state.paths, &settings)
 }
 
 #[tauri::command]

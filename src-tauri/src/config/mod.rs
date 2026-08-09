@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+mod memory;
+
+pub use memory::{MemoryLimits, DEFAULT_MAX_MEMORY_MB, DEFAULT_MIN_MEMORY_MB};
+
 pub const DEFAULT_JVM_ARGS: &str = "-Xms{{min_ram}}M -Xmx{{max_ram}}M";
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -117,8 +121,8 @@ pub fn default_max_retries() -> u32 {
 impl Default for LauncherSettings {
     fn default() -> Self {
         Self {
-            min_memory_mb: 512,
-            max_memory_mb: 2048,
+            min_memory_mb: DEFAULT_MIN_MEMORY_MB,
+            max_memory_mb: DEFAULT_MAX_MEMORY_MB,
             java_path: None,
             concurrent_downloads: 16,
             curseforge_api_key: None,

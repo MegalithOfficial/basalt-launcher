@@ -22,7 +22,8 @@ pub struct Diagnosis {
 }
 
 pub struct Context {
-    pub max_memory_mb: u32,
+    pub memory: crate::config::MemoryLimits,
+    pub total_memory_mb: u64,
 }
 
 fn after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
@@ -186,18 +187,20 @@ fn out_of_memory(lines: &[&str], context: &Context) -> Option<Diagnosis> {
     let reason = lines.iter().find_map(|line| {
         after(line, "OutOfMemoryError: ").map(|rest| until(rest, &['\r']).to_string())
     })?;
-    let suggested = (context.max_memory_mb.max(2048) * 2).min(16384);
+    let suggested = context
+        .memory
+        .suggested_max_after_oom(context.total_memory_mb);
     Some(Diagnosis {
         id: "out-of-memory",
         title: "The game ran out of memory".to_string(),
         detail: format!(
             "Java gave up while allocating ({reason}). This instance is capped at {} MB.",
-            context.max_memory_mb
+            context.memory.max_mb
         ),
         subjects: Vec::new(),
-        fix: Fix::RaiseMemory {
-            megabytes: suggested,
-        },
+        fix: suggested
+            .map(|megabytes| Fix::RaiseMemory { megabytes })
+            .unwrap_or(Fix::None),
     })
 }
 
@@ -221,7 +224,8 @@ mod tests {
 
     fn context() -> Context {
         Context {
-            max_memory_mb: 4096,
+            memory: crate::config::MemoryLimits::new(512, 4096).unwrap(),
+            total_memory_mb: 16_384,
         }
     }
 
@@ -264,6 +268,16 @@ mod tests {
         assert_eq!(found[0].id, "out-of-memory");
         assert!(found[0].detail.contains("4096 MB"));
         assert_eq!(found[0].fix, Fix::RaiseMemory { megabytes: 8192 });
+    }
+
+    #[test]
+    fn does_not_suggest_more_memory_than_the_machine_has() {
+        let context = Context {
+            memory: crate::config::MemoryLimits::new(512, 4096).unwrap(),
+            total_memory_mb: 6144,
+        };
+        let found = analyze("java.lang.OutOfMemoryError: Java heap space", &context);
+        assert_eq!(found[0].fix, Fix::RaiseMemory { megabytes: 6144 });
     }
 
     #[test]

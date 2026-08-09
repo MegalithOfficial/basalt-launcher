@@ -1,7 +1,7 @@
 use tauri::{AppHandle, State};
 
 use crate::{
-    config::Instance,
+    config::{Instance, MemoryLimits},
     error::{Error, Result},
     install,
     java::{self, JavaStatus},
@@ -187,6 +187,8 @@ pub fn update_instance(
         }
     }
     let existing = find_instance(&state, &instance_id)?;
+    let settings = state.db.load_settings()?;
+    MemoryLimits::resolve(&settings, min_memory_mb, max_memory_mb)?;
     let needs_reset = existing.loader != loader
         || existing.loader_version != loader_version
         || existing.version_id != version_id;
