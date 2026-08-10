@@ -8,10 +8,6 @@
     "opener:default",
     "dialog:default",
     "clipboard-manager:allow-write-image",
-    {
-      "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "$APPDATA/**" }]
-    },
     "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging",
     "core:window:allow-minimize",

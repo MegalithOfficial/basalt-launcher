@@ -22,7 +22,6 @@ import {
   SearchX,
   TriangleAlert,
 } from "lucide-react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 
 import { Button, EmptyState } from "../components/ui";
@@ -36,6 +35,7 @@ import { EditInstanceModal } from "../components/EditInstanceModal";
 import { ImportPackModal } from "../components/ImportPackModal";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
+import { openFolder } from "../lib/reveal";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc } from "../lib/media";
 import {
@@ -368,10 +368,7 @@ export function InstancesView() {
       {
         label: "Open folder",
         icon: FolderOpen,
-        onSelect: () =>
-          void openPath(instance.dir).catch((error) =>
-            toast.error("Could not open the folder", { description: String(error) }),
-          ),
+        onSelect: () => openFolder(instance.dir),
       },
       { label: "Edit", icon: Pencil, onSelect: () => setEditing(instance) },
       { label: "Duplicate", icon: Copy, onSelect: () => void duplicate(instance) },

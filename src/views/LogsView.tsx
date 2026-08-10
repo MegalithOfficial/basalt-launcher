@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Check,
   CircleStop,
@@ -28,6 +27,7 @@ import { Select } from "../components/Select";
 import { cn } from "../lib/cn";
 import { log } from "../lib/log";
 import { notifyRemoved } from "../lib/notify";
+import { openFolder } from "../lib/reveal";
 import type { LogLevel, LogSearch, LogSource } from "../lib/types";
 import { useStore } from "../store";
 
@@ -341,7 +341,7 @@ export function LogsView() {
         {selection.kind === "launcher" && (
           <>
             {config && (
-              <ToolButton onClick={() => void openPath(config.directory)} title={config.file}>
+              <ToolButton onClick={() => openFolder(config.directory)} title={config.file}>
                 <FolderOpen className="size-3.5" />
                 Folder
               </ToolButton>
@@ -382,9 +382,7 @@ export function LogsView() {
           <>
             <ToolButton
               onClick={() =>
-                void openPath(
-                  `${fileInstance.dir}/${selection.crash ? "crash-reports" : "logs"}`,
-                )
+                openFolder(`${fileInstance.dir}/${selection.crash ? "crash-reports" : "logs"}`)
               }
               title="Open the folder"
             >

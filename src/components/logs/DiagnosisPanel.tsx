@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { ChevronDown, Download, FolderOpen, MemoryStick, Search, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
+import { openFolder } from "../../lib/reveal";
 import type { Diagnosis, DiagnosisFix, Instance } from "../../lib/types";
 import { useStore } from "../../store";
 
@@ -50,7 +50,7 @@ export function DiagnosisPanel({
 
   const apply = async (fix: DiagnosisFix) => {
     if (fix === "open_mods_folder") {
-      void openPath(`${instance.dir}/mods`);
+      openFolder(`${instance.dir}/mods`);
       return;
     }
     if (typeof fix !== "object") return;

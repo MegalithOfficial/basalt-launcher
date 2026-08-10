@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ChevronRight,
   FileArchive,
@@ -12,6 +11,7 @@ import {
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
+import { openFolder } from "../../lib/reveal";
 import type { InstanceLogFile, RunningInfo } from "../../lib/types";
 import { useStore } from "../../store";
 import { formatBytes } from "../../lib/format";
@@ -229,7 +229,7 @@ export function LogSourceTree({
                   </Row>
                 ))}
                 <button
-                  onClick={() => void openPath(`${instance.dir}/logs`)}
+                  onClick={() => openFolder(`${instance.dir}/logs`)}
                   className="flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left text-xs text-content-faint transition-colors hover:text-content"
                 >
                   <FolderOpen className="size-3.5 shrink-0" />

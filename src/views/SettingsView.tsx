@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import {
   ArrowUpCircle,
@@ -31,6 +31,7 @@ import { DiscordPreview } from "../components/DiscordPreview";
 import { ACCENT_PRESETS, applyTheme, DEFAULTS, isHex, themeVars } from "../lib/accent";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
+import { openFolder } from "../lib/reveal";
 import type {
   AboutLinks,
   AccentMode,
@@ -1431,7 +1432,7 @@ export function SettingsView() {
                 View logs
               </button>
               <button
-                onClick={() => logConfig && openPath(logConfig.directory)}
+                onClick={() => logConfig && openFolder(logConfig.directory)}
                 className={actionCls}
               >
                 <FolderOpen className="size-3.5" />
@@ -1455,7 +1456,7 @@ export function SettingsView() {
                 </p>
               </div>
               <button
-                onClick={() => appInfo && openPath(appInfo.data_dir)}
+                onClick={() => appInfo && openFolder(appInfo.data_dir)}
                 className={actionCls}
               >
                 <FolderOpen className="size-3.5" />

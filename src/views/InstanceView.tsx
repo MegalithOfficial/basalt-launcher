@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
   Check,
@@ -50,6 +49,7 @@ import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { log } from "../lib/log";
 import { notifyRemoved } from "../lib/notify";
+import { openFolder } from "../lib/reveal";
 import { loaderLabel } from "../lib/loader";
 import { logoSrc } from "../lib/media";
 import { formatPlaytime, relativeTime } from "../lib/time";
@@ -723,7 +723,7 @@ export function InstanceView() {
     {
       label: "Open folder",
       icon: FolderOpen,
-      onSelect: () => void openPath(instance.dir),
+      onSelect: () => openFolder(instance.dir),
     },
     {
       label: "Snapshots and restore (experimental)",

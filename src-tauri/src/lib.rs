@@ -311,6 +311,8 @@ pub fn run() {
             commands::app::install_app_update,
             commands::app::get_about_links,
             commands::app::inspect_paths,
+            commands::app::open_folder,
+            commands::app::open_file,
             commands::app::get_system_stats,
             commands::app::get_system_usage,
             commands::app::preview_launch_args,

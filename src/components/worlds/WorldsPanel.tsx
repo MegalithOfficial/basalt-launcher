@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Check,
   FolderOpen,
@@ -15,6 +14,7 @@ import {
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { notifyRemoved } from "../../lib/notify";
+import { openFolder } from "../../lib/reveal";
 import { relativeTime } from "../../lib/time";
 import type {
   Instance,
@@ -574,9 +574,7 @@ export function WorldsPanel({
               key={world.folder_name}
               world={world}
               running={running}
-              onOpenFolder={() =>
-                void openPath(`${instance.dir}/saves/${world.folder_name}`)
-              }
+              onOpenFolder={() => openFolder(`${instance.dir}/saves/${world.folder_name}`)}
               onDelete={() => remove(world)}
             />
           ))}

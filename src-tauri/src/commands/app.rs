@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
@@ -281,6 +281,31 @@ pub fn get_about_links() -> AboutLinks {
         discord: DISCORD_INVITE.to_string(),
     }
 }
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub fn open_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<()> {
+    let target = PathBuf::from(path.trim());
+    state.files.ensure_dir(&target)?;
+    reveal(&app, &target)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub fn open_file(app: AppHandle, state: State<AppState>, path: String) -> Result<()> {
+    let target = PathBuf::from(path.trim());
+    if !state.files.is_file(&target)? {
+        return Err(Error::NotFound(target.display().to_string()));
+    }
+    reveal(&app, &target)
+}
+
+fn reveal(app: &AppHandle, target: &Path) -> Result<()> {
+    tauri_plugin_opener::OpenerExt::opener(app)
+        .open_path(target.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|error| Error::other(format!("could not open {}: {error}", target.display())))
+}
+
 const MAX_INSPECTED_PATHS: usize = 256;
 
 #[derive(Serialize)]

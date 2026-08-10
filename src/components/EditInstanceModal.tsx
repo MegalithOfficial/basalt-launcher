@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { motion } from "motion/react";
 import {
   Boxes,
@@ -20,6 +19,7 @@ import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { LOADERS, loaderLabel } from "../lib/loader";
 import { logoSrc } from "../lib/media";
+import { openFolder } from "../lib/reveal";
 import { formatPlaytime, relativeTime } from "../lib/time";
 import type { EnvVar, Instance, JavaInfo, ProjectSummary, SystemStats } from "../lib/types";
 import { Banner } from "./Banner";
@@ -493,7 +493,7 @@ export function EditInstanceModal({
                 </div>
               </SettingRow>
               <SettingRow label="Instance folder" hint={instance.dir} stacked>
-                <button onClick={() => openPath(instance.dir)} className={chipCls}>
+                <button onClick={() => openFolder(instance.dir)} className={chipCls}>
                   <FolderOpen className="size-3.5" />
                   Open folder
                 </button>

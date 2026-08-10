@@ -486,6 +486,8 @@ export const api = {
   reclaimStorage: (targets: string[]) =>
     call<ReclaimOutcome>("reclaim_storage", { targets }),
   inspectPaths: (paths: string[]) => call<PathKind[]>("inspect_paths", { paths }),
+  openFolder: (path: string) => call<void>("open_folder", { path }),
+  openFile: (path: string) => call<void>("open_file", { path }),
   getSystemStats: () => call<SystemStats>("get_system_stats"),
   getSystemUsage: () => call<SystemUsage>("get_system_usage"),
   getDataLocations: () => call<DataLocation[]>("get_data_locations"),

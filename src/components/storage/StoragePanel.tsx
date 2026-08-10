@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ChevronRight,
   FolderOpen,
@@ -14,6 +13,7 @@ import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
+import { openFolder } from "../../lib/reveal";
 import { formatBytes } from "../../lib/format";
 import type { Reclaimable, StorageEntry, StorageReport } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -45,7 +45,7 @@ function OpenButton({ path, label }: { path: string; label: string }) {
     <button
       onClick={(event) => {
         event.stopPropagation();
-        void openPath(path);
+        openFolder(path);
       }}
       title={`Open ${label}`}
       aria-label={`Open ${label}`}

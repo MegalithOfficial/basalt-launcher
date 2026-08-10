@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
   ChevronDown,
@@ -20,6 +19,7 @@ import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
+import { openFolder } from "../../lib/reveal";
 import { formatBytes } from "../../lib/format";
 import { useStore } from "../../store";
 import type { Datapack, Instance, WorldPacks, WorldSummary } from "../../lib/types";
@@ -319,7 +319,7 @@ export function DatapacksPanel({
 
               <button
                 onClick={() =>
-                  void openPath(
+                  openFolder(
                     group.loose
                       ? `${instance.dir}/datapacks`
                       : `${instance.dir}/saves/${group.world}/datapacks`,

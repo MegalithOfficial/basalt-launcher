@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -24,6 +23,7 @@ import {
 
 import { cn } from "../lib/cn";
 import { logoSrc, mediaSrc } from "../lib/media";
+import { openFolder } from "../lib/reveal";
 import type { Instance, VersionMedia, View } from "../lib/types";
 import { PlayerHead } from "./Avatar";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -307,7 +307,7 @@ export function Sidebar() {
       {
         label: "Open folder",
         icon: FolderOpen,
-        onSelect: () => void openPath(instance.dir),
+        onSelect: () => openFolder(instance.dir),
       },
       {
         label: "Repair and verify",

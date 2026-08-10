@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Camera,
   Check,
@@ -20,6 +19,7 @@ import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { log } from "../../lib/log";
 import { notifyRemoved } from "../../lib/notify";
+import { openFile, openFolder } from "../../lib/reveal";
 import type { Instance, Screenshot } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button, EmptyState } from "../ui";
@@ -223,7 +223,7 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
         title="No screenshots yet"
         description="Press F2 in game and every shot lands here, ready to copy, open or delete."
         action={
-          <Button variant="ghost" onClick={() => void openPath(`${instance.dir}/screenshots`)}>
+          <Button variant="ghost" onClick={() => openFolder(`${instance.dir}/screenshots`)}>
             <FolderOpen className="size-4" />
             Open the folder
           </Button>
@@ -262,7 +262,7 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
         )}
 
         <button
-          onClick={() => void openPath(`${instance.dir}/screenshots`)}
+          onClick={() => openFolder(`${instance.dir}/screenshots`)}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
         >
           <FolderOpen className="size-3.5" />
@@ -335,7 +335,7 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
                         <Copy className="size-3.5" />
                       </button>
                       <button
-                        onClick={() => void openPath(shot.path)}
+                        onClick={() => openFile(shot.path)}
                         title="Open outside Basalt"
                         className="grid size-6 place-items-center rounded-md border border-border bg-void/80 text-content-muted transition-colors hover:text-content"
                       >
@@ -384,7 +384,7 @@ export function ScreenshotsPanel({ instance }: { instance: Instance }) {
                 Copy
               </button>
               <button
-                onClick={() => void openPath(open.path)}
+                onClick={() => openFile(open.path)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
               >
                 <ExternalLink className="size-3.5" />

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { FolderOpen, HardDrive, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -8,6 +7,7 @@ import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { formatMegabytes } from "../../lib/format";
 import { log } from "../../lib/log";
+import { openFolder } from "../../lib/reveal";
 import type { DataLocation, DiskInfo, LocationCandidate } from "../../lib/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 
@@ -140,7 +140,7 @@ export function DataLocations({ heading = true }: { heading?: boolean }) {
 
             <div className="flex shrink-0 items-center gap-1">
               <button
-                onClick={() => void openPath(location.path)}
+                onClick={() => openFolder(location.path)}
                 title={`Open ${location.label}`}
                 aria-label={`Open ${location.label}`}
                 disabled={!location.exists}
