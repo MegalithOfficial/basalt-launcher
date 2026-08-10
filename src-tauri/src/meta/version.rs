@@ -66,6 +66,8 @@ pub struct AssetIndexRef {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Downloads {
     pub client: Artifact,
+    #[serde(default)]
+    pub server: Option<Artifact>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -365,6 +367,17 @@ impl VersionJson {
         })
     }
 
+    pub fn server_spec(&self, dest: std::path::PathBuf) -> Option<DownloadSpec> {
+        let server = self.downloads.as_ref()?.server.as_ref()?;
+        Some(DownloadSpec {
+            url: server.url.clone(),
+            dest,
+            sha1: Some(server.sha1.clone()),
+            sha256: None,
+            size: Some(server.size),
+        })
+    }
+
     pub fn required_java_major(&self) -> u32 {
         self.java_version.as_ref().map_or(8, |j| j.major_version)
     }
@@ -468,5 +481,41 @@ mod tests {
         let args = merged.arguments.as_ref().unwrap();
         assert_eq!(args.jvm.len(), 2);
         assert!(merged.downloads.is_some());
+    }
+
+    #[test]
+    fn the_server_jar_comes_out_of_the_same_version_json() {
+        let version: VersionJson = serde_json::from_str(
+            r#"{
+                "id": "1.21.8",
+                "mainClass": "net.minecraft.client.main.Main",
+                "type": "release",
+                "downloads": {
+                    "client": {"sha1": "a", "size": 1, "url": "client"},
+                    "server": {"sha1": "b", "size": 2, "url": "server"}
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let spec = version
+            .server_spec(std::path::PathBuf::from("/servers/s1/server.jar"))
+            .unwrap();
+        assert_eq!(spec.url, "server");
+        assert_eq!(spec.sha1.as_deref(), Some("b"));
+        assert_eq!(spec.size, Some(2));
+
+        let without: VersionJson = serde_json::from_str(
+            r#"{
+                "id": "1.0",
+                "mainClass": "x",
+                "type": "release",
+                "downloads": {"client": {"sha1": "a", "size": 1, "url": "client"}}
+            }"#,
+        )
+        .unwrap();
+        assert!(without
+            .server_spec(std::path::PathBuf::from("/servers/s1/server.jar"))
+            .is_none());
     }
 }

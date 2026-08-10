@@ -4,6 +4,7 @@ use crate::error::{Error, Result};
 
 pub mod files;
 pub mod properties;
+pub mod provision;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TextProblem {
