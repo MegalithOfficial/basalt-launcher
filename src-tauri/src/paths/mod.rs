@@ -136,10 +136,6 @@ impl Paths {
         *self.extras.write().unwrap() = kept;
     }
 
-    pub fn extras(&self) -> Vec<PathBuf> {
-        self.extras.read().unwrap().clone()
-    }
-
     fn located(&self, slot: DataRoot) -> PathBuf {
         self.overrides
             .read()

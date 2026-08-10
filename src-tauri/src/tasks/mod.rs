@@ -32,6 +32,8 @@ pub enum TaskKind {
     StorageScan,
     DatapackInstall,
     DataMove,
+    ServerInstall,
+    ServerImport,
 }
 
 impl TaskKind {
@@ -54,6 +56,8 @@ impl TaskKind {
             Self::StorageScan => "storage_scan",
             Self::DatapackInstall => "datapack_install",
             Self::DataMove => "data_move",
+            Self::ServerInstall => "server_install",
+            Self::ServerImport => "server_import",
         }
     }
 
@@ -76,6 +80,8 @@ impl TaskKind {
             "storage_scan" | "StorageScan" => Some(Self::StorageScan),
             "datapack_install" | "DatapackInstall" => Some(Self::DatapackInstall),
             "data_move" | "DataMove" => Some(Self::DataMove),
+            "server_install" | "ServerInstall" => Some(Self::ServerInstall),
+            "server_import" | "ServerImport" => Some(Self::ServerImport),
             _ => None,
         }
     }
@@ -107,6 +113,7 @@ pub struct Task {
     pub subtitle: Option<String>,
     pub icon_url: Option<String>,
     pub instance_id: Option<String>,
+    pub server_id: Option<String>,
     pub project_id: Option<String>,
     pub state: TaskState,
     pub stage: String,
@@ -127,6 +134,7 @@ pub struct TaskSpec {
     pub subtitle: Option<String>,
     pub icon_url: Option<String>,
     pub instance_id: Option<String>,
+    pub server_id: Option<String>,
     pub project_id: Option<String>,
     pub total: u64,
     pub total_bytes: u64,
@@ -216,6 +224,7 @@ impl Tasks {
             subtitle: spec.subtitle,
             icon_url: spec.icon_url,
             instance_id: spec.instance_id,
+            server_id: spec.server_id,
             project_id: spec.project_id,
             state: TaskState::Running,
             stage: "preparing".to_string(),
@@ -439,6 +448,7 @@ mod tests {
             subtitle: None,
             icon_url: None,
             instance_id: None,
+            server_id: None,
             project_id: None,
             state,
             stage: "x".into(),

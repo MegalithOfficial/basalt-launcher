@@ -108,6 +108,9 @@ pub fn run() {
             }
 
             let state = AppState::new(files, db);
+            if let Err(e) = servers::adopt_imported_dirs(&state) {
+                tracing::warn!(error = %e, "could not reach every imported server folder");
+            }
             if matches!(&launch_request, Ok(cli::Request::List)) {
                 let code = match cli::print_instances(&state) {
                     Ok(()) => 0,
@@ -167,7 +170,11 @@ pub fn run() {
                 tracing::warn!(error = %e, "could not recover running game processes");
             }
             app.manage(state);
+            if let Err(e) = servers::runtime::recover(app.handle(), &app.state::<AppState>()) {
+                tracing::warn!(error = %e, "could not recover running servers");
+            }
             update::start_monitor(app.handle().clone());
+            servers::usage::start_monitor(app.handle().clone());
             tracing::info!("startup complete");
             match launch_request {
                 Ok(cli::Request::Launch(selector)) => {
@@ -320,6 +327,31 @@ pub fn run() {
             commands::locations::get_data_locations,
             commands::locations::inspect_data_location,
             commands::locations::set_data_location,
+            commands::servers::list_servers,
+            commands::servers::list_server_flavor_versions,
+            commands::servers::create_server,
+            commands::servers::inspect_server_folder,
+            commands::servers::import_server,
+            commands::servers::install_server,
+            commands::servers::update_server_settings,
+            commands::servers::accept_server_eula,
+            commands::servers::delete_server,
+            commands::servers::start_server,
+            commands::servers::stop_server,
+            commands::servers::force_stop_server,
+            commands::servers::send_server_command,
+            commands::servers::get_server_console,
+            commands::servers::list_running_servers,
+            commands::servers::get_server_properties,
+            commands::servers::set_server_properties,
+            commands::servers::list_server_files,
+            commands::servers::read_server_file,
+            commands::servers::write_server_file,
+            commands::servers::check_server_file,
+            commands::servers::create_server_folder,
+            commands::servers::rename_server_entry,
+            commands::servers::delete_server_entry,
+            commands::servers::upload_server_files,
             commands::skins::get_appearance,
             commands::skins::list_skins,
             commands::skins::add_skin_from_file,

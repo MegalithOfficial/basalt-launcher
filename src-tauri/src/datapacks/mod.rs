@@ -369,6 +369,7 @@ pub async fn install(
             }),
             icon_url: file.icon_url.clone(),
             instance_id: Some(instance.id.clone()),
+            server_id: None,
             project_id: Some(project_id.to_string()),
             total: 1,
             total_bytes: file.size.unwrap_or(0),

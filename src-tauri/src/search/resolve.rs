@@ -434,6 +434,7 @@ pub async fn apply(
                     subtitle: instance_name.map(|name| format!("into {name}")),
                     icon_url: plan.primary.as_ref().and_then(|f| f.icon_url.clone()),
                     instance_id: Some(instance_id.to_string()),
+                    server_id: None,
                     project_id: plan.primary.as_ref().map(|f| f.project_id.clone()),
                     total: total as u64,
                     total_bytes: plan.total_bytes,

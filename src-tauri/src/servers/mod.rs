@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    state::AppState,
+};
 
 pub mod files;
+pub mod import;
 pub mod properties;
 pub mod provision;
 pub mod runtime;
@@ -117,4 +121,10 @@ mod tests {
         }
         assert!(ServerFlavor::parse("spigot").is_err());
     }
+}
+
+pub fn adopt_imported_dirs(state: &AppState) -> Result<()> {
+    let dirs = state.db.imported_server_dirs()?;
+    state.paths.adopt_extras(dirs);
+    state.files.reopen()
 }

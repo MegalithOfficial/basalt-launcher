@@ -148,16 +148,22 @@ impl Db {
         server_id: &str,
         launch_jar: Option<&str>,
         launch_argfiles: &[String],
+        flavor_version: Option<&str>,
         installed_at: i64,
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "UPDATE servers SET launch_jar = ?2, launch_argfiles = ?3, installed_at = ?4
+            "UPDATE servers SET
+                launch_jar = ?2,
+                launch_argfiles = ?3,
+                flavor_version = coalesce(?4, flavor_version),
+                installed_at = ?5
              WHERE id = ?1",
             params![
                 server_id,
                 launch_jar,
                 serde_json::to_string(launch_argfiles)?,
+                flavor_version,
                 installed_at
             ],
         )?;
@@ -382,6 +388,7 @@ mod tests {
             "s3",
             None,
             &["user_jvm_args.txt".into(), "libraries/unix_args.txt".into()],
+            Some("21.8.54"),
             99,
         )
         .unwrap();
@@ -394,6 +401,7 @@ mod tests {
         assert_eq!(stored.launch_argfiles.len(), 2);
         assert!(stored.launch_jar.is_none());
         assert_eq!(stored.installed_at, Some(99));
+        assert_eq!(stored.flavor_version.as_deref(), Some("21.8.54"));
         assert_eq!(stored.eula_accepted_at, Some(1234));
         assert_eq!(stored.port, Some(25570));
         assert_eq!(stored.max_players, Some(8));
