@@ -1,3 +1,4 @@
+pub mod identity;
 pub mod process;
 pub mod tools;
 
@@ -533,7 +534,7 @@ pub async fn launch_instance(
         args.push(classpath.clone());
     }
 
-    args.push(process::run_marker(&running_id));
+    args.push(identity::run_marker(&running_id));
     args.push(version.main_class.clone());
 
     if let Some(arguments) = &version.arguments {

@@ -13,6 +13,7 @@ use crate::{
     network::NetworkManager,
     paths::Paths,
     presence::Presence,
+    servers::runtime::Registry,
     tasks::Tasks,
     update::UpdateCoordinator,
 };
@@ -24,6 +25,7 @@ pub struct AppState {
     pub db: Db,
     pub credentials: CredentialStore,
     pub running: Arc<Mutex<HashMap<String, RunningHandle>>>,
+    pub servers: Registry,
     pub patch_notes: Mutex<Option<PatchNotes>>,
     pub media_cache: Mutex<HashMap<String, Option<VersionMedia>>>,
     pub tasks: std::sync::Arc<Tasks>,
@@ -53,6 +55,7 @@ impl AppState {
             db,
             credentials,
             running: Arc::new(Mutex::new(HashMap::new())),
+            servers: Arc::new(Mutex::new(HashMap::new())),
             patch_notes: Mutex::new(None),
             media_cache: Mutex::new(HashMap::new()),
             tasks,
