@@ -16,6 +16,7 @@ pub const OVERRIDES_FILE: &str = "paths.json";
 #[serde(rename_all = "snake_case")]
 pub enum DataRoot {
     Instances,
+    Servers,
     Versions,
     Libraries,
     Assets,
@@ -26,8 +27,9 @@ pub enum DataRoot {
 }
 
 impl DataRoot {
-    pub const ALL: [DataRoot; 8] = [
+    pub const ALL: [DataRoot; 9] = [
         DataRoot::Instances,
+        DataRoot::Servers,
         DataRoot::Versions,
         DataRoot::Libraries,
         DataRoot::Assets,
@@ -40,6 +42,7 @@ impl DataRoot {
     pub fn directory(self) -> &'static str {
         match self {
             DataRoot::Instances => "instances",
+            DataRoot::Servers => "servers",
             DataRoot::Versions => "versions",
             DataRoot::Libraries => "libraries",
             DataRoot::Assets => "assets",
@@ -53,6 +56,7 @@ impl DataRoot {
     pub fn label(self) -> &'static str {
         match self {
             DataRoot::Instances => "Instances",
+            DataRoot::Servers => "Servers",
             DataRoot::Versions => "Game versions",
             DataRoot::Libraries => "Libraries",
             DataRoot::Assets => "Assets",
@@ -68,6 +72,7 @@ impl DataRoot {
             DataRoot::Instances => {
                 "Worlds, mods, configs and screenshots. The largest folder by far."
             }
+            DataRoot::Servers => "Worlds, plugins and configs for the servers Basalt hosts.",
             DataRoot::Versions => "The client jars Basalt downloads for each Minecraft version.",
             DataRoot::Libraries => "Shared jars every instance links against.",
             DataRoot::Assets => "Sounds, languages and textures, shared across every version.",
@@ -79,10 +84,13 @@ impl DataRoot {
     }
 }
 
+pub const MAX_EXTRA_ROOTS: usize = 64;
+
 #[derive(Debug, Clone)]
 pub struct Paths {
     pub root: PathBuf,
     overrides: Arc<RwLock<BTreeMap<DataRoot, PathBuf>>>,
+    extras: Arc<RwLock<Vec<PathBuf>>>,
 }
 
 impl Paths {
@@ -101,11 +109,35 @@ impl Paths {
         Self {
             root,
             overrides: Arc::new(RwLock::new(overrides)),
+            extras: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
     pub fn adopt(&self, overrides: BTreeMap<DataRoot, PathBuf>) {
         *self.overrides.write().unwrap() = overrides;
+    }
+
+    pub fn adopt_extras(&self, extras: Vec<PathBuf>) {
+        let managed = self.managed_roots();
+        let mut kept: Vec<PathBuf> = Vec::new();
+        for path in extras {
+            if !path.is_absolute() || managed.iter().any(|root| path.starts_with(root)) {
+                continue;
+            }
+            if kept.iter().any(|other| path.starts_with(other)) {
+                continue;
+            }
+            kept.retain(|other| !other.starts_with(&path));
+            kept.push(path);
+            if kept.len() == MAX_EXTRA_ROOTS {
+                break;
+            }
+        }
+        *self.extras.write().unwrap() = kept;
+    }
+
+    pub fn extras(&self) -> Vec<PathBuf> {
+        self.extras.read().unwrap().clone()
     }
 
     fn located(&self, slot: DataRoot) -> PathBuf {
@@ -129,13 +161,33 @@ impl Paths {
         self.root.join(slot.directory())
     }
 
-    pub fn capability_roots(&self) -> Vec<PathBuf> {
+    fn managed_roots(&self) -> Vec<PathBuf> {
         let mut roots = vec![self.root.clone()];
         for path in self.overrides.read().unwrap().values() {
             if !path.starts_with(&self.root) {
                 roots.push(path.clone());
             }
         }
+        roots
+    }
+
+    pub fn capability_roots(&self) -> Vec<PathBuf> {
+        let mut roots = self.managed_roots();
+        roots.sort_by_key(|path| std::cmp::Reverse(path.as_os_str().len()));
+        roots.dedup();
+        roots
+    }
+
+    pub fn extra_roots(&self) -> Vec<PathBuf> {
+        let managed = self.capability_roots();
+        let mut roots = self
+            .extras
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|path| !managed.iter().any(|root| path.starts_with(root)))
+            .cloned()
+            .collect::<Vec<_>>();
         roots.sort_by_key(|path| std::cmp::Reverse(path.as_os_str().len()));
         roots.dedup();
         roots
@@ -186,6 +238,12 @@ impl Paths {
     }
     pub fn instances(&self) -> PathBuf {
         self.located(DataRoot::Instances)
+    }
+    pub fn servers(&self) -> PathBuf {
+        self.located(DataRoot::Servers)
+    }
+    pub fn server_dir(&self, id: &str) -> PathBuf {
+        self.servers().join(id)
     }
     pub fn modpack_upgrade_journals(&self) -> PathBuf {
         self.root.join("modpack-upgrade-journals")
@@ -262,6 +320,18 @@ impl Paths {
         }
         let dir = self.instances().join(id);
         if dir.parent() != Some(self.instances().as_path()) {
+            return None;
+        }
+        Some(dir)
+    }
+
+    pub fn server_dir_checked(&self, id: &str) -> Option<PathBuf> {
+        let id = id.trim();
+        if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") {
+            return None;
+        }
+        let dir = self.servers().join(id);
+        if dir.parent() != Some(self.servers().as_path()) {
             return None;
         }
         Some(dir)
@@ -373,6 +443,40 @@ mod tests {
                 .parent(),
             Some(p.modpack_upgrade_journals().as_path())
         );
+    }
+
+    #[test]
+    fn server_ids_resolve_under_servers() {
+        let p = paths();
+        assert!(p.server_dir_checked("").is_none());
+        assert!(p.server_dir_checked("../escape").is_none());
+        assert!(p.server_dir_checked("a/b").is_none());
+        let dir = p.server_dir_checked("a2a2b0f0-0000-4000-8000-000000000000");
+        assert_eq!(dir.unwrap().parent().unwrap(), p.servers());
+    }
+
+    #[test]
+    fn extra_roots_drop_anything_already_covered() {
+        let p = paths();
+        p.adopt_extras(vec![
+            p.root.join("servers").join("inside"),
+            PathBuf::from("/mnt/disk/smp"),
+            PathBuf::from("/mnt/disk/smp/world"),
+            PathBuf::from("relative/path"),
+        ]);
+        assert_eq!(p.extra_roots(), vec![PathBuf::from("/mnt/disk/smp")]);
+        assert!(p.capability_roots().iter().all(|root| *root == p.root));
+        assert!(p.unavailable().is_empty());
+    }
+
+    #[test]
+    fn an_extra_root_replaces_the_nested_ones_it_covers() {
+        let p = paths();
+        p.adopt_extras(vec![
+            PathBuf::from("/mnt/disk/smp/world"),
+            PathBuf::from("/mnt/disk/smp"),
+        ]);
+        assert_eq!(p.extra_roots(), vec![PathBuf::from("/mnt/disk/smp")]);
     }
 
     #[test]

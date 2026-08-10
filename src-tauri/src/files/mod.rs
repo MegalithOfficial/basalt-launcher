@@ -69,6 +69,7 @@ impl FileManager {
             self.paths.natives(),
             self.paths.runtimes(),
             self.paths.instances(),
+            self.paths.servers(),
             self.paths.snapshots(),
             self.paths.snapshot_blobs(),
             self.paths.snapshot_instances(),
@@ -526,6 +527,17 @@ fn open_roots(paths: &Paths) -> Result<Roots> {
         let dir = Dir::open_ambient_dir(&path, ambient_authority())?;
         roots.push((path, Arc::new(dir)));
     }
+    for path in paths.extra_roots() {
+        match Dir::open_ambient_dir(&path, ambient_authority()) {
+            Ok(dir) => roots.push((path, Arc::new(dir))),
+            Err(error) => tracing::warn!(
+                path = %path.display(),
+                error = %error,
+                "skipping a folder Basalt cannot reach right now"
+            ),
+        }
+    }
+    roots.sort_by_key(|(path, _)| std::cmp::Reverse(path.as_os_str().len()));
     Ok(Arc::new(roots))
 }
 
@@ -652,6 +664,38 @@ mod tests {
         assert!(path.starts_with(base.join("disk-two/games")));
         assert!(!path.starts_with(&files.paths().root));
         assert_eq!(files.read(&path).unwrap(), b"fov:90");
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn an_extra_root_is_writable_without_being_created() {
+        let base = std::env::temp_dir().join(format!("basalt-extra-{}", uuid::Uuid::new_v4()));
+        let outside = base.join("elsewhere/smp");
+        std::fs::create_dir_all(&outside).unwrap();
+        let files = FileManager::new(Paths::plain(base.join("data"))).unwrap();
+
+        files.paths().adopt_extras(vec![outside.clone()]);
+        files.reopen().unwrap();
+
+        files
+            .write_atomic(outside.join("eula.txt"), b"eula=true")
+            .unwrap();
+        assert_eq!(files.read(outside.join("eula.txt")).unwrap(), b"eula=true");
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn an_extra_root_that_is_gone_is_skipped_instead_of_fatal() {
+        let base = std::env::temp_dir().join(format!("basalt-extra-gone-{}", uuid::Uuid::new_v4()));
+        let missing = base.join("unplugged/smp");
+        let paths = Paths::plain(base.join("data"));
+        paths.adopt_extras(vec![missing.clone()]);
+
+        let files = FileManager::new(paths).unwrap();
+
+        assert!(!missing.exists());
+        assert!(files.read(missing.join("server.properties")).is_err());
+        assert!(files.paths().unavailable().is_empty());
         std::fs::remove_dir_all(base).ok();
     }
 
