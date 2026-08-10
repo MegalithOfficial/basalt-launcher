@@ -208,6 +208,8 @@ interface AppStore {
     envVarsMode?: string | null,
   ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
+  /** Deletes each instance in turn and resolves with a message per failure. */
+  deleteInstances: (ids: string[]) => Promise<string[]>;
   pins: string[];
   togglePin: (id: string) => void;
   repairInstance: (id: string) => Promise<RepairReport>;
@@ -357,6 +359,49 @@ function pushStack(stack: View[], current: View, target: View): View[] {
   const seen = stack.indexOf(target);
   if (seen >= 0) return stack.slice(0, seen);
   return [...stack.filter((view) => view !== current), current].slice(-3);
+}
+
+function pruneInstances(ids: string[]) {
+  const gone = new Set(ids);
+  return (s: AppStore): Partial<AppStore> => {
+    const instances = s.instances.filter((i) => !gone.has(i.id));
+    const closingDetail = !!s.detailInstanceId && gone.has(s.detailInstanceId);
+    const media = { ...s.media };
+    const updates = { ...s.updates };
+    for (const id of gone) {
+      delete media[id];
+      delete updates[id];
+    }
+    const contentSources = Object.fromEntries(
+      Object.entries(s.contentSources).filter(
+        ([key]) => ![...gone].some((id) => key.startsWith(`${id}:`)),
+      ),
+    );
+    return {
+      instances,
+      instanceOrganization: {
+        ...s.instanceOrganization,
+        placements: s.instanceOrganization.placements.filter(
+          (placement) => !gone.has(placement.instance_id),
+        ),
+      },
+      view: closingDetail && s.view === "instance" ? "instances" : s.view,
+      viewStack: closingDetail
+        ? s.viewStack.filter((view) => view !== "instance")
+        : s.viewStack,
+      detailInstanceId: closingDetail ? null : s.detailInstanceId,
+      discoverTargetId:
+        s.discoverTargetId && gone.has(s.discoverTargetId) ? null : s.discoverTargetId,
+      media,
+      updates,
+      contentSources,
+      installedIds: s.installedIds.filter((x) => !gone.has(x)),
+      selectedInstanceId:
+        s.selectedInstanceId && gone.has(s.selectedInstanceId)
+          ? (instances[0]?.id ?? null)
+          : s.selectedInstanceId,
+    };
+  };
 }
 
 export const useStore = create<AppStore>((set) => ({
@@ -1243,38 +1288,29 @@ export const useStore = create<AppStore>((set) => ({
     const name = useStore.getState().instances.find((i) => i.id === id)?.name;
     await api.deleteInstance(id);
     notifyRemoved(name ? `Deleted ${name}` : "Instance deleted", "Its files are gone from disk");
-    set((s) => {
-      const instances = s.instances.filter((i) => i.id !== id);
-      const deletingOpenInstance = s.detailInstanceId === id;
-      const media = { ...s.media };
-      const updates = { ...s.updates };
-      delete media[id];
-      delete updates[id];
-      const contentSources = Object.fromEntries(
-        Object.entries(s.contentSources).filter(([key]) => !key.startsWith(`${id}:`)),
+    set(pruneInstances([id]));
+  },
+
+  deleteInstances: async (ids) => {
+    const failures: string[] = [];
+    const removed: string[] = [];
+    for (const id of ids) {
+      try {
+        await api.deleteInstance(id);
+        removed.push(id);
+        set(pruneInstances([id]));
+      } catch (error) {
+        const name = useStore.getState().instances.find((i) => i.id === id)?.name ?? id;
+        failures.push(`${name}: ${String(error)}`);
+      }
+    }
+    if (removed.length > 0) {
+      notifyRemoved(
+        `Deleted ${removed.length} ${removed.length === 1 ? "instance" : "instances"}`,
+        "Their files are gone from disk",
       );
-      return {
-        instances,
-        instanceOrganization: {
-          ...s.instanceOrganization,
-          placements: s.instanceOrganization.placements.filter(
-            (placement) => placement.instance_id !== id,
-          ),
-        },
-        view: deletingOpenInstance && s.view === "instance" ? "instances" : s.view,
-        viewStack: deletingOpenInstance
-          ? s.viewStack.filter((view) => view !== "instance")
-          : s.viewStack,
-        detailInstanceId: deletingOpenInstance ? null : s.detailInstanceId,
-        discoverTargetId: s.discoverTargetId === id ? null : s.discoverTargetId,
-        media,
-        updates,
-        contentSources,
-        installedIds: s.installedIds.filter((x) => x !== id),
-        selectedInstanceId:
-          s.selectedInstanceId === id ? (instances[0]?.id ?? null) : s.selectedInstanceId,
-      };
-    });
+    }
+    return failures;
   },
 
   repairInstance: async (id) => api.repairInstance(id),

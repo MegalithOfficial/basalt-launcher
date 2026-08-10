@@ -3,21 +3,26 @@ import {
   ArrowDown,
   ArrowUp,
   Boxes,
+  Check,
   ClipboardCopy,
   Copy,
   MoreVertical,
   FileArchive,
   Folder,
+  FolderOpen,
   FolderPlus,
   LayoutGrid,
   List,
+  ListChecks,
   Pencil,
+  RotateCw,
   Trash2,
   Plus,
   Search,
   SearchX,
   TriangleAlert,
 } from "lucide-react";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 
 import { Button, EmptyState } from "../components/ui";
@@ -143,16 +148,48 @@ function RowActions({
   );
 }
 
+function PickOverlay({
+  instance,
+  checked,
+  onToggle,
+}: {
+  instance: Instance;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-pressed={checked}
+      aria-label={`Select ${instance.name}`}
+      className="absolute inset-0 z-20 flex items-start justify-start bg-void/20 p-3"
+    >
+      <span
+        className={cn(
+          "grid size-5 place-items-center rounded-md border transition-colors",
+          checked
+            ? "border-(--accent) bg-(--accent) text-black"
+            : "border-white/50 bg-black/60",
+        )}
+      >
+        {checked && <Check className="size-3.5" />}
+      </span>
+    </button>
+  );
+}
+
 export function InstancesView() {
   const busyTasks = useActiveTasksByInstance();
   const instances = useStore((s) => s.instances);
   const organization = useStore((s) => s.instanceOrganization);
   const deleteInstance = useStore((s) => s.deleteInstance);
+  const deleteInstances = useStore((s) => s.deleteInstances);
   const duplicateInstance = useStore((s) => s.duplicateInstance);
   const createInstanceGroup = useStore((s) => s.createInstanceGroup);
   const renameInstanceGroup = useStore((s) => s.renameInstanceGroup);
   const deleteInstanceGroup = useStore((s) => s.deleteInstanceGroup);
   const moveInstanceToGroup = useStore((s) => s.moveInstanceToGroup);
+  const refreshInstances = useStore((s) => s.refreshInstances);
   const reorderInstanceGroups = useStore((s) => s.reorderInstanceGroups);
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
@@ -164,6 +201,9 @@ export function InstancesView() {
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
   const [removing, setRemoving] = useState<Instance | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [removingPicked, setRemovingPicked] = useState(false);
   const [removingGroup, setRemovingGroup] = useState<InstanceGroup | null>(null);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -231,10 +271,106 @@ export function InstancesView() {
     return sortInstances(scoped, sort);
   }, [filtered, active, groupOf, sort]);
 
+  const pickedInstances = useMemo(
+    () => instances.filter((instance) => picked.has(instance.id)),
+    [instances, picked],
+  );
+
+  const togglePicked = (id: string) =>
+    setPicked((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  const leaveSelecting = () => {
+    setSelecting(false);
+    setPicked(new Set());
+  };
+
+  const movePicked = async (groupId: string | null) => {
+    const failures: string[] = [];
+    for (const instance of pickedInstances) {
+      if ((placements.get(instance.id)?.group_id ?? null) === groupId) continue;
+      try {
+        await moveInstanceToGroup(instance.id, groupId);
+      } catch (error) {
+        failures.push(`${instance.name}: ${String(error)}`);
+      }
+    }
+    leaveSelecting();
+    if (failures.length > 0) {
+      toast.error(`Could not move ${failures.length} instances`, {
+        description: failures.join("\n"),
+      });
+    }
+  };
+
+  const removePicked = async () => {
+    const ids = pickedInstances.map((instance) => instance.id);
+    const failures = await deleteInstances(ids);
+    setRemovingPicked(false);
+    leaveSelecting();
+    if (failures.length > 0) {
+      toast.error(`Could not delete ${failures.length} of ${ids.length}`, {
+        description: failures.join("\n"),
+      });
+    }
+  };
+
+  const toolbarMenu = (): MenuItem[] => [
+    {
+      label: selecting ? "Exit selection" : "Select instances",
+      icon: ListChecks,
+      disabled: instances.length === 0,
+      onSelect: () => (selecting ? leaveSelecting() : setSelecting(true)),
+    },
+    {
+      label: "New group",
+      icon: FolderPlus,
+      onSelect: () => setCreatingGroup(true),
+    },
+    {
+      label: "Import from file",
+      icon: FileArchive,
+      separated: true,
+      onSelect: choosePack,
+    },
+    {
+      label: "Refresh instances",
+      icon: RotateCw,
+      onSelect: () =>
+        void refreshInstances().catch((error) =>
+          toast.error("Could not refresh instances", { description: String(error) }),
+        ),
+    },
+  ];
+
+  const moveMenu = (): MenuItem[] => [
+    {
+      label: "Ungrouped",
+      icon: Folder,
+      onSelect: () => void movePicked(null),
+    },
+    ...groups.map((group) => ({
+      label: group.name,
+      icon: Folder,
+      onSelect: () => void movePicked(group.id),
+    })),
+  ];
+
   const instanceMenu = (instance: Instance): MenuItem[] => {
     const current = placements.get(instance.id)?.group_id ?? null;
     return [
       { label: "Open", icon: Boxes, onSelect: () => openInstance(instance.id) },
+      {
+        label: "Open folder",
+        icon: FolderOpen,
+        onSelect: () =>
+          void openPath(instance.dir).catch((error) =>
+            toast.error("Could not open the folder", { description: String(error) }),
+          ),
+      },
       { label: "Edit", icon: Pencil, onSelect: () => setEditing(instance) },
       { label: "Duplicate", icon: Copy, onSelect: () => void duplicate(instance) },
       {
@@ -458,25 +594,17 @@ export function InstancesView() {
             ))}
           </div>
           <button
-            onClick={choosePack}
-            aria-label="Import a pack file"
-            title="Import an .mrpack, CurseForge pack, or pack.toml"
-            className="grid size-8 place-items-center rounded-lg border border-border-soft bg-surface-2/60 text-content-faint transition-colors hover:text-content"
-          >
-            <FileArchive className="size-4" />
-          </button>
-          <button
-            onClick={() => setCreatingGroup((value) => !value)}
-            aria-label="Create instance group"
-            title="Create group"
+            onClick={(event) => openMenu(event, toolbarMenu(), undefined, { below: true })}
+            aria-label="More actions"
+            title="More actions"
             className={cn(
               "grid size-8 place-items-center rounded-lg border transition-colors",
-              creatingGroup
+              selecting || creatingGroup
                 ? "border-(--accent)/40 bg-(--accent)/10 text-(--accent)"
                 : "border-border-soft bg-surface-2/60 text-content-faint hover:text-content",
             )}
           >
-            <FolderPlus className="size-4" />
+            <MoreVertical className="size-4" />
           </button>
           <Button onClick={() => setModalOpen(true)}>
             <Plus className="size-4" />
@@ -484,6 +612,50 @@ export function InstancesView() {
           </Button>
         </div>
       </div>
+
+      {selecting && (
+        <div className="flex items-center gap-3 border-b border-border-soft bg-surface-2/40 px-8 py-2.5">
+          <span className="text-xs font-medium text-content">{picked.size} selected</span>
+          <button
+            onClick={() => setPicked(new Set(shown.map((instance) => instance.id)))}
+            className="text-xs text-content-muted transition-colors hover:text-content"
+          >
+            Select all {shown.length}
+          </button>
+          {picked.size > 0 && (
+            <button
+              onClick={() => setPicked(new Set())}
+              className="text-xs text-content-muted transition-colors hover:text-content"
+            >
+              Clear
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={leaveSelecting}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-content-muted transition-colors hover:text-content"
+            >
+              Done
+            </button>
+            <button
+              onClick={(event) => openMenu(event, moveMenu(), "Move to", { below: true })}
+              disabled={picked.size === 0 || groups.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Folder className="size-3.5" />
+              Move to
+            </button>
+            <button
+              onClick={() => setRemovingPicked(true)}
+              disabled={picked.size === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-danger/15 px-3 py-1.5 text-xs font-semibold text-danger transition-colors hover:bg-danger/25 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="size-3.5" />
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
 
       {launchError && (
         <div className="mx-8 mt-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
@@ -649,10 +821,20 @@ export function InstancesView() {
                       }}
                       onContextMenu={(event) => openMenu(event, instanceMenu(it), it.name)}
                       className={cn(
-                        "flex items-center gap-4 overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 p-3 transition-colors hover:border-border",
+                        "relative isolate flex items-center gap-4 overflow-hidden rounded-2xl border bg-surface-2/60 p-3 transition-colors",
+                        picked.has(it.id)
+                          ? "border-(--accent)"
+                          : "border-border-soft hover:border-border",
                         dragging === it.id && "opacity-40",
                       )}
                     >
+                      {selecting && (
+                        <PickOverlay
+                          instance={it}
+                          checked={picked.has(it.id)}
+                          onToggle={() => togglePicked(it.id)}
+                        />
+                      )}
                       <button
                         onClick={() => openInstance(it.id)}
                         aria-label={`Open ${it.name}`}
@@ -701,10 +883,20 @@ export function InstancesView() {
                       }}
                       onContextMenu={(event) => openMenu(event, instanceMenu(it), it.name)}
                       className={cn(
-                        "group flex flex-col overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 transition-colors hover:border-border",
+                        "group relative isolate flex flex-col overflow-hidden rounded-2xl border bg-surface-2/60 transition-colors",
+                        picked.has(it.id)
+                          ? "border-(--accent)"
+                          : "border-border-soft hover:border-border",
                         dragging === it.id && "opacity-40",
                       )}
                     >
+                      {selecting && (
+                        <PickOverlay
+                          instance={it}
+                          checked={picked.has(it.id)}
+                          onToggle={() => togglePicked(it.id)}
+                        />
+                      )}
                       <div className="relative aspect-16/10 w-full overflow-hidden">
                         <Artwork media={mediaMap[it.id] ?? null} className="absolute inset-0 size-full transition-transform duration-500 group-hover:scale-105" />
                         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/90 via-black/45 to-transparent" />
@@ -797,6 +989,24 @@ export function InstancesView() {
         }}
         onCancel={() => setRemovingGroup(null)}
       />
+
+      <ConfirmDialog
+        open={removingPicked}
+        title={`Delete ${picked.size} ${picked.size === 1 ? "instance" : "instances"}?`}
+        description="Every selected instance folder is removed from disk, including its worlds, mods, configs and screenshots. This cannot be undone."
+        confirmLabel={`Delete ${picked.size}`}
+        requireText="delete"
+        onConfirm={removePicked}
+        onCancel={() => setRemovingPicked(false)}
+      >
+        <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-content-muted">
+          {pickedInstances.map((instance) => (
+            <li key={instance.id} className="wrap-break-word">
+              {instance.name}
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={!!removing}
