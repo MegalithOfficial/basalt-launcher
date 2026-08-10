@@ -25,7 +25,7 @@ impl Properties {
     pub fn parse(bytes: &[u8]) -> Self {
         let mut lines = Vec::new();
         let mut pending: Option<String> = None;
-        for raw in split_lines(&decode(bytes)) {
+        for raw in split_lines(&decode_latin1(bytes)) {
             let carried = match pending.take() {
                 Some(previous) => format!("{previous}\n{raw}"),
                 None => raw.clone(),
@@ -129,7 +129,7 @@ impl Properties {
             }
             text.push('\n');
         }
-        encode(&text)
+        encode_latin1(&text)
     }
 }
 
@@ -165,11 +165,11 @@ pub fn validate(text: &str) -> Option<TextProblem> {
     None
 }
 
-fn decode(bytes: &[u8]) -> String {
+pub fn decode_latin1(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| *byte as char).collect()
 }
 
-fn encode(text: &str) -> Vec<u8> {
+pub fn encode_latin1(text: &str) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(text.len());
     for character in text.chars() {
         if (character as u32) < 0x100 {

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
+pub mod files;
 pub mod properties;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
