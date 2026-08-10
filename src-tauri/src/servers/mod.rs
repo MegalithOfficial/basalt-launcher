@@ -2,6 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
+pub mod properties;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TextProblem {
+    pub line: usize,
+    pub column: usize,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServerFlavor {
