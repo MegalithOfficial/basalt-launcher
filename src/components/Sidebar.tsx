@@ -13,6 +13,7 @@ import {
   Pin,
   PinOff,
   Play,
+  Plus,
   Settings,
   Share,
   SquareChartGantt,
@@ -31,9 +32,9 @@ import { EditInstanceModal } from "./EditInstanceModal";
 import { ExportPackModal } from "./ExportPackModal";
 import { useStore } from "../store";
 
-const MAX_TILES = 5;
+const MAX_TILES = 8;
 const TILE_SIZE = 44;
-const TILE_GAP = 6;
+const TILE_GAP = 8;
 const DOCK_HEADING = 25;
 
 const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
@@ -78,7 +79,7 @@ function RailButton({
         aria-label={label}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "group relative grid size-12 place-items-center rounded-xl outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-(--accent)",
+          "group relative grid size-11 place-items-center rounded-xl outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-(--accent)",
           disabled
             ? "cursor-not-allowed text-content-faint/40"
             : active
@@ -133,7 +134,12 @@ function RecentTile({
         aria-current={active ? "page" : undefined}
         className="group relative grid size-11 place-items-center rounded-xl outline-none transition-transform duration-150 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-(--accent)"
       >
-        <span className="absolute inset-0 grid place-items-center overflow-hidden rounded-[10px] bg-surface-2">
+        <span
+          className={cn(
+            "absolute inset-0 grid place-items-center overflow-hidden rounded-[10px]",
+            src === logo ? "bg-transparent" : "bg-surface-2",
+          )}
+        >
           {src ? (
             <img
               src={src}
@@ -141,7 +147,8 @@ function RecentTile({
               alt=""
               draggable={false}
               className={cn(
-                "size-full object-cover",
+                "size-full",
+                src === logo ? "object-contain" : "object-cover",
                 src === banner && media && !media.local && "[image-rendering:pixelated]",
               )}
             />
@@ -154,7 +161,13 @@ function RecentTile({
         <span
           className={cn(
             "pointer-events-none absolute inset-0 rounded-[10px] ring-inset transition-colors",
-            active ? "ring-2 ring-(--accent)" : running ? "ring-2 ring-ok" : "ring-1 ring-white/10",
+            active
+              ? "ring-2 ring-(--accent)"
+              : running
+                ? "ring-2 ring-ok"
+                : src === logo
+                  ? "ring-0"
+                  : "ring-1 ring-white/10",
           )}
         />
         {pinned && (
@@ -187,6 +200,7 @@ export function Sidebar() {
   const deleteInstance = useStore((s) => s.deleteInstance);
   const duplicateInstance = useStore((s) => s.duplicateInstance);
   const repairInstance = useStore((s) => s.repairInstance);
+  const startInstanceCreate = useStore((s) => s.startInstanceCreate);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const dockRef = useRef<HTMLDivElement>(null);
@@ -197,7 +211,8 @@ export function Sidebar() {
     if (!node) return;
     const measure = () => {
       const room = node.clientHeight - DOCK_HEADING;
-      setCapacity(Math.max(0, Math.floor((room + TILE_GAP) / (TILE_SIZE + TILE_GAP))));
+      const slots = Math.floor((room + TILE_GAP) / (TILE_SIZE + TILE_GAP));
+      setCapacity(Math.max(0, slots - 1));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -363,7 +378,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="relative z-30 flex w-18.5 shrink-0 flex-col items-center border-r border-border-soft bg-surface/40 py-3">
+    <aside className="relative z-30 flex w-16 shrink-0 flex-col items-center border-r border-border-soft bg-surface/40 py-3">
       <button
         onClick={() => setView("home")}
         aria-label="Basalt"
@@ -377,50 +392,56 @@ export function Sidebar() {
         />
       </button>
 
-      <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
+      <div className="my-3 h-px w-7 shrink-0 bg-border-soft" />
 
-      <nav className="flex w-full flex-col items-center gap-1">
+      <nav className="flex w-full flex-col items-center gap-2">
         {NAV.map(({ id, label, icon: Icon }) => (
           <RailButton key={id} label={label} active={view === id} onClick={() => setView(id)}>
-            <Icon className="size-5.25" />
+            <Icon className="size-5" />
           </RailButton>
         ))}
       </nav>
 
       <div ref={dockRef} className="flex min-h-0 w-full flex-1 flex-col items-center overflow-hidden">
-        {shownTiles.length > 0 && (
-          <>
-            <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
-            <div className="flex w-full flex-col items-center gap-1.5">
-              {shownTiles.map((instance) => (
-              <RecentTile
-                key={instance.id}
-                instance={instance}
-                media={mediaMap[instance.id] ?? null}
-                active={view === "instance" && detailInstanceId === instance.id}
-                running={runningIds.has(instance.id)}
-                pinned={pins.includes(instance.id)}
-                onClick={() => openInstance(instance.id)}
-                onContextMenu={(e) =>
-                  openMenu(e, tileMenu(instance), instance.name, { fromElement: true })
-                }
-                />
-              ))}
-            </div>
-          </>
-        )}
+        <div className="my-3 h-px w-7 shrink-0 bg-border-soft" />
+        <div className="flex w-full flex-col items-center gap-2">
+          {shownTiles.map((instance) => (
+            <RecentTile
+              key={instance.id}
+              instance={instance}
+              media={mediaMap[instance.id] ?? null}
+              active={view === "instance" && detailInstanceId === instance.id}
+              running={runningIds.has(instance.id)}
+              pinned={pins.includes(instance.id)}
+              onClick={() => openInstance(instance.id)}
+              onContextMenu={(e) =>
+                openMenu(e, tileMenu(instance), instance.name, { fromElement: true })
+              }
+            />
+          ))}
+          <div className="relative flex w-full justify-center">
+            <button
+              onClick={startInstanceCreate}
+              aria-label="New instance"
+              className="group relative grid size-11 place-items-center rounded-xl border border-dashed border-border text-content-faint outline-none transition-colors hover:border-(--accent)/50 hover:bg-surface-2 hover:text-content focus-visible:ring-2 focus-visible:ring-(--accent)"
+            >
+              <Plus className="size-4.5" />
+              <RailLabel>New instance</RailLabel>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="my-3 h-px w-8 shrink-0 bg-border-soft" />
+      <div className="my-3 h-px w-7 shrink-0 bg-border-soft" />
 
-      <div className="flex w-full flex-col items-center gap-1">
+      <div className="flex w-full flex-col items-center gap-2">
         <RailButton
           label={anyRunning ? "Logs (running)" : "Logs"}
           active={view === "logs"}
           onClick={() => setView("logs")}
         >
           <span className="relative">
-            <SquareChartGantt className="size-5.25" />
+            <SquareChartGantt className="size-5" />
             {anyRunning && view !== "logs" && (
               <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ok ring-2 ring-void" />
             )}
@@ -432,7 +453,7 @@ export function Sidebar() {
           active={view === "stats"}
           onClick={() => setView("stats")}
         >
-          <ChartNoAxesColumn className="size-5.25" />
+          <ChartNoAxesColumn className="size-5" />
         </RailButton>
 
         <RailButton
@@ -440,7 +461,7 @@ export function Sidebar() {
           active={view === "settings"}
           onClick={() => setView("settings")}
         >
-          <Settings className="size-5.25" />
+          <Settings className="size-5" />
         </RailButton>
 
         <RailButton
@@ -449,9 +470,9 @@ export function Sidebar() {
           onClick={() => setView("accounts")}
         >
           {activeAccount ? (
-            <PlayerHead uuid={activeAccount.id} name={activeAccount.name} size={30} />
+            <PlayerHead uuid={activeAccount.id} name={activeAccount.name} size={28} />
           ) : (
-            <UserCircle2 className="size-5.25" />
+            <UserCircle2 className="size-5" />
           )}
         </RailButton>
       </div>

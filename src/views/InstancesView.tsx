@@ -190,6 +190,8 @@ export function InstancesView() {
   const deleteInstanceGroup = useStore((s) => s.deleteInstanceGroup);
   const moveInstanceToGroup = useStore((s) => s.moveInstanceToGroup);
   const refreshInstances = useStore((s) => s.refreshInstances);
+  const creatingInstance = useStore((s) => s.creatingInstance);
+  const endInstanceCreate = useStore((s) => s.endInstanceCreate);
   const reorderInstanceGroups = useStore((s) => s.reorderInstanceGroups);
   const mediaMap = useStore((s) => s.media);
   const loadMedia = useStore((s) => s.loadMedia);
@@ -527,6 +529,12 @@ export function InstancesView() {
   useEffect(() => {
     instances.forEach((i) => loadMedia(i.id));
   }, [instances, loadMedia]);
+
+  useEffect(() => {
+    if (!creatingInstance) return;
+    setModalOpen(true);
+    endInstanceCreate();
+  }, [creatingInstance, endInstanceCreate]);
 
   useEffect(() => {
     if (active === "all" || active === "ungrouped") return;

@@ -178,6 +178,9 @@ interface AppStore {
   selectedInstanceId: string | null;
 
   setView: (view: View) => void;
+  creatingInstance: boolean;
+  startInstanceCreate: () => void;
+  endInstanceCreate: () => void;
   init: () => Promise<void>;
   refreshInstances: () => Promise<void>;
   refreshInstanceOrganization: () => Promise<void>;
@@ -208,7 +211,6 @@ interface AppStore {
     envVarsMode?: string | null,
   ) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
-  /** Deletes each instance in turn and resolves with a message per failure. */
   deleteInstances: (ids: string[]) => Promise<string[]>;
   pins: string[];
   togglePin: (id: string) => void;
@@ -442,6 +444,11 @@ export const useStore = create<AppStore>((set) => ({
   appUpdateStatus: null,
 
   setView: (view) => set({ view, viewStack: [] }),
+
+  creatingInstance: false,
+  startInstanceCreate: () =>
+    set({ view: "instances", viewStack: [], creatingInstance: true }),
+  endInstanceCreate: () => set({ creatingInstance: false }),
 
   goBack: () =>
     set((s) => ({
