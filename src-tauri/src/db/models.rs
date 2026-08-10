@@ -30,6 +30,15 @@ pub struct ActiveRun {
     pub checkpointed_at: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveServerRun {
+    pub running_id: String,
+    pub server_id: String,
+    pub pid: u32,
+    pub process_started_at: u64,
+    pub started_at: i64,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BannerRecord {
     pub id: String,

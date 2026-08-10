@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 13;
+pub(super) const SCHEMA_VERSION: i64 = 14;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -149,6 +149,43 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             sort_order INTEGER NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS servers(
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            flavor TEXT NOT NULL,
+            version_id TEXT NOT NULL,
+            flavor_version TEXT,
+            created_at TEXT NOT NULL,
+            managed INTEGER NOT NULL DEFAULT 1,
+            external_dir TEXT,
+            launch_jar TEXT,
+            launch_argfiles TEXT,
+            min_memory_mb INTEGER,
+            max_memory_mb INTEGER,
+            java_path TEXT,
+            jvm_args TEXT,
+            jvm_args_mode TEXT,
+            stop_timeout_secs INTEGER,
+            eula_accepted_at INTEGER,
+            installed_at INTEGER,
+            last_started_at INTEGER,
+            uptime_secs INTEGER NOT NULL DEFAULT 0,
+            cached_port INTEGER,
+            cached_motd TEXT,
+            cached_max_players INTEGER,
+            notes TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS active_server_runs(
+            running_id TEXT PRIMARY KEY,
+            server_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            process_started_at INTEGER NOT NULL,
+            started_at INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS active_server_runs_server
+            ON active_server_runs(server_id);
+
         CREATE TABLE IF NOT EXISTS skins(
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -264,6 +301,8 @@ mod tests {
         assert!(super::table_exists(&conn, "active_runs").unwrap());
         assert!(column_exists(&conn, "active_runs", "checkpointed_at").unwrap());
         assert!(super::table_exists(&conn, "instance_groups").unwrap());
+        assert!(super::table_exists(&conn, "servers").unwrap());
+        assert!(super::table_exists(&conn, "active_server_runs").unwrap());
         assert!(super::table_exists(&conn, "play_sessions").unwrap());
         assert!(column_exists(&conn, "instances", "group_id").unwrap());
         assert!(!column_exists(&conn, "accounts", "mc_access_token").unwrap());

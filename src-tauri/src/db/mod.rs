@@ -17,15 +17,16 @@ mod migrations;
 mod models;
 mod operations;
 mod runs;
+mod servers;
 mod settings;
 mod skins;
 mod stats;
 
 pub use datapacks::DatapackRecord;
 pub use models::{
-    ActiveRun, BannerRecord, CachedResponse, ContentFile, ContentUpdate, DayBucket, InstanceGroup,
-    InstanceOrganization, InstancePlacement, InstancePlayStat, LoaderPlayStat, PendingOperation,
-    PlaySession, PlayStats, SkinRecord,
+    ActiveRun, ActiveServerRun, BannerRecord, CachedResponse, ContentFile, ContentUpdate,
+    DayBucket, InstanceGroup, InstanceOrganization, InstancePlacement, InstancePlayStat,
+    LoaderPlayStat, PendingOperation, PlaySession, PlayStats, SkinRecord,
 };
 
 use migrations::{migrate, SCHEMA_VERSION};

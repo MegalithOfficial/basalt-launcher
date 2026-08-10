@@ -25,6 +25,7 @@ mod packs;
 mod paths;
 mod presence;
 mod search;
+mod servers;
 mod skin;
 mod snapshots;
 mod state;
