@@ -1058,6 +1058,7 @@ export interface ServerRunningInfo {
   state: ServerState;
   exit_code: number | null;
   attached: boolean;
+  supervised: boolean;
 }
 
 export interface ConsoleLine {
@@ -1070,6 +1071,19 @@ export interface ServerUsage {
   cpu_percent: number;
   cpu_percent_normalized: number;
   memory_mb: number;
+}
+
+export type PlayerList = "ops" | "whitelist" | "banned";
+
+export interface PlayerEntry {
+  uuid: string;
+  name: string;
+  level?: number | null;
+  bypassesPlayerLimit?: boolean | null;
+  created?: string | null;
+  source?: string | null;
+  expires?: string | null;
+  reason?: string | null;
 }
 
 export interface ServerProperty {

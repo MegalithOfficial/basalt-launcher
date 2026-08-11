@@ -62,6 +62,8 @@ import type {
   ServerEntry,
   ServerFlavor,
   ServerSoftware,
+  PlayerEntry,
+  PlayerList,
   ServerFolder,
   ServerProperty,
   ServerRunningInfo,
@@ -508,6 +510,14 @@ export const api = {
     call<void>("delete_server_content", { serverId, fileName }),
   addServerContent: (serverId: string, sources: string[]) =>
     call<number>("add_server_content", { serverId, sources }),
+  listServerPlayers: (serverId: string, list: PlayerList) =>
+    call<PlayerEntry[]>("list_server_players", { serverId, list }),
+  addServerPlayer: (serverId: string, list: PlayerList, name: string, reason: string | null) =>
+    call<void>("add_server_player", { serverId, list, name, reason }),
+  removeServerPlayer: (serverId: string, list: PlayerList, name: string) =>
+    call<void>("remove_server_player", { serverId, list, name }),
+  setServerWhitelist: (serverId: string, enabled: boolean) =>
+    call<void>("set_server_whitelist", { serverId, enabled }),
   checkServerContentUpdates: (serverId: string, force?: boolean) =>
     call<ContentUpdate[]>("check_server_content_updates", { serverId, force }),
   planServerContentInstall: (

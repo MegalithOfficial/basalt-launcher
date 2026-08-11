@@ -20,6 +20,8 @@ import { ServerSettingsPanel } from "../components/servers/ServerSettingsPanel";
 import { ServerStatusPill } from "../components/servers/ServerStatusPill";
 import { ConsoleStats } from "../components/servers/ConsoleStats";
 import { ServerContentPanel } from "../components/servers/ServerContentPanel";
+import { PlayersPanel } from "../components/servers/PlayersPanel";
+import { DetachedNotice } from "../components/servers/DetachedNotice";
 import { StatsSidebar } from "../components/servers/StatsSidebar";
 import { UsageMeter } from "../components/servers/UsageMeter";
 import { api } from "../lib/api";
@@ -43,6 +45,7 @@ const DISK_POLL_MS = 30000;
 const TABS = [
   { id: "console", label: "Console" },
   { id: "content", label: "Content" },
+  { id: "players", label: "Players" },
   { id: "files", label: "Files" },
   { id: "properties", label: "Properties" },
   { id: "settings", label: "Settings" },
@@ -303,8 +306,14 @@ export function ServerView() {
         </div>
       )}
 
+      {live && info && !info.attached && <DetachedNotice serverId={server.id} />}
+
       <div className="flex items-center gap-1 border-b border-border-soft px-6 pt-1">
-        {TABS.filter((entry) => entry.id !== "content" || contentLabel !== null).map((entry) => (
+        {TABS.filter(
+          (entry) =>
+            (entry.id !== "content" || contentLabel !== null) &&
+            (entry.id !== "players" || !isNative(software, server.flavor)),
+        ).map((entry) => (
           <button
             key={entry.id}
             onClick={() => setTab(entry.id)}
@@ -346,6 +355,7 @@ export function ServerView() {
       {tab === "content" && contentLabel && (
         <ServerContentPanel server={server} label={contentLabel} live={live} />
       )}
+      {tab === "players" && <PlayersPanel server={server} live={live} />}
       {tab === "files" && <FilesPanel server={server} />}
       {tab === "properties" && <PropertiesPanel server={server} live={live} />}
       {tab === "settings" && <ServerSettingsPanel server={server} live={live} />}

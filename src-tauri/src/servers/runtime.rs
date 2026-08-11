@@ -30,7 +30,7 @@ use crate::{
     state::AppState,
 };
 
-use super::{properties::Properties, provision, Server};
+use super::{control, properties::Properties, provision, Server};
 
 const MAX_CONSOLE_LINES: usize = 6000;
 const EVENT_BATCH_LINES: usize = 256;
@@ -60,6 +60,7 @@ pub struct ServerRunningInfo {
     pub state: String,
     pub exit_code: Option<i32>,
     pub attached: bool,
+    pub supervised: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +73,9 @@ enum Control {
     Attached {
         stdin: Arc<AsyncMutex<Option<ChildStdin>>>,
         kill: Option<oneshot::Sender<()>>,
+    },
+    Supervised {
+        writer: Arc<AsyncMutex<control::client::Writer>>,
     },
     Recovered {
         process_started_at: u64,
@@ -99,7 +103,11 @@ impl ServerHandle {
             started_at: self.started_at,
             state: status.state,
             exit_code: status.exit_code,
-            attached: matches!(self.control, Control::Attached { .. }),
+            attached: matches!(
+                self.control,
+                Control::Attached { .. } | Control::Supervised { .. }
+            ),
+            supervised: matches!(self.control, Control::Supervised { .. }),
         }
     }
 
@@ -468,61 +476,110 @@ pub async fn start(
         )
     };
     let started_at = now();
-
-    tracing::info!(program = %program.display(), dir = %dir.display(), "starting server");
-    let mut child = Command::new(&program)
-        .args(&args)
-        .current_dir(&dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .inspect_err(|error| tracing::error!(%error, "could not spawn the server process"))?;
-
-    let pid = child.id().unwrap_or(0);
-    let identity = identity_of(server, &running_id)?;
-    let Some(process_started_at) = spawned_process_start(pid, &identity) else {
-        let _ = child.start_kill();
-        return Err(Error::other("Basalt could not verify the server process."));
-    };
-
-    state.db.save_active_server_run(&ActiveServerRun {
-        running_id: running_id.clone(),
-        server_id: server.id.clone(),
-        pid,
-        process_started_at,
-        started_at,
-    })?;
-    state.db.start_server_run(&server.id, started_at)?;
-
     let console = Arc::new(Mutex::new(Vec::new()));
     let status = Arc::new(Mutex::new(RunStatus {
         state: "running".to_string(),
         exit_code: None,
     }));
-    let (sender, receiver) = mpsc::unbounded_channel();
-    if let Some(stdout) = child.stdout.take() {
-        spawn_reader("stdout", stdout, sender.clone());
-    }
-    if let Some(stderr) = child.stderr.take() {
-        spawn_reader("stderr", stderr, sender);
-    }
-    spawn_console_flusher(app.clone(), server.id.clone(), console.clone(), receiver);
 
-    let stdin = Arc::new(AsyncMutex::new(child.stdin.take()));
-    let (kill_tx, kill_rx) = oneshot::channel::<()>();
-    let supervisor = Supervisor {
-        app: app.clone(),
-        db: state.db.clone(),
-        registry: state.servers.clone(),
-        server_id: server.id.clone(),
-        running_id: running_id.clone(),
-        started_at,
-        pid,
-        status: status.clone(),
-        console: console.clone(),
+    tracing::info!(program = %program.display(), dir = %dir.display(), "starting server");
+    let supervised =
+        control::launch::start(&server.id, &state.paths.servers(), &dir, &program, &args).await?;
+
+    let pid;
+    let control = match supervised {
+        control::launch::Outcome::Supervised(session) => {
+            pid = session.pid;
+            let process_started_at = session.started_at;
+            let (writer, reader) = session.split();
+
+            record_run(
+                state,
+                server,
+                &running_id,
+                pid,
+                process_started_at,
+                started_at,
+            )?;
+
+            let (sender, receiver) = mpsc::unbounded_channel();
+            spawn_console_flusher(app.clone(), server.id.clone(), console.clone(), receiver);
+            let watcher = Supervisor {
+                app: app.clone(),
+                db: state.db.clone(),
+                registry: state.servers.clone(),
+                server_id: server.id.clone(),
+                running_id: running_id.clone(),
+                started_at,
+                pid,
+                status: status.clone(),
+                console: console.clone(),
+            };
+            watcher.follow(reader, sender);
+
+            Control::Supervised {
+                writer: Arc::new(AsyncMutex::new(writer)),
+            }
+        }
+        control::launch::Outcome::Unavailable(reason) => {
+            tracing::warn!(%reason, "running this server without a supervisor");
+            let mut child = Command::new(&program)
+                .args(&args)
+                .current_dir(&dir)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .inspect_err(
+                    |error| tracing::error!(%error, "could not spawn the server process"),
+                )?;
+
+            pid = child.id().unwrap_or(0);
+            let identity = identity_of(server, &running_id)?;
+            let Some(process_started_at) = spawned_process_start(pid, &identity) else {
+                let _ = child.start_kill();
+                return Err(Error::other("Basalt could not verify the server process."));
+            };
+
+            record_run(
+                state,
+                server,
+                &running_id,
+                pid,
+                process_started_at,
+                started_at,
+            )?;
+
+            let (sender, receiver) = mpsc::unbounded_channel();
+            if let Some(stdout) = child.stdout.take() {
+                spawn_reader("stdout", stdout, sender.clone());
+            }
+            if let Some(stderr) = child.stderr.take() {
+                spawn_reader("stderr", stderr, sender);
+            }
+            spawn_console_flusher(app.clone(), server.id.clone(), console.clone(), receiver);
+
+            let stdin = Arc::new(AsyncMutex::new(child.stdin.take()));
+            let (kill_tx, kill_rx) = oneshot::channel::<()>();
+            let watcher = Supervisor {
+                app: app.clone(),
+                db: state.db.clone(),
+                registry: state.servers.clone(),
+                server_id: server.id.clone(),
+                running_id: running_id.clone(),
+                started_at,
+                pid,
+                status: status.clone(),
+                console: console.clone(),
+            };
+            watcher.watch(child, kill_rx);
+
+            Control::Attached {
+                stdin,
+                kill: Some(kill_tx),
+            }
+        }
     };
-    supervisor.watch(child, kill_rx);
 
     let handle = ServerHandle {
         server_id: server.id.clone(),
@@ -531,10 +588,7 @@ pub async fn start(
         started_at,
         status,
         console,
-        control: Control::Attached {
-            stdin,
-            kill: Some(kill_tx),
-        },
+        control,
     };
     let info = handle.info();
     state
@@ -544,6 +598,24 @@ pub async fn start(
         .insert(server.id.clone(), handle);
     emit_state(app, info.clone());
     Ok(info)
+}
+
+fn record_run(
+    state: &AppState,
+    server: &Server,
+    running_id: &str,
+    pid: u32,
+    process_started_at: u64,
+    started_at: i64,
+) -> Result<()> {
+    state.db.save_active_server_run(&ActiveServerRun {
+        running_id: running_id.to_string(),
+        server_id: server.id.clone(),
+        pid,
+        process_started_at,
+        started_at,
+    })?;
+    state.db.start_server_run(&server.id, started_at)
 }
 
 struct Supervisor {
@@ -568,64 +640,102 @@ impl Supervisor {
                     child.wait().await
                 }
             };
-            let code = exit.ok().and_then(|status| status.code());
-            let state = if matches!(code, Some(0) | None) {
-                "exited"
-            } else {
-                "crashed"
-            };
-            {
-                let mut guard = self.status.lock().unwrap();
-                guard.state = state.to_string();
-                guard.exit_code = code;
-            }
-
-            let ended_at = now();
-            if state == "crashed" {
-                let tail = {
-                    let console = self.console.lock().unwrap();
-                    console
-                        .iter()
-                        .rev()
-                        .take(12)
-                        .map(|line| line.line.clone())
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                };
-                tracing::error!(
-                    server_id = %self.server_id,
-                    pid = self.pid,
-                    exit_code = ?code,
-                    "server exited abnormally:\n{tail}"
-                );
-            } else {
-                tracing::info!(server_id = %self.server_id, pid = self.pid, exit_code = ?code, "server stopped");
-            }
-
-            if let Err(error) = self
-                .db
-                .add_server_uptime(&self.server_id, ended_at - self.started_at)
-            {
-                tracing::warn!(%error, "could not record the server uptime");
-            }
-            if let Err(error) = self.db.clear_active_server_run(&self.running_id) {
-                tracing::warn!(%error, "could not clear the finished server run");
-            }
-
-            let info = self
-                .registry
-                .lock()
-                .unwrap()
-                .get(&self.server_id)
-                .map(ServerHandle::info);
-            if let Some(info) = info {
-                emit_state(&self.app, info);
-            }
+            self.finish(exit.ok().and_then(|status| status.code()));
         });
     }
+
+    fn follow(
+        self,
+        mut reader: control::client::Reader,
+        sender: mpsc::UnboundedSender<(&'static str, String)>,
+    ) {
+        tauri::async_runtime::spawn(async move {
+            let mut code = None;
+            while let Some(event) = reader.next().await {
+                match event {
+                    control::Event::Log { stream, line } => {
+                        let stream = if stream == "stderr" {
+                            "stderr"
+                        } else {
+                            "stdout"
+                        };
+                        if sender.send((stream, line)).is_err() {
+                            break;
+                        }
+                    }
+                    control::Event::Exit { code: reported } => {
+                        code = reported;
+                        break;
+                    }
+                    control::Event::Ready { .. } | control::Event::Refused { .. } => {}
+                }
+            }
+            self.finish(code);
+        });
+    }
+
+    fn finish(self, code: Option<i32>) {
+        let state = if matches!(code, Some(0) | None) {
+            "exited"
+        } else {
+            "crashed"
+        };
+        {
+            let mut guard = self.status.lock().unwrap();
+            guard.state = state.to_string();
+            guard.exit_code = code;
+        }
+
+        let ended_at = now();
+        if state == "crashed" {
+            let tail = {
+                let console = self.console.lock().unwrap();
+                console
+                    .iter()
+                    .rev()
+                    .take(12)
+                    .map(|line| line.line.clone())
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            tracing::error!(
+                server_id = %self.server_id,
+                pid = self.pid,
+                exit_code = ?code,
+                "server exited abnormally:\n{tail}"
+            );
+        } else {
+            tracing::info!(server_id = %self.server_id, pid = self.pid, exit_code = ?code, "server stopped");
+        }
+
+        if let Err(error) = self
+            .db
+            .add_server_uptime(&self.server_id, ended_at - self.started_at)
+        {
+            tracing::warn!(%error, "could not record the server uptime");
+        }
+        if let Err(error) = self.db.clear_active_server_run(&self.running_id) {
+            tracing::warn!(%error, "could not clear the finished server run");
+        }
+
+        let info = self
+            .registry
+            .lock()
+            .unwrap()
+            .get(&self.server_id)
+            .map(ServerHandle::info);
+        if let Some(info) = info {
+            emit_state(&self.app, info);
+        }
+    }
+}
+
+enum Reach {
+    Pipe(Arc<AsyncMutex<Option<ChildStdin>>>),
+    Supervisor(Arc<AsyncMutex<control::client::Writer>>),
 }
 
 pub async fn send_command(state: &AppState, server_id: &str, line: &str) -> Result<()> {
@@ -638,13 +748,27 @@ pub async fn send_command(state: &AppState, server_id: &str, line: &str) -> Resu
             return Err(Error::other("This server is not running."));
         }
         match &handle.control {
-            Control::Attached { stdin, .. } => stdin.clone(),
+            Control::Attached { stdin, .. } => Reach::Pipe(stdin.clone()),
+            Control::Supervised { writer, .. } => Reach::Supervisor(writer.clone()),
             Control::Recovered { .. } => {
                 return Err(Error::other(
                     "This server was started before Basalt restarted, so commands cannot reach it. Restart it from Basalt to get the console back.",
                 ))
             }
         }
+    };
+
+    let stdin = match stdin {
+        Reach::Supervisor(writer) => {
+            return writer
+                .lock()
+                .await
+                .send(&control::Request::Send {
+                    line: line.trim_end().to_string(),
+                })
+                .await;
+        }
+        Reach::Pipe(stdin) => stdin,
     };
 
     let mut guard = stdin.lock().await;
@@ -668,7 +792,8 @@ pub async fn stop(app: &AppHandle, state: &AppState, server: &Server) -> Result<
         }
         handle.status.lock().unwrap().state = "stopping".to_string();
         match &handle.control {
-            Control::Attached { stdin, .. } => (Some(stdin.clone()), false),
+            Control::Attached { stdin, .. } => (Some(Reach::Pipe(stdin.clone())), false),
+            Control::Supervised { writer, .. } => (Some(Reach::Supervisor(writer.clone())), false),
             Control::Recovered { .. } => (None, true),
         }
     };
@@ -687,12 +812,18 @@ pub async fn stop(app: &AppHandle, state: &AppState, server: &Server) -> Result<
         return force_stop(state, &server.id);
     }
 
-    if let Some(stdin) = stdin {
-        let mut guard = stdin.lock().await;
-        if let Some(pipe) = guard.as_mut() {
-            pipe.write_all(b"stop\n").await?;
-            pipe.flush().await?;
+    match stdin {
+        Some(Reach::Supervisor(writer)) => {
+            writer.lock().await.send(&control::Request::Stop).await?;
         }
+        Some(Reach::Pipe(stdin)) => {
+            let mut guard = stdin.lock().await;
+            if let Some(pipe) = guard.as_mut() {
+                pipe.write_all(b"stop\n").await?;
+                pipe.flush().await?;
+            }
+        }
+        None => {}
     }
 
     let deadline = tokio::time::Instant::now() + stop_timeout(&state.runtime_settings()?, server);
@@ -721,6 +852,12 @@ pub fn force_stop(state: &AppState, server_id: &str) -> Result<()> {
     match &mut handle.control {
         Control::Attached { kill, .. } => {
             kill.take().map(|tx| tx.send(()).is_ok());
+        }
+        Control::Supervised { writer, .. } => {
+            let writer = writer.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = writer.lock().await.send(&control::Request::Kill).await;
+            });
         }
         Control::Recovered {
             process_started_at,
@@ -764,6 +901,14 @@ pub fn recover(app: &AppHandle, state: &AppState) -> Result<usize> {
             state.db.clear_active_server_run(&run.running_id)?;
             continue;
         };
+        if let Some(control) = control::client::read_for(&state.paths.servers(), &server.id) {
+            if control.child_pid == run.pid {
+                reconnect(app, state, &server, &run, control);
+                recovered += 1;
+                continue;
+            }
+        }
+
         let Ok(identity) = identity_of(&server, &run.running_id) else {
             state.db.clear_active_server_run(&run.running_id)?;
             continue;
@@ -819,6 +964,91 @@ pub fn recover(app: &AppHandle, state: &AppState) -> Result<usize> {
         tracing::info!(recovered, "reattached running servers");
     }
     Ok(recovered)
+}
+
+fn reconnect(
+    app: &AppHandle,
+    state: &AppState,
+    server: &Server,
+    run: &ActiveServerRun,
+    control: control::Control,
+) {
+    let app = app.clone();
+    let db = state.db.clone();
+    let registry = state.servers.clone();
+    let server_id = server.id.clone();
+    let running_id = run.running_id.clone();
+    let started_at = run.started_at;
+    let pid = run.pid;
+    let dir = PathBuf::from(&server.dir);
+    let files = state.files.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let session = match control::client::Session::connect(&control).await {
+            Ok(session) => session,
+            Err(error) => {
+                tracing::warn!(%error, server_id = %server_id, "could not reattach to the supervisor");
+                return;
+            }
+        };
+        let (writer, reader) = session.split();
+
+        let console = Arc::new(Mutex::new(Vec::new()));
+        let status = Arc::new(Mutex::new(RunStatus {
+            state: "running".to_string(),
+            exit_code: None,
+        }));
+        let handle = ServerHandle {
+            server_id: server_id.clone(),
+            running_id: running_id.clone(),
+            pid,
+            started_at,
+            status: status.clone(),
+            console: console.clone(),
+            control: Control::Supervised {
+                writer: Arc::new(AsyncMutex::new(writer)),
+            },
+        };
+        let info = handle.info();
+        registry.lock().unwrap().insert(server_id.clone(), handle);
+
+        backfill(&files, &dir, &console);
+
+        let (sender, receiver) = mpsc::unbounded_channel();
+        spawn_console_flusher(app.clone(), server_id.clone(), console.clone(), receiver);
+        let watcher = Supervisor {
+            app: app.clone(),
+            db,
+            registry,
+            server_id,
+            running_id,
+            started_at,
+            pid,
+            status,
+            console,
+        };
+        watcher.follow(reader, sender);
+        emit_state(&app, info);
+    });
+}
+
+fn backfill(files: &FileManager, dir: &Path, console: &Arc<Mutex<Vec<ConsoleLine>>>) {
+    let path = dir.join("logs").join("latest.log");
+    let Ok(text) = files.read(&path) else {
+        return;
+    };
+    let text = String::from_utf8_lossy(&text);
+    let lines = text
+        .lines()
+        .rev()
+        .take(MAX_CONSOLE_LINES)
+        .map(|line| ConsoleLine {
+            stream: "stdout".to_string(),
+            line: line.to_string(),
+        })
+        .collect::<Vec<_>>();
+    let mut buffer = console.lock().unwrap();
+    buffer.extend(lines.into_iter().rev());
 }
 
 fn spawn_log_tailer(

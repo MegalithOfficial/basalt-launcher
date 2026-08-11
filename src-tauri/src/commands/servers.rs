@@ -9,7 +9,7 @@ use crate::{
         config, content,
         files::{FileKind, ServerEntry, ServerText},
         import::{self, ServerFolder},
-        provision, runtime, software, Server, TextProblem,
+        players, provision, runtime, software, Server, TextProblem,
     },
     state::AppState,
     tasks::{TaskKind, TaskSpec},
@@ -550,6 +550,132 @@ pub fn add_server_content(
     let server = super::find_server(&state, &server_id)?;
     reachable(&server)?;
     content::add(&state.files, &server, &sources)
+}
+
+fn is_live(state: &AppState, server_id: &str) -> bool {
+    state
+        .servers
+        .lock()
+        .unwrap()
+        .get(server_id)
+        .is_some_and(runtime::ServerHandle::live)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn list_server_players(
+    state: State<AppState>,
+    server_id: String,
+    list: String,
+) -> Result<Vec<players::PlayerEntry>> {
+    let server = super::find_server(&state, &server_id)?;
+    let dir = reachable(&server)?;
+    Ok(players::read(
+        &state.files,
+        &dir,
+        players::PlayerList::parse(&list)?,
+    ))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn add_server_player(
+    state: State<'_, AppState>,
+    server_id: String,
+    list: String,
+    name: String,
+    reason: Option<String>,
+) -> Result<()> {
+    let server = super::find_server(&state, &server_id)?;
+    let dir = reachable(&server)?;
+    let list = players::PlayerList::parse(&list)?;
+
+    if is_live(&state, &server_id) {
+        return runtime::send_command(
+            &state,
+            &server_id,
+            &players::command_to_add(list, name.trim(), reason.as_deref()),
+        )
+        .await;
+    }
+
+    let (uuid, resolved) = players::look_up(&state.network, &name).await?;
+    let mut entries = players::read(&state.files, &dir, list);
+    if entries
+        .iter()
+        .any(|entry| entry.uuid.eq_ignore_ascii_case(&uuid))
+    {
+        return Err(Error::other(format!("{resolved} is already on this list.")));
+    }
+    entries.push(players::entry_for(list, uuid, resolved, reason));
+    players::write(&state.files, &dir, list, &entries)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn remove_server_player(
+    state: State<'_, AppState>,
+    server_id: String,
+    list: String,
+    name: String,
+) -> Result<()> {
+    let server = super::find_server(&state, &server_id)?;
+    let dir = reachable(&server)?;
+    let list = players::PlayerList::parse(&list)?;
+
+    if is_live(&state, &server_id) {
+        return runtime::send_command(
+            &state,
+            &server_id,
+            &players::command_to_remove(list, name.trim()),
+        )
+        .await;
+    }
+
+    let mut entries = players::read(&state.files, &dir, list);
+    let before = entries.len();
+    entries.retain(|entry| {
+        !entry.name.eq_ignore_ascii_case(name.trim())
+            && !entry.uuid.eq_ignore_ascii_case(name.trim())
+    });
+    if entries.len() == before {
+        return Err(Error::other(format!("{name} is not on this list.")));
+    }
+    players::write(&state.files, &dir, list, &entries)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn set_server_whitelist(
+    state: State<'_, AppState>,
+    server_id: String,
+    enabled: bool,
+) -> Result<()> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    if server.flavor.native() {
+        return Err(Error::other(format!(
+            "A {} server keeps this in {}.",
+            server.flavor.label(),
+            server.flavor.config_file()
+        )));
+    }
+
+    if is_live(&state, &server_id) {
+        let line = if enabled {
+            "whitelist on"
+        } else {
+            "whitelist off"
+        };
+        runtime::send_command(&state, &server_id, line).await?;
+    }
+
+    let entry = config::Entry {
+        key: "white-list".to_string(),
+        value: enabled.to_string(),
+    };
+    config::write(&state.files, &server, &[entry], &[])?;
+    Ok(())
 }
 
 #[tauri::command]

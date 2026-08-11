@@ -62,6 +62,20 @@ pub fn process_matches(pid: u32, process_started_at: u64, identity: &Identity) -
     })
 }
 
+pub fn process_start(pid: u32) -> Option<u64> {
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new();
+    refresh_process(&mut system, pid);
+    system.process(pid).map(sysinfo::Process::start_time)
+}
+
+pub fn kill_pid(pid: u32) -> bool {
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new();
+    refresh_process(&mut system, pid);
+    system.process(pid).is_some_and(sysinfo::Process::kill)
+}
+
 pub fn spawned_process_start(pid: u32, identity: &Identity) -> Option<u64> {
     let pid = Pid::from_u32(pid);
     let mut system = System::new();

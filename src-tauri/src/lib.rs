@@ -41,6 +41,14 @@ use state::AppState;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn supervisor_args(arguments: &[String]) -> Option<servers::control::supervise::Args> {
+    servers::control::supervise::parse_args(arguments)
+}
+
+pub fn supervise(args: servers::control::supervise::Args) -> ! {
+    servers::control::supervise::run(args)
+}
+
 pub fn run() {
     let launch_request = cli::startup_request();
     tauri::Builder::default()
@@ -334,6 +342,10 @@ pub fn run() {
             commands::servers::toggle_server_content,
             commands::servers::delete_server_content,
             commands::servers::add_server_content,
+            commands::servers::list_server_players,
+            commands::servers::add_server_player,
+            commands::servers::remove_server_player,
+            commands::servers::set_server_whitelist,
             commands::servers::plan_server_content_removal,
             commands::servers::check_server_content_updates,
             commands::servers::plan_server_content_install,

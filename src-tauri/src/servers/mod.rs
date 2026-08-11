@@ -4,8 +4,10 @@ use crate::{error::Result, state::AppState};
 
 pub mod config;
 pub mod content;
+pub mod control;
 pub mod files;
 pub mod import;
+pub mod players;
 pub mod properties;
 pub mod provision;
 pub mod runtime;
