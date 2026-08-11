@@ -57,6 +57,15 @@ import type {
   RunningInfo,
   SearchPage,
   SearchQuery,
+  ConsoleLine,
+  Server,
+  ServerEntry,
+  ServerFlavor,
+  ServerFolder,
+  ServerProperty,
+  ServerRunningInfo,
+  ServerText,
+  TextProblem,
   PendingOperation,
   SkinEntry,
   SystemStats,
@@ -486,6 +495,78 @@ export const api = {
   reclaimStorage: (targets: string[]) =>
     call<ReclaimOutcome>("reclaim_storage", { targets }),
   inspectPaths: (paths: string[]) => call<PathKind[]>("inspect_paths", { paths }),
+  listServers: () => call<Server[]>("list_servers"),
+  listServerFlavorVersions: (flavor: ServerFlavor, versionId: string) =>
+    call<string[]>("list_server_flavor_versions", { flavor, versionId }),
+  createServer: (
+    name: string,
+    flavor: ServerFlavor,
+    versionId: string,
+    flavorVersion: string | null,
+    acceptEula: boolean,
+  ) => call<Server>("create_server", { name, flavor, versionId, flavorVersion, acceptEula }),
+  inspectServerFolder: (path: string) => call<ServerFolder>("inspect_server_folder", { path }),
+  importServer: (
+    path: string,
+    name: string,
+    flavor: ServerFlavor,
+    versionId: string,
+    flavorVersion: string | null,
+    acceptEula: boolean,
+  ) => call<Server>("import_server", { path, name, flavor, versionId, flavorVersion, acceptEula }),
+  installServer: (serverId: string) => call<Server>("install_server", { serverId }),
+  updateServerSettings: (
+    serverId: string,
+    name: string,
+    minMemoryMb: number | null,
+    maxMemoryMb: number | null,
+    javaPath: string | null,
+    jvmArgs: string | null,
+    jvmArgsMode: string | null,
+    stopTimeoutSecs: number | null,
+    notes: string | null,
+  ) =>
+    call<Server>("update_server_settings", {
+      serverId,
+      name,
+      minMemoryMb,
+      maxMemoryMb,
+      javaPath,
+      jvmArgs,
+      jvmArgsMode,
+      stopTimeoutSecs,
+      notes,
+    }),
+  acceptServerEula: (serverId: string) => call<Server>("accept_server_eula", { serverId }),
+  deleteServer: (serverId: string, deleteFiles: boolean) =>
+    call<void>("delete_server", { serverId, deleteFiles }),
+  startServer: (serverId: string) => call<ServerRunningInfo>("start_server", { serverId }),
+  stopServer: (serverId: string) => call<void>("stop_server", { serverId }),
+  forceStopServer: (serverId: string) => call<void>("force_stop_server", { serverId }),
+  sendServerCommand: (serverId: string, line: string) =>
+    call<void>("send_server_command", { serverId, line }),
+  getServerConsole: (serverId: string) => call<ConsoleLine[]>("get_server_console", { serverId }),
+  listRunningServers: () => call<ServerRunningInfo[]>("list_running_servers"),
+  getServerProperties: (serverId: string) =>
+    call<ServerProperty[]>("get_server_properties", { serverId }),
+  setServerProperties: (serverId: string, changes: ServerProperty[], removed: string[]) =>
+    call<ServerProperty[]>("set_server_properties", { serverId, changes, removed }),
+  listServerFiles: (serverId: string, path: string) =>
+    call<ServerEntry[]>("list_server_files", { serverId, path }),
+  readServerFile: (serverId: string, path: string) =>
+    call<ServerText>("read_server_file", { serverId, path }),
+  writeServerFile: (serverId: string, path: string, text: string) =>
+    call<TextProblem | null>("write_server_file", { serverId, path, text }),
+  checkServerFile: (path: string, text: string) =>
+    call<TextProblem | null>("check_server_file", { path, text }),
+  createServerFolder: (serverId: string, path: string, name: string) =>
+    call<string>("create_server_folder", { serverId, path, name }),
+  renameServerEntry: (serverId: string, path: string, name: string) =>
+    call<string>("rename_server_entry", { serverId, path, name }),
+  deleteServerEntry: (serverId: string, path: string) =>
+    call<void>("delete_server_entry", { serverId, path }),
+  uploadServerFiles: (serverId: string, path: string, sources: string[]) =>
+    call<number>("upload_server_files", { serverId, path, sources }),
   openFolder: (path: string) => call<void>("open_folder", { path }),
   openFile: (path: string) => call<void>("open_file", { path }),
   getSystemStats: () => call<SystemStats>("get_system_stats"),

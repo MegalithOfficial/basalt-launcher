@@ -17,6 +17,7 @@ import { log } from "./lib/log";
 import type {
   AccountView,
   AppUpdateStatus,
+  ConsoleLine,
   ContentKind,
   ContentUpdate,
   PendingOperation,
@@ -34,6 +35,10 @@ import type {
   ManualDownloadSource,
   RunningInfo,
   RepairReport,
+  Server,
+  ServerFlavor,
+  ServerRunningInfo,
+  ServerUsage,
   SearchPage,
   SearchProvider,
   SortOrder,
@@ -45,6 +50,8 @@ import type {
 const MAX_LOG_RECORDS = 5000;
 const MAX_GAME_LOG_LINES = 6000;
 const PROCESS_LOG_FLUSH_MS = 80;
+const MAX_CONSOLE_LINES = 6000;
+const MAX_USAGE_SAMPLES = 120;
 
 const UNANNOUNCED = new Set<TaskKind>([
   "app_update",
@@ -90,6 +97,12 @@ interface AuthPayload {
 
 interface LogPayload {
   running_id: string;
+  stream: string;
+  lines: string[];
+}
+
+interface ConsolePayload {
+  server_id: string;
   stream: string;
   lines: string[];
 }
@@ -153,6 +166,10 @@ interface AppStore {
   auth: AuthFlow;
   running: Record<string, RunningInfo>;
   logs: Record<string, LogLine[]>;
+  servers: Server[];
+  serverRunning: Record<string, ServerRunningInfo>;
+  serverConsole: Record<string, ConsoleLine[]>;
+  serverUsage: Record<string, ServerUsage[]>;
   logRecords: LogRecord[];
   logConfig: LogConfig | null;
   skinRevision: number;
@@ -183,6 +200,26 @@ interface AppStore {
   endInstanceCreate: () => void;
   init: () => Promise<void>;
   refreshInstances: () => Promise<void>;
+  refreshServers: () => Promise<void>;
+  createServer: (
+    name: string,
+    flavor: ServerFlavor,
+    versionId: string,
+    flavorVersion: string | null,
+  ) => Promise<Server>;
+  importServer: (
+    path: string,
+    name: string,
+    flavor: ServerFlavor,
+    versionId: string,
+    flavorVersion: string | null,
+  ) => Promise<Server>;
+  installServer: (serverId: string) => Promise<void>;
+  startServer: (serverId: string) => Promise<void>;
+  stopServer: (serverId: string) => Promise<void>;
+  forceStopServer: (serverId: string) => Promise<void>;
+  sendServerCommand: (serverId: string, line: string) => Promise<void>;
+  deleteServer: (serverId: string, deleteFiles: boolean) => Promise<void>;
   refreshInstanceOrganization: () => Promise<void>;
   createInstanceGroup: (name: string) => Promise<InstanceGroup>;
   renameInstanceGroup: (id: string, name: string) => Promise<void>;
@@ -356,6 +393,39 @@ function enqueueProcessLog(payload: LogPayload) {
   processLogTimer ??= setTimeout(flushProcessLogs, PROCESS_LOG_FLUSH_MS);
 }
 
+const pendingConsole = new Map<string, ConsoleLine[]>();
+let consoleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushConsole() {
+  consoleTimer = null;
+  if (pendingConsole.size === 0) return;
+
+  const batches = new Map(pendingConsole);
+  pendingConsole.clear();
+  useStore.setState((state) => {
+    const serverConsole = { ...state.serverConsole };
+    for (const [serverId, incoming] of batches) {
+      const previous = serverConsole[serverId] ?? [];
+      const keepPrevious = Math.max(0, MAX_CONSOLE_LINES - incoming.length);
+      serverConsole[serverId] = [
+        ...previous.slice(-keepPrevious),
+        ...incoming.slice(-MAX_CONSOLE_LINES),
+      ];
+    }
+    return { serverConsole };
+  });
+}
+
+function enqueueConsole(payload: ConsolePayload) {
+  const pending = pendingConsole.get(payload.server_id) ?? [];
+  pending.push(...payload.lines.map((line) => ({ stream: payload.stream, line })));
+  if (pending.length > MAX_CONSOLE_LINES) {
+    pending.splice(0, pending.length - MAX_CONSOLE_LINES);
+  }
+  pendingConsole.set(payload.server_id, pending);
+  consoleTimer ??= setTimeout(flushConsole, PROCESS_LOG_FLUSH_MS);
+}
+
 function pushStack(stack: View[], current: View, target: View): View[] {
   if (current === target) return stack;
   const seen = stack.indexOf(target);
@@ -424,6 +494,10 @@ export const useStore = create<AppStore>((set) => ({
   skinRevision: 0,
   skinHeads: {},
   activeRunningId: null,
+  servers: [],
+  serverRunning: {},
+  serverConsole: {},
+  serverUsage: {},
   launching: [],
   logsTab: "launcher",
   media: {},
@@ -588,6 +662,7 @@ export const useStore = create<AppStore>((set) => ({
       subtitle: context.subtitle ?? null,
       icon_url: context.iconUrl ?? null,
       instance_id: context.instanceId ?? null,
+      server_id: null,
       project_id: context.projectId ?? null,
       state: "running",
       stage: "starting",
@@ -777,6 +852,26 @@ export const useStore = create<AppStore>((set) => ({
       track(await listen<LogPayload>("process:log", (e) => {
         enqueueProcessLog(e.payload);
       }));
+      track(await listen<ConsolePayload>("server:log", (e) => {
+        enqueueConsole(e.payload);
+      }));
+      track(await listen<ServerRunningInfo>("server:state", (e) => {
+        const info = e.payload;
+        set((s) => ({ serverRunning: { ...s.serverRunning, [info.server_id]: info } }));
+        if (info.state !== "running" && info.state !== "stopping") {
+          void useStore.getState().refreshServers();
+        }
+      }));
+      track(await listen<ServerUsage[]>("server:usage", (e) => {
+        set((s) => {
+          const serverUsage = { ...s.serverUsage };
+          for (const sample of e.payload) {
+            const previous = serverUsage[sample.server_id] ?? [];
+            serverUsage[sample.server_id] = [...previous, sample].slice(-MAX_USAGE_SAMPLES);
+          }
+          return { serverUsage };
+        });
+      }));
       track(await listen<LogRecord[]>("log:record", (e) => {
         set((s) => {
           const last = s.logRecords[s.logRecords.length - 1]?.seq ?? 0;
@@ -825,6 +920,8 @@ export const useStore = create<AppStore>((set) => ({
         interrupted,
         recoveredRuns,
         appUpdateStatus,
+        servers,
+        runningServers,
       ] = await Promise.all([
         api.getSettings(),
         api.listInstances(),
@@ -835,11 +932,19 @@ export const useStore = create<AppStore>((set) => ({
         api.recoverInterrupted().catch(() => [] as PendingOperation[]),
         api.listRunning().catch(() => [] as RunningInfo[]),
         api.getAppUpdateStatus().catch(() => null),
+        api.listServers().catch(() => [] as Server[]),
+        api.listRunningServers().catch(() => [] as ServerRunningInfo[]),
       ]);
       const bundledCurseforgeKey = await api
         .getAppInfo()
         .then((info) => info.bundled_curseforge_key)
         .catch(() => false);
+      const recoveredConsoles = await Promise.all(
+        runningServers.map(async (info) => [
+          info.server_id,
+          await api.getServerConsole(info.server_id).catch(() => [] as ConsoleLine[]),
+        ] as const),
+      );
       const recoveredLogs = await Promise.all(
         recoveredRuns.map(async (run) => [
           run.running_id,
@@ -871,6 +976,15 @@ export const useStore = create<AppStore>((set) => ({
             ? s.activeRunningId
             : newestLiveSessionId(running);
 
+        const serverConsole = recoveredConsoles.reduce(
+          (consoles, [serverId, backfill]) => {
+            const streamed = consoles[serverId] ?? [];
+            consoles[serverId] = backfill.length >= streamed.length ? backfill : streamed;
+            return consoles;
+          },
+          { ...s.serverConsole } as Record<string, ConsoleLine[]>,
+        );
+
         return {
           settings,
           bundledCurseforgeKey,
@@ -878,6 +992,11 @@ export const useStore = create<AppStore>((set) => ({
           instanceOrganization,
           accounts,
           installedIds,
+          servers,
+          serverRunning: Object.fromEntries(
+            runningServers.map((info) => [info.server_id, info]),
+          ),
+          serverConsole,
           ready: true,
           error: null,
           selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
@@ -1129,6 +1248,73 @@ export const useStore = create<AppStore>((set) => ({
     }));
   },
 
+  refreshServers: async () => {
+    set({ servers: await api.listServers() });
+  },
+
+  createServer: async (name, flavor, versionId, flavorVersion) => {
+    const server = await api.createServer(name, flavor, versionId, flavorVersion, true);
+    set((s) => ({ servers: [...s.servers, server] }));
+    return server;
+  },
+
+  importServer: async (path, name, flavor, versionId, flavorVersion) => {
+    const server = await api.importServer(path, name, flavor, versionId, flavorVersion, true);
+    set((s) => ({ servers: [...s.servers, server] }));
+    return server;
+  },
+
+  installServer: async (serverId) => {
+    const server = await api.installServer(serverId);
+    set((s) => ({ servers: s.servers.map((x) => (x.id === server.id ? server : x)) }));
+  },
+
+  startServer: async (serverId) => {
+    const info = await api.startServer(serverId);
+    set((s) => ({
+      serverConsole: { ...s.serverConsole, [serverId]: [] },
+      serverUsage: { ...s.serverUsage, [serverId]: [] },
+      serverRunning: { ...s.serverRunning, [serverId]: info },
+    }));
+    await useStore.getState().refreshServers();
+  },
+
+  stopServer: async (serverId) => {
+    await api.stopServer(serverId);
+  },
+
+  forceStopServer: async (serverId) => {
+    await api.forceStopServer(serverId);
+  },
+
+  sendServerCommand: async (serverId, line) => {
+    set((s) => ({
+      serverConsole: {
+        ...s.serverConsole,
+        [serverId]: [...(s.serverConsole[serverId] ?? []), { stream: "input", line }],
+      },
+    }));
+    await api.sendServerCommand(serverId, line);
+  },
+
+  deleteServer: async (serverId, deleteFiles) => {
+    await api.deleteServer(serverId, deleteFiles);
+    set((s) => {
+      const serverRunning = { ...s.serverRunning };
+      const serverConsole = { ...s.serverConsole };
+      const serverUsage = { ...s.serverUsage };
+      delete serverRunning[serverId];
+      delete serverConsole[serverId];
+      delete serverUsage[serverId];
+      return {
+        servers: s.servers.filter((server) => server.id !== serverId),
+        serverRunning,
+        serverConsole,
+        serverUsage,
+      };
+    });
+  },
+
   refreshInstances: async () => {
     const [instances, instanceOrganization] = await Promise.all([
       api.listInstances(),
@@ -1372,6 +1558,9 @@ if (import.meta.hot) {
     if (processLogTimer) clearTimeout(processLogTimer);
     processLogTimer = null;
     pendingProcessLogs.clear();
+    if (consoleTimer) clearTimeout(consoleTimer);
+    consoleTimer = null;
+    pendingConsole.clear();
     unlisteners.forEach((fn) => fn());
     unlisteners = [];
     listenersBound = false;

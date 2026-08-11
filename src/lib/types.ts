@@ -402,7 +402,9 @@ export type TaskKind =
   | "snapshot_restore"
   | "storage_scan"
   | "datapack_install"
-  | "data_move";
+  | "data_move"
+  | "server_install"
+  | "server_import";
 
 export interface RepairReport {
   checked_content: number;
@@ -467,6 +469,7 @@ export interface Task {
   subtitle: string | null;
   icon_url: string | null;
   instance_id: string | null;
+  server_id: string | null;
   project_id: string | null;
   state: TaskState;
   stage: string;
@@ -991,4 +994,106 @@ export interface WorldPacks {
   display_name: string;
   loose: boolean;
   packs: Datapack[];
+}
+
+export type ServerFlavor = "vanilla" | "paper" | "purpur" | "fabric" | "neoforge" | "forge";
+
+export interface Server {
+  id: string;
+  name: string;
+  flavor: ServerFlavor;
+  version_id: string;
+  created_at: string;
+  managed: boolean;
+  dir: string;
+  available: boolean;
+  flavor_version: string | null;
+  launch_jar: string | null;
+  launch_argfiles: string[];
+  min_memory_mb: number | null;
+  max_memory_mb: number | null;
+  java_path: string | null;
+  jvm_args: string | null;
+  jvm_args_mode: string | null;
+  stop_timeout_secs: number | null;
+  eula_accepted_at: number | null;
+  installed_at: number | null;
+  last_started_at: number | null;
+  uptime_secs: number;
+  port: number | null;
+  motd: string | null;
+  max_players: number | null;
+  notes: string | null;
+}
+
+export type ServerState = "running" | "stopping" | "exited" | "crashed";
+
+export interface ServerRunningInfo {
+  server_id: string;
+  running_id: string;
+  pid: number;
+  started_at: number;
+  state: ServerState;
+  exit_code: number | null;
+  attached: boolean;
+}
+
+export interface ConsoleLine {
+  stream: string;
+  line: string;
+}
+
+export interface ServerUsage {
+  server_id: string;
+  cpu_percent: number;
+  cpu_percent_normalized: number;
+  memory_mb: number;
+}
+
+export interface ServerProperty {
+  key: string;
+  value: string;
+}
+
+export interface ServerFolder {
+  path: string;
+  name: string;
+  flavor: ServerFlavor | null;
+  version_id: string | null;
+  flavor_version: string | null;
+  launch_jar: string | null;
+  launch_argfiles: string[];
+  eula_accepted: boolean;
+  port: number | null;
+}
+
+export type FileKind =
+  | "properties"
+  | "json"
+  | "yaml"
+  | "toml"
+  | "text"
+  | "jar"
+  | "archive"
+  | "image";
+
+export interface ServerEntry {
+  name: string;
+  path: string;
+  directory: boolean;
+  size_bytes: number;
+  modified_ms: number;
+  kind: FileKind;
+}
+
+export interface ServerText {
+  path: string;
+  kind: FileKind;
+  text: string;
+}
+
+export interface TextProblem {
+  line: number;
+  column: number;
+  message: string;
 }
