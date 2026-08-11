@@ -24,7 +24,7 @@ import { UsageMeter } from "../components/servers/UsageMeter";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { openFolder } from "../lib/reveal";
-import { flavorLabel, isLive, lanAddress, serverAddress } from "../lib/servers";
+import { flavorLabel, isLive, isNative, lanAddress, serverAddress } from "../lib/servers";
 import { useUptime } from "../lib/useUptime";
 import { EmptyState } from "../components/ui";
 import { useStore } from "../store";
@@ -44,6 +44,7 @@ type ServerTab = (typeof TABS)[number]["id"];
 export function ServerView() {
   const detailServerId = useStore((s) => s.detailServerId);
   const servers = useStore((s) => s.servers);
+  const software = useStore((s) => s.serverSoftware);
   const serverRunning = useStore((s) => s.serverRunning);
   const startServer = useStore((s) => s.startServer);
   const stopServer = useStore((s) => s.stopServer);
@@ -139,7 +140,7 @@ export function ServerView() {
         </h1>
         <ServerStatusPill server={server} info={info} />
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-content-muted">
-          <span>{flavorLabel(server.flavor)}</span>
+          <span>{flavorLabel(software, server.flavor)}</span>
           {server.flavor_version && (
             <>
               <span className="text-content-faint">·</span>
@@ -271,7 +272,7 @@ export function ServerView() {
         </div>
       )}
 
-      {server.available && !server.eula_accepted_at && (
+      {server.available && !server.eula_accepted_at && !isNative(software, server.flavor) && (
         <div className="mx-8 mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-warn/30 bg-warn/10 px-4 py-2.5 text-sm text-warn">
           <span className="min-w-0 flex-1">
             This server has not accepted the Minecraft EULA, so it will not start.

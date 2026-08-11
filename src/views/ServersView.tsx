@@ -26,6 +26,7 @@ import { useStore } from "../store";
 
 export function ServersView() {
   const servers = useStore((s) => s.servers);
+  const software = useStore((s) => s.serverSoftware);
   const serverRunning = useStore((s) => s.serverRunning);
   const openServer = useStore((s) => s.openServer);
   const startServer = useStore((s) => s.startServer);
@@ -146,7 +147,7 @@ export function ServersView() {
                   <div className="min-w-0 flex-1">
                     <div className="wrap-break-word text-sm font-medium text-content">{server.name}</div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-content-muted">
-                      <span>{flavorLabel(server.flavor)}</span>
+                      <span>{flavorLabel(software, server.flavor)}</span>
                       <span className="text-content-faint">·</span>
                       <span>{server.version_id}</span>
                       <span className="text-content-faint">·</span>

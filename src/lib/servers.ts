@@ -3,34 +3,33 @@ import type {
   Server,
   ServerFlavor,
   ServerRunningInfo,
+  ServerSoftware,
   ServerState,
 } from "./types";
 
-export const FLAVORS: Array<{ id: ServerFlavor; label: string; hint: string }> = [
-  { id: "vanilla", label: "Vanilla", hint: "Mojang's own server, no mods or plugins." },
-  { id: "paper", label: "Paper", hint: "Faster vanilla with a plugin ecosystem." },
-  { id: "purpur", label: "Purpur", hint: "Paper with a lot more knobs to turn." },
-  { id: "fabric", label: "Fabric", hint: "Lightweight mod loader." },
-  { id: "neoforge", label: "NeoForge", hint: "The loader most modern modpacks use." },
-  { id: "forge", label: "Forge", hint: "The original loader, still everywhere." },
-];
-
 export const DEFAULT_PORT = 25565;
 
-export function flavorLabel(flavor: ServerFlavor): string {
-  return FLAVORS.find((entry) => entry.id === flavor)?.label ?? flavor;
+export function softwareOf(
+  software: ServerSoftware[],
+  flavor: ServerFlavor,
+): ServerSoftware | undefined {
+  return software.find((entry) => entry.id === flavor);
 }
 
-export function takesPlugins(flavor: ServerFlavor): boolean {
-  return flavor === "paper" || flavor === "purpur";
+export function flavorLabel(software: ServerSoftware[], flavor: ServerFlavor): string {
+  return softwareOf(software, flavor)?.label ?? flavor;
 }
 
-export function takesMods(flavor: ServerFlavor): boolean {
-  return flavor === "fabric" || flavor === "neoforge" || flavor === "forge";
+export function needsFlavorVersion(software: ServerSoftware[], flavor: ServerFlavor): boolean {
+  return softwareOf(software, flavor)?.builds ?? false;
 }
 
-export function needsFlavorVersion(flavor: ServerFlavor): boolean {
-  return flavor !== "vanilla";
+export function isNative(software: ServerSoftware[], flavor: ServerFlavor): boolean {
+  return softwareOf(software, flavor)?.runtime === "native";
+}
+
+export function configFile(software: ServerSoftware[], flavor: ServerFlavor): string {
+  return softwareOf(software, flavor)?.config_file ?? "server.properties";
 }
 
 export function isLive(info: ServerRunningInfo | undefined): boolean {

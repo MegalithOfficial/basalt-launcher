@@ -1008,7 +1008,16 @@ export interface WorldPacks {
   packs: Datapack[];
 }
 
-export type ServerFlavor = "vanilla" | "paper" | "purpur" | "fabric" | "neoforge" | "forge";
+export type ServerFlavor = string;
+
+export interface ServerSoftware {
+  id: ServerFlavor;
+  label: string;
+  hint: string;
+  runtime: "java" | "native";
+  builds: boolean;
+  config_file: string;
+}
 
 export interface Server {
   id: string;

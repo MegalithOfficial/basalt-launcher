@@ -37,6 +37,7 @@ import type {
   RepairReport,
   Server,
   ServerFlavor,
+  ServerSoftware,
   ServerRunningInfo,
   ServerUsage,
   SearchPage,
@@ -167,6 +168,7 @@ interface AppStore {
   running: Record<string, RunningInfo>;
   logs: Record<string, LogLine[]>;
   servers: Server[];
+  serverSoftware: ServerSoftware[];
   serverRunning: Record<string, ServerRunningInfo>;
   serverConsole: Record<string, ConsoleLine[]>;
   serverUsage: Record<string, ServerUsage[]>;
@@ -498,6 +500,7 @@ export const useStore = create<AppStore>((set) => ({
   skinHeads: {},
   activeRunningId: null,
   servers: [],
+  serverSoftware: [],
   serverRunning: {},
   serverConsole: {},
   serverUsage: {},
@@ -1260,7 +1263,12 @@ export const useStore = create<AppStore>((set) => ({
     })),
 
   refreshServers: async () => {
-    set({ servers: await api.listServers() });
+    const known = useStore.getState().serverSoftware;
+    const [servers, serverSoftware] = await Promise.all([
+      api.listServers(),
+      known.length ? known : api.listServerSoftware(),
+    ]);
+    set({ servers, serverSoftware });
   },
 
   createServer: async (name, flavor, versionId, flavorVersion) => {

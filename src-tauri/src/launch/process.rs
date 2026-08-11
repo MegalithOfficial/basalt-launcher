@@ -9,7 +9,7 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter};
 use tokio::{process::Command, sync::oneshot};
 
-use super::identity::{kill_recovered_process, process_matches, spawned_process_start};
+use super::identity::{kill_recovered_process, process_matches, spawned_process_start, Identity};
 use crate::{
     db::{ActiveRun, Db},
     error::{Error, Result},
@@ -77,7 +77,7 @@ impl RunningHandle {
                 kill_tx.take().is_some_and(|tx| tx.send(()).is_ok())
             }
             ProcessControl::Recovered { process_started_at } => {
-                kill_recovered_process(self.pid, *process_started_at, running_id)
+                kill_recovered_process(self.pid, *process_started_at, &Identity::marker(running_id))
             }
         }
     }
@@ -232,10 +232,11 @@ pub fn spawn_process(
         tracing::error!(program, error = %e, "could not spawn game process");
     })?;
     let pid = child.id().unwrap_or(0);
-    let process_started_at = spawned_process_start(pid, running_id).ok_or_else(|| {
-        let _ = child.start_kill();
-        Error::other("could not verify the launched game process")
-    })?;
+    let process_started_at =
+        spawned_process_start(pid, &Identity::marker(running_id)).ok_or_else(|| {
+            let _ = child.start_kill();
+            Error::other("could not verify the launched game process")
+        })?;
     if let Err(error) = db.save_active_run(&ActiveRun {
         running_id: running_id.to_string(),
         instance_id: instance_id.to_string(),
@@ -407,7 +408,11 @@ fn monitor_recovered_process(
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(RECOVERY_POLL_INTERVAL).await;
-            if process_matches(run.pid, run.process_started_at, &run.running_id) {
+            if process_matches(
+                run.pid,
+                run.process_started_at,
+                &Identity::marker(&run.running_id),
+            ) {
                 continue;
             }
 
@@ -456,7 +461,11 @@ pub fn recover_processes(
     let settings = db.load_settings().ok();
     let instances = db.list_instances(files).unwrap_or_default();
     for run in db.active_runs()? {
-        if !process_matches(run.pid, run.process_started_at, &run.running_id) {
+        if !process_matches(
+            run.pid,
+            run.process_started_at,
+            &Identity::marker(&run.running_id),
+        ) {
             let ended_at = run.checkpointed_at.max(run.started_at);
             let played_secs = ended_at.saturating_sub(run.started_at);
             tracing::info!(

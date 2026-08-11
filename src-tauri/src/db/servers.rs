@@ -5,7 +5,7 @@ use rusqlite::{params, OptionalExtension};
 use crate::{
     error::Result,
     paths::Paths,
-    servers::{Server, ServerFlavor},
+    servers::{Server, software},
 };
 
 use super::{ActiveServerRun, Db};
@@ -29,7 +29,7 @@ impl Db {
             dir: dir.display().to_string(),
             id,
             name: row.get(1)?,
-            flavor: ServerFlavor::parse(&flavor).unwrap_or(ServerFlavor::Vanilla),
+            flavor: software::find(&flavor).unwrap_or(software::vanilla()),
             version_id: row.get(3)?,
             created_at: chrono::DateTime::parse_from_rfc3339(&created_at)
                 .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -116,7 +116,7 @@ impl Db {
             params![
                 server.id,
                 server.name,
-                server.flavor.as_str(),
+                server.flavor.id(),
                 server.version_id,
                 server.flavor_version,
                 server.created_at.to_rfc3339(),
@@ -336,7 +336,7 @@ mod tests {
         Server {
             id: id.into(),
             name: "Survival".into(),
-            flavor: ServerFlavor::Paper,
+            flavor: software::find("paper").unwrap(),
             version_id: "1.21.8".into(),
             created_at: chrono::Utc::now(),
             managed,
@@ -371,7 +371,7 @@ mod tests {
         let stored = db.server(&paths, "s1").unwrap().unwrap();
 
         assert_eq!(stored.dir, paths.server_dir("s1").display().to_string());
-        assert_eq!(stored.flavor, ServerFlavor::Paper);
+        assert_eq!(stored.flavor.id(), "paper");
         assert_eq!(stored.port, Some(25565));
         assert_eq!(stored.flavor_version.as_deref(), Some("42"));
         assert!(db.imported_server_dirs().unwrap().is_empty());

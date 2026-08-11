@@ -8,8 +8,7 @@ use crate::{
     servers::{
         files::{FileKind, ServerEntry, ServerText},
         import::{self, ServerFolder},
-        properties::Properties,
-        provision, runtime, Server, ServerFlavor, TextProblem,
+        Server, TextProblem, config, provision, runtime, software,
     },
     state::AppState,
     tasks::{TaskKind, TaskSpec},
@@ -32,17 +31,24 @@ fn reachable(server: &Server) -> Result<PathBuf> {
     Ok(dir)
 }
 
-fn cache_properties(state: &AppState, server: &Server, properties: &Properties) -> Result<()> {
+fn cache_config(state: &AppState, server: &Server, config: &config::Config) -> Result<()> {
     state.db.cache_server_properties(
         &server.id,
-        properties
-            .get("server-port")
-            .and_then(|value| value.trim().parse().ok()),
-        properties.get("motd"),
-        properties
-            .get("max-players")
-            .and_then(|value| value.trim().parse().ok()),
+        config.port,
+        config.motd.as_deref(),
+        config.max_players,
     )
+}
+
+fn properties_of(config: config::Config) -> Vec<ServerProperty> {
+    config
+        .entries
+        .into_iter()
+        .map(|entry| ServerProperty {
+            key: entry.key,
+            value: entry.value,
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -52,13 +58,20 @@ pub fn list_servers(state: State<AppState>) -> Result<Vec<Server>> {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all)]
+pub fn list_server_software() -> Vec<software::Spec> {
+    software::specs()
+}
+
+#[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub async fn list_server_flavor_versions(
     state: State<'_, AppState>,
     flavor: String,
     version_id: String,
 ) -> Result<Vec<String>> {
-    provision::list_flavor_versions(&state.network, ServerFlavor::parse(&flavor)?, &version_id)
+    software::find(&flavor)?
+        .versions(&state.network, &version_id)
         .await
 }
 
@@ -76,7 +89,8 @@ pub fn create_server(
     if name.is_empty() {
         return Err(Error::other("Give the server a name first."));
     }
-    if !accept_eula {
+    let flavor = software::find(&flavor)?;
+    if !flavor.native() && !accept_eula {
         return Err(Error::other(
             "The Minecraft EULA has to be accepted before a server can be created.",
         ));
@@ -88,12 +102,14 @@ pub fn create_server(
         .server_dir_checked(&id)
         .ok_or_else(|| Error::other("invalid server id"))?;
     state.files.ensure_dir(&dir)?;
-    provision::write_eula(&state.files, &dir)?;
+    if !flavor.native() {
+        provision::write_eula(&state.files, &dir)?;
+    }
 
     let server = Server {
         id,
         name: name.to_string(),
-        flavor: ServerFlavor::parse(&flavor)?,
+        flavor,
         version_id,
         created_at: chrono::Utc::now(),
         managed: true,
@@ -118,7 +134,7 @@ pub fn create_server(
         notes: None,
     };
     state.db.insert_server(&server)?;
-    tracing::info!(server_id = %server.id, flavor = %flavor, version = %server.version_id, "server created");
+    tracing::info!(server_id = %server.id, flavor = flavor.id(), version = %server.version_id, "server created");
     Ok(server)
 }
 
@@ -163,7 +179,7 @@ pub fn import_server(
     let server = Server {
         id: uuid::Uuid::new_v4().to_string(),
         name: name.to_string(),
-        flavor: ServerFlavor::parse(&flavor)?,
+        flavor: software::find(&flavor)?,
         version_id,
         created_at: chrono::Utc::now(),
         managed: false,
@@ -210,7 +226,7 @@ pub async fn install_server(
         TaskKind::ServerInstall,
         TaskSpec {
             title: server.name.clone(),
-            subtitle: Some(format!("{} {}", server.flavor.as_str(), server.version_id)),
+            subtitle: Some(format!("{} {}", server.flavor.label(), server.version_id)),
             server_id: Some(server.id.clone()),
             total: 1,
             ..Default::default()
@@ -430,17 +446,10 @@ pub fn get_server_properties(
     server_id: String,
 ) -> Result<Vec<ServerProperty>> {
     let server = super::find_server(&state, &server_id)?;
-    let dir = reachable(&server)?;
-    let properties = runtime::read_properties(&state.files, &dir);
-    cache_properties(&state, &server, &properties)?;
-    Ok(properties
-        .entries()
-        .into_iter()
-        .map(|(key, value)| ServerProperty {
-            key: key.to_string(),
-            value: value.to_string(),
-        })
-        .collect())
+    reachable(&server)?;
+    let config = config::read(&state.files, &server)?;
+    cache_config(&state, &server, &config)?;
+    Ok(properties_of(config))
 }
 
 #[tauri::command]
@@ -452,19 +461,17 @@ pub fn set_server_properties(
     removed: Vec<String>,
 ) -> Result<Vec<ServerProperty>> {
     let server = super::find_server(&state, &server_id)?;
-    let dir = reachable(&server)?;
-    let mut properties = runtime::read_properties(&state.files, &dir);
-    for property in &changes {
-        properties.set(property.key.trim(), &property.value);
-    }
-    for key in &removed {
-        properties.remove(key.trim());
-    }
-    state
-        .files
-        .write_atomic(dir.join("server.properties"), &properties.render())?;
-    cache_properties(&state, &server, &properties)?;
-    get_server_properties(state, server_id)
+    reachable(&server)?;
+    let edits = changes
+        .into_iter()
+        .map(|property| config::Entry {
+            key: property.key,
+            value: property.value,
+        })
+        .collect::<Vec<_>>();
+    let config = config::write(&state.files, &server, &edits, &removed)?;
+    cache_config(&state, &server, &config)?;
+    Ok(properties_of(config))
 }
 
 #[tauri::command]
@@ -502,9 +509,9 @@ pub fn write_server_file(
     let server = super::find_server(&state, &server_id)?;
     let dir = reachable(&server)?;
     let problem = crate::servers::files::write_text(&state.files, &dir, &path, &text)?;
-    if problem.is_none() && path.trim_matches('/') == "server.properties" {
-        let properties = runtime::read_properties(&state.files, &dir);
-        cache_properties(&state, &server, &properties)?;
+    if problem.is_none() && path.trim_matches('/') == server.flavor.config_file() {
+        let config = config::read(&state.files, &server)?;
+        cache_config(&state, &server, &config)?;
     }
     Ok(problem)
 }

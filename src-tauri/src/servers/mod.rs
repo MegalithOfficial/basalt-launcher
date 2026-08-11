@@ -1,16 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::{Error, Result},
-    state::AppState,
-};
+use crate::{error::Result, state::AppState};
 
+pub mod config;
 pub mod files;
 pub mod import;
 pub mod properties;
 pub mod provision;
 pub mod runtime;
+pub mod software;
 pub mod usage;
+
+pub use software::Software;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TextProblem {
@@ -19,47 +20,11 @@ pub struct TextProblem {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ServerFlavor {
-    Vanilla,
-    Paper,
-    Purpur,
-    Fabric,
-    Neoforge,
-    Forge,
-}
-
-impl ServerFlavor {
-    pub fn parse(value: &str) -> Result<Self> {
-        match value {
-            "vanilla" => Ok(ServerFlavor::Vanilla),
-            "paper" => Ok(ServerFlavor::Paper),
-            "purpur" => Ok(ServerFlavor::Purpur),
-            "fabric" => Ok(ServerFlavor::Fabric),
-            "neoforge" => Ok(ServerFlavor::Neoforge),
-            "forge" => Ok(ServerFlavor::Forge),
-            other => Err(Error::other(format!("unknown server flavor {other}"))),
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ServerFlavor::Vanilla => "vanilla",
-            ServerFlavor::Paper => "paper",
-            ServerFlavor::Purpur => "purpur",
-            ServerFlavor::Fabric => "fabric",
-            ServerFlavor::Neoforge => "neoforge",
-            ServerFlavor::Forge => "forge",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Server {
     pub id: String,
     pub name: String,
-    pub flavor: ServerFlavor,
+    pub flavor: Software,
     pub version_id: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub managed: bool,
@@ -101,26 +66,6 @@ pub struct Server {
     pub max_players: Option<u32>,
     #[serde(default)]
     pub notes: Option<String>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ServerFlavor;
-
-    #[test]
-    fn every_flavor_round_trips_through_its_string() {
-        for flavor in [
-            ServerFlavor::Vanilla,
-            ServerFlavor::Paper,
-            ServerFlavor::Purpur,
-            ServerFlavor::Fabric,
-            ServerFlavor::Neoforge,
-            ServerFlavor::Forge,
-        ] {
-            assert_eq!(ServerFlavor::parse(flavor.as_str()).unwrap(), flavor);
-        }
-        assert!(ServerFlavor::parse("spigot").is_err());
-    }
 }
 
 pub fn adopt_imported_dirs(state: &AppState) -> Result<()> {

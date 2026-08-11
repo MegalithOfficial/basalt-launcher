@@ -61,6 +61,7 @@ import type {
   Server,
   ServerEntry,
   ServerFlavor,
+  ServerSoftware,
   ServerFolder,
   ServerProperty,
   ServerRunningInfo,
@@ -496,6 +497,7 @@ export const api = {
     call<ReclaimOutcome>("reclaim_storage", { targets }),
   inspectPaths: (paths: string[]) => call<PathKind[]>("inspect_paths", { paths }),
   listServers: () => call<Server[]>("list_servers"),
+  listServerSoftware: () => call<ServerSoftware[]>("list_server_software"),
   listServerFlavorVersions: (flavor: ServerFlavor, versionId: string) =>
     call<string[]>("list_server_flavor_versions", { flavor, versionId }),
   createServer: (

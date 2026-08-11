@@ -329,6 +329,7 @@ pub fn run() {
             commands::locations::inspect_data_location,
             commands::locations::set_data_location,
             commands::servers::list_servers,
+            commands::servers::list_server_software,
             commands::servers::list_server_flavor_versions,
             commands::servers::create_server,
             commands::servers::inspect_server_folder,

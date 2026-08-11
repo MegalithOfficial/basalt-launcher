@@ -3,6 +3,7 @@ import { Loader2, Plus, RotateCw, Search, Trash2 } from "lucide-react";
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { configFile } from "../../lib/servers";
 import type { Server, ServerProperty } from "../../lib/types";
 import { Select } from "../Select";
 import { Toggle } from "../ui";
@@ -71,6 +72,9 @@ function controlFor(key: string, value: string): Control {
 
 export function PropertiesPanel({ server, live }: { server: Server; live: boolean }) {
   const refreshServers = useStore((s) => s.refreshServers);
+  const software = useStore((s) => s.serverSoftware);
+  const file = configFile(software, server.flavor);
+  const fixedKeys = file.endsWith(".toml");
 
   const [properties, setProperties] = useState<ServerProperty[]>([]);
   const [edited, setEdited] = useState<Record<string, string>>({});
@@ -163,7 +167,7 @@ export function PropertiesPanel({ server, live }: { server: Server; live: boolea
         </div>
 
         <span className="font-pixel text-[10px] uppercase tracking-[0.28em] text-content-faint">
-          {rows.length} keys
+          {rows.length} keys in {file}
         </span>
 
         <div className="ml-auto flex items-center gap-2">
@@ -264,6 +268,7 @@ export function PropertiesPanel({ server, live }: { server: Server; live: boolea
           );
         })}
 
+        {!fixedKeys && (
         <div className="flex items-center gap-2 py-3">
           <input
             value={newKey}
@@ -280,6 +285,7 @@ export function PropertiesPanel({ server, live }: { server: Server; live: boolea
             <Plus className="size-3.5" />
           </button>
         </div>
+        )}
       </div>
     </div>
   );

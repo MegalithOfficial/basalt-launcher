@@ -5,7 +5,7 @@ import { ChevronRight, FolderInput, Loader2, Search, Server as ServerIcon } from
 
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
-import { FLAVORS, flavorLabel, needsFlavorVersion } from "../lib/servers";
+import { flavorLabel, isNative, needsFlavorVersion, softwareOf } from "../lib/servers";
 import type { ServerFlavor, ServerFolder, VersionEntry } from "../lib/types";
 import { Modal, ModalHeader } from "./Modal";
 import { Select } from "./Select";
@@ -59,6 +59,7 @@ export function CreateServerModal({
 
   const [mode, setMode] = useState<Mode>(null);
   const [name, setName] = useState("");
+  const software = useStore((s) => s.serverSoftware);
   const [flavor, setFlavor] = useState<ServerFlavor>("paper");
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [query, setQuery] = useState("");
@@ -92,7 +93,7 @@ export function CreateServerModal({
   useEffect(() => {
     setBuilds([]);
     setBuild(null);
-    if (!version || !needsFlavorVersion(flavor) || mode !== "new") return;
+    if (!version || !needsFlavorVersion(software, flavor) || mode !== "new") return;
     let live = true;
     setBuildsLoading(true);
     api
@@ -132,21 +133,27 @@ export function CreateServerModal({
     }
   };
 
-  const missingBuild = needsFlavorVersion(flavor) && !build;
-  const ready =
-    mode === "new"
+  const native = isNative(software, flavor);
+  const missingBuild = needsFlavorVersion(software, flavor) && !build;
+  const ready = native
+    ? mode === "new"
+      ? !busy
+      : !!folder && !busy
+    : mode === "new"
       ? !!version && !missingBuild && eula && !busy
       : !!folder && !!version && eula && !busy;
 
   const submit = async () => {
-    if (!ready || !version) return;
+    if (!ready) return;
+    const chosen = native ? "nightly" : version;
+    if (!chosen) return;
     setBusy(true);
     setError(null);
     try {
       const server =
         mode === "import" && folder
-          ? await importServer(folder.path, name.trim() || folder.name, flavor, version, build)
-          : await createServer(name.trim() || `${flavor} ${version}`, flavor, version, build);
+          ? await importServer(folder.path, name.trim() || folder.name, flavor, chosen, build)
+          : await createServer(name.trim() || `${flavor} ${chosen}`, flavor, chosen, build);
       onCreated(server.id);
       onClose();
     } catch (cause) {
@@ -237,14 +244,18 @@ export function CreateServerModal({
 
           <div className="grid grid-cols-2 gap-2">
             <Select
-              value={flavorLabel(flavor)}
+              value={flavorLabel(software, flavor)}
               onChange={(label) => {
-                const picked = FLAVORS.find((entry) => entry.label === label);
+                const picked = software.find((entry) => entry.label === label);
                 if (picked) setFlavor(picked.id);
               }}
-              options={FLAVORS.map((entry) => entry.label)}
+              options={software.map((entry) => entry.label)}
             />
-            {needsFlavorVersion(flavor) ? (
+            {native ? (
+              <div className="grid place-items-center rounded-lg border border-border-soft bg-surface-2/50 text-[11px] text-content-faint">
+                Nightly build
+              </div>
+            ) : needsFlavorVersion(software, flavor) ? (
               <Select
                 value={build}
                 onChange={(value) => setBuild(value)}
@@ -259,10 +270,16 @@ export function CreateServerModal({
           </div>
 
           <p className="text-[11px] text-content-muted">
-            {FLAVORS.find((entry) => entry.id === flavor)?.hint}
+            {softwareOf(software, flavor)?.hint}
           </p>
 
-          {mode === "new" ? (
+          {native ? (
+            <p className="rounded-xl border border-border-soft bg-surface-2/50 px-4 py-3 text-[11px] leading-relaxed text-content-muted">
+              {softwareOf(software, flavor)?.label} ships one rolling nightly build, so there is no
+              version to pick here. It needs no Java and no EULA, and its settings live in{" "}
+              {softwareOf(software, flavor)?.config_file} rather than server.properties.
+            </p>
+          ) : mode === "new" ? (
             <>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-content-faint" />
@@ -304,7 +321,7 @@ export function CreateServerModal({
             />
           )}
 
-          {eulaCheckbox}
+          {!native && eulaCheckbox}
 
           {error && (
             <p className="wrap-break-word text-[11px] text-danger">{error}</p>

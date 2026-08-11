@@ -7,13 +7,16 @@ use crate::{
     paths::{DataRoot, Paths},
 };
 
-use super::ServerFlavor;
+use super::{
+    Software,
+    software::{self, Folder},
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServerFolder {
     pub path: String,
     pub name: String,
-    pub flavor: Option<ServerFlavor>,
+    pub flavor: Option<Software>,
     pub version_id: Option<String>,
     pub flavor_version: Option<String>,
     pub launch_jar: Option<String>,
@@ -85,51 +88,19 @@ pub fn inspect(dir: &Path) -> ServerFolder {
         port: None,
     };
 
-    if let Some((version, argfiles)) = modded_launch(dir, "net/neoforged/neoforge") {
-        folder.flavor = Some(ServerFlavor::Neoforge);
-        folder.flavor_version = Some(version);
-        folder.launch_argfiles = argfiles;
-    } else if let Some((version, argfiles)) = modded_launch(dir, "net/minecraftforge/forge") {
-        let (game, loader) = version
-            .split_once('-')
-            .map(|(game, loader)| (Some(game.to_string()), loader.to_string()))
-            .unwrap_or((None, version));
-        folder.flavor = Some(ServerFlavor::Forge);
-        folder.version_id = game;
-        folder.flavor_version = Some(loader);
-        folder.launch_argfiles = argfiles;
-    } else if entries
-        .iter()
-        .any(|name| name == "fabric-server-launch.jar")
-    {
-        folder.flavor = Some(ServerFlavor::Fabric);
-        folder.launch_jar = Some("fabric-server-launch.jar".to_string());
-    }
-
-    if let Some((flavor, game, build)) = version_history(dir) {
-        folder.flavor = folder.flavor.or(Some(flavor));
-        folder.version_id = folder.version_id.or(Some(game));
-        folder.flavor_version = folder.flavor_version.or(build);
+    if let Some((software, found)) = software::detect(&Folder {
+        dir,
+        entries: &entries,
+    }) {
+        folder.flavor = Some(software);
+        folder.version_id = found.version_id;
+        folder.flavor_version = found.flavor_version;
+        folder.launch_jar = found.launch_jar;
+        folder.launch_argfiles = found.launch_argfiles;
     }
 
     if folder.launch_jar.is_none() && folder.launch_argfiles.is_empty() {
-        folder.launch_jar = entries
-            .iter()
-            .find(|name| *name == "server.jar")
-            .or_else(|| {
-                entries
-                    .iter()
-                    .find(|name| name.starts_with("forge-") && name.ends_with(".jar"))
-            })
-            .or_else(|| {
-                entries
-                    .iter()
-                    .find(|name| name.starts_with("minecraft_server") && name.ends_with(".jar"))
-            })
-            .cloned();
-    }
-    if folder.flavor.is_none() && folder.launch_jar.is_some() {
-        folder.flavor = Some(ServerFlavor::Vanilla);
+        folder.launch_jar = fallback_jar(&entries);
     }
 
     if let Ok(bytes) = std::fs::read(dir.join("server.properties")) {
@@ -142,6 +113,23 @@ pub fn inspect(dir: &Path) -> ServerFolder {
     folder
 }
 
+pub fn fallback_jar(entries: &[String]) -> Option<String> {
+    entries
+        .iter()
+        .find(|name| *name == "server.jar")
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|name| name.starts_with("forge-") && name.ends_with(".jar"))
+        })
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|name| name.starts_with("minecraft_server") && name.ends_with(".jar"))
+        })
+        .cloned()
+}
+
 fn eula_accepted(dir: &Path) -> bool {
     std::fs::read(dir.join("eula.txt"))
         .map(|bytes| {
@@ -152,7 +140,12 @@ fn eula_accepted(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn modded_launch(dir: &Path, coordinates: &str) -> Option<(String, Vec<String>)> {
+pub struct Modded {
+    pub version: String,
+    pub argfiles: Vec<String>,
+}
+
+pub fn modded_launch(dir: &Path, coordinates: &str) -> Option<Modded> {
     let parent = dir.join("libraries").join(coordinates);
     let mut versions = std::fs::read_dir(&parent)
         .ok()?
@@ -179,19 +172,20 @@ fn modded_launch(dir: &Path, coordinates: &str) -> Option<(String, Vec<String>)>
         argfiles.push("user_jvm_args.txt".to_string());
     }
     argfiles.push(relative);
-    Some((version, argfiles))
+    Some(Modded { version, argfiles })
 }
 
-fn version_history(dir: &Path) -> Option<(ServerFlavor, String, Option<String>)> {
+pub struct History {
+    pub purpur: bool,
+    pub game_version: String,
+    pub build: Option<String>,
+}
+
+pub fn version_history(dir: &Path) -> Option<History> {
     let bytes = std::fs::read(dir.join("version_history.json")).ok()?;
     let history: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     let current = history.get("currentVersion")?.as_str()?;
-    let flavor = if current.to_ascii_lowercase().contains("purpur") {
-        ServerFlavor::Purpur
-    } else {
-        ServerFlavor::Paper
-    };
-    let game = current
+    let game_version = current
         .split_once("(MC: ")
         .and_then(|(_, rest)| rest.split_once(')'))
         .map(|(version, _)| version.trim().to_string())?;
@@ -200,7 +194,11 @@ fn version_history(dir: &Path) -> Option<(ServerFlavor, String, Option<String>)>
         .find_map(|token| token.rsplit_once('-'))
         .and_then(|(_, build)| build.parse::<u32>().ok())
         .map(|build| build.to_string());
-    Some((flavor, game, build))
+    Some(History {
+        purpur: current.to_ascii_lowercase().contains("purpur"),
+        game_version,
+        build,
+    })
 }
 
 #[cfg(test)]
@@ -228,7 +226,7 @@ mod tests {
 
         let folder = inspect(&dir);
 
-        assert_eq!(folder.flavor, Some(ServerFlavor::Paper));
+        assert_eq!(folder.flavor.unwrap().id(), "paper");
         assert_eq!(folder.version_id.as_deref(), Some("1.21.8"));
         assert_eq!(folder.flavor_version.as_deref(), Some("60"));
         assert_eq!(folder.launch_jar.as_deref(), Some("server.jar"));
@@ -249,7 +247,7 @@ mod tests {
 
         let folder = inspect(&dir);
 
-        assert_eq!(folder.flavor, Some(ServerFlavor::Neoforge));
+        assert_eq!(folder.flavor.unwrap().id(), "neoforge");
         assert_eq!(folder.flavor_version.as_deref(), Some("21.8.54"));
         assert_eq!(folder.launch_argfiles.len(), 2);
         assert!(folder.launch_jar.is_none());
@@ -264,7 +262,7 @@ mod tests {
 
         let folder = inspect(&dir);
 
-        assert_eq!(folder.flavor, Some(ServerFlavor::Vanilla));
+        assert_eq!(folder.flavor.unwrap().id(), "vanilla");
         assert!(folder.version_id.is_none());
         std::fs::remove_dir_all(dir.parent().unwrap()).ok();
     }

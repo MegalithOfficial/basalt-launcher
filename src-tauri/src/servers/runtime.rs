@@ -22,7 +22,9 @@ use crate::{
     files::FileManager,
     install, java,
     launch::{
-        identity::{kill_recovered_process, process_matches, run_marker, spawned_process_start},
+        identity::{
+            kill_recovered_process, process_matches, run_marker, spawned_process_start, Identity,
+        },
         render_placeholders, split_args,
     },
     state::AppState,
@@ -73,6 +75,7 @@ enum Control {
     },
     Recovered {
         process_started_at: u64,
+        identity: Identity,
     },
 }
 
@@ -140,6 +143,11 @@ pub fn configured_port(properties: &Properties) -> u16 {
     port_of(properties, "server-port", Some(DEFAULT_PORT)).unwrap_or(DEFAULT_PORT)
 }
 
+pub fn server_port(files: &FileManager, server: &Server) -> u16 {
+    let dir = PathBuf::from(&server.dir);
+    server.flavor.port(files, &dir).unwrap_or(DEFAULT_PORT)
+}
+
 fn claimed_ports(properties: &Properties) -> Vec<(&'static str, u16)> {
     let mut ports = vec![("server-port", configured_port(properties))];
     if enabled(properties, "enable-query") {
@@ -198,6 +206,22 @@ fn stop_timeout(settings: &crate::config::LauncherSettings, server: &Server) -> 
     Duration::from_secs(u64::from(secs))
 }
 
+fn native_binary(server: &Server) -> Result<PathBuf> {
+    let name = server
+        .launch_jar
+        .as_deref()
+        .ok_or_else(|| Error::other("Install this server before starting it."))?;
+    Ok(PathBuf::from(&server.dir).join(name))
+}
+
+fn identity_of(server: &Server, running_id: &str) -> Result<Identity> {
+    if server.flavor.native() {
+        Ok(Identity::executable(native_binary(server)?))
+    } else {
+        Ok(Identity::marker(running_id))
+    }
+}
+
 fn launch_arguments(
     settings: &crate::config::LauncherSettings,
     server: &Server,
@@ -230,11 +254,20 @@ fn launch_arguments(
         args.push(jar.to_string());
     }
 
-    args.push("nogui".to_string());
+    args.extend(
+        server
+            .flavor
+            .launch_args()
+            .iter()
+            .map(|argument| (*argument).to_string()),
+    );
     Ok(args)
 }
 
 pub async fn launch_preview(state: &AppState, server: &Server) -> Result<String> {
+    if server.flavor.native() {
+        return Ok(quoted(&native_binary(server)?.display().to_string()));
+    }
     let settings = state.runtime_settings()?;
     let memory = server_memory(&settings, server)?;
     let version = install::load_merged_version(state, &server.version_id).await?;
@@ -388,7 +421,7 @@ pub async fn start(
             server.dir
         )));
     }
-    if !provision::eula_accepted(&state.files, &dir) {
+    if !server.flavor.native() && !provision::eula_accepted(&state.files, &dir) {
         return Err(Error::other(
             "Accept the Minecraft EULA before starting this server.",
         ));
@@ -397,8 +430,12 @@ pub async fn start(
         return Err(Error::other("Install this server before starting it."));
     }
 
-    let properties = read_properties(&state.files, &dir);
-    for (key, port) in claimed_ports(&properties) {
+    let ports = if server.flavor.native() {
+        vec![("the server port", server_port(&state.files, server))]
+    } else {
+        claimed_ports(&read_properties(&state.files, &dir))
+    };
+    for (key, port) in ports {
         if !port_is_free(port) {
             return Err(Error::other(format!(
                 "Port {port} is already taken, so {key} cannot be used. Change it or stop whatever is holding it."
@@ -407,27 +444,33 @@ pub async fn start(
     }
 
     let settings = state.runtime_settings()?;
-    let memory = server_memory(&settings, server)?;
-    let version = install::load_merged_version(state, &server.version_id).await?;
-    let java = java::find_for_major(
-        &state.files,
-        version.required_java_major(),
-        server.java_path.as_deref(),
-    )
-    .await
-    .ok_or_else(|| {
-        Error::other(format!(
-            "No Java {} found for this server.",
-            version.required_java_major()
-        ))
-    })?;
-
     let running_id = uuid::Uuid::new_v4().to_string();
-    let args = launch_arguments(&settings, server, memory, &running_id)?;
+    let (program, args) = if server.flavor.native() {
+        (native_binary(server)?, Vec::new())
+    } else {
+        let memory = server_memory(&settings, server)?;
+        let version = install::load_merged_version(state, &server.version_id).await?;
+        let java = java::find_for_major(
+            &state.files,
+            version.required_java_major(),
+            server.java_path.as_deref(),
+        )
+        .await
+        .ok_or_else(|| {
+            Error::other(format!(
+                "No Java {} found for this server.",
+                version.required_java_major()
+            ))
+        })?;
+        (
+            PathBuf::from(&java.path),
+            launch_arguments(&settings, server, memory, &running_id)?,
+        )
+    };
     let started_at = now();
 
-    tracing::info!(java = %java.path, dir = %dir.display(), "starting server");
-    let mut child = Command::new(&java.path)
+    tracing::info!(program = %program.display(), dir = %dir.display(), "starting server");
+    let mut child = Command::new(&program)
         .args(&args)
         .current_dir(&dir)
         .stdin(Stdio::piped())
@@ -437,7 +480,8 @@ pub async fn start(
         .inspect_err(|error| tracing::error!(%error, "could not spawn the server process"))?;
 
     let pid = child.id().unwrap_or(0);
-    let Some(process_started_at) = spawned_process_start(pid, &running_id) else {
+    let identity = identity_of(server, &running_id)?;
+    let Some(process_started_at) = spawned_process_start(pid, &identity) else {
         let _ = child.start_kill();
         return Err(Error::other("Basalt could not verify the server process."));
     };
@@ -678,8 +722,11 @@ pub fn force_stop(state: &AppState, server_id: &str) -> Result<()> {
         Control::Attached { kill, .. } => {
             kill.take().map(|tx| tx.send(()).is_ok());
         }
-        Control::Recovered { process_started_at } => {
-            kill_recovered_process(handle.pid, *process_started_at, &handle.running_id);
+        Control::Recovered {
+            process_started_at,
+            identity,
+        } => {
+            kill_recovered_process(handle.pid, *process_started_at, identity);
         }
     }
     Ok(())
@@ -713,14 +760,18 @@ pub fn forget(state: &AppState, server_id: &str) {
 pub fn recover(app: &AppHandle, state: &AppState) -> Result<usize> {
     let mut recovered = 0;
     for run in state.db.active_server_runs()? {
-        if !process_matches(run.pid, run.process_started_at, &run.running_id) {
-            state.db.clear_active_server_run(&run.running_id)?;
-            continue;
-        }
         let Some(server) = state.db.server(&state.paths, &run.server_id)? else {
             state.db.clear_active_server_run(&run.running_id)?;
             continue;
         };
+        let Ok(identity) = identity_of(&server, &run.running_id) else {
+            state.db.clear_active_server_run(&run.running_id)?;
+            continue;
+        };
+        if !process_matches(run.pid, run.process_started_at, &identity) {
+            state.db.clear_active_server_run(&run.running_id)?;
+            continue;
+        }
 
         let console = Arc::new(Mutex::new(Vec::new()));
         let status = Arc::new(Mutex::new(RunStatus {
@@ -736,6 +787,7 @@ pub fn recover(app: &AppHandle, state: &AppState) -> Result<usize> {
             console: console.clone(),
             control: Control::Recovered {
                 process_started_at: run.process_started_at,
+                identity: identity.clone(),
             },
         };
         let info = handle.info();
@@ -753,7 +805,13 @@ pub fn recover(app: &AppHandle, state: &AppState) -> Result<usize> {
             status.clone(),
             console,
         );
-        watch_recovered(app.clone(), state.db.clone(), state.servers.clone(), run);
+        watch_recovered(
+            app.clone(),
+            state.db.clone(),
+            state.servers.clone(),
+            run,
+            identity,
+        );
         emit_state(app, info);
         recovered += 1;
     }
@@ -805,11 +863,17 @@ fn spawn_log_tailer(
     });
 }
 
-fn watch_recovered(app: AppHandle, db: crate::db::Db, registry: Registry, run: ActiveServerRun) {
+fn watch_recovered(
+    app: AppHandle,
+    db: crate::db::Db,
+    registry: Registry,
+    run: ActiveServerRun,
+    identity: Identity,
+) {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(LIVENESS_INTERVAL).await;
-            if process_matches(run.pid, run.process_started_at, &run.running_id) {
+            if process_matches(run.pid, run.process_started_at, &identity) {
                 continue;
             }
             let info = {
@@ -843,7 +907,7 @@ mod tests {
         Server {
             id: "s1".into(),
             name: "Survival".into(),
-            flavor: super::super::ServerFlavor::Paper,
+            flavor: crate::servers::software::find("paper").unwrap(),
             version_id: "1.21.8".into(),
             created_at: chrono::Utc::now(),
             managed: true,
@@ -941,6 +1005,29 @@ mod tests {
     }
 
     #[test]
+    fn a_native_server_is_launched_from_its_binary_with_no_arguments() {
+        let java = server();
+        let mut pumpkin = server();
+        pumpkin.flavor = crate::servers::software::find("pumpkin").unwrap();
+        pumpkin.launch_jar = Some("pumpkin".into());
+
+        assert!(pumpkin.flavor.native());
+        assert!(!java.flavor.native());
+        assert_eq!(
+            native_binary(&pumpkin).unwrap(),
+            PathBuf::from("/data/servers/s1/pumpkin")
+        );
+        assert!(matches!(
+            identity_of(&pumpkin, "run-7").unwrap(),
+            Identity::Executable(_)
+        ));
+        assert!(matches!(
+            identity_of(&java, "run-7").unwrap(),
+            Identity::Marker(_)
+        ));
+    }
+
+    #[test]
     fn the_ports_come_from_the_properties_file() {
         let properties =
             Properties::parse(b"server-port=25580\nenable-rcon=true\nrcon.port=25585\n");
@@ -968,11 +1055,13 @@ mod tests {
 
     #[test]
     fn a_server_without_its_own_memory_follows_the_server_setting() {
-        let mut settings = crate::config::LauncherSettings::default();
-        settings.min_memory_mb = 512;
-        settings.max_memory_mb = 2048;
-        settings.server_min_memory_mb = 2048;
-        settings.server_max_memory_mb = 8192;
+        let settings = crate::config::LauncherSettings {
+            min_memory_mb: 512,
+            max_memory_mb: 2048,
+            server_min_memory_mb: 2048,
+            server_max_memory_mb: 8192,
+            ..Default::default()
+        };
 
         let mut server = server();
         server.min_memory_mb = None;
@@ -985,9 +1074,11 @@ mod tests {
 
     #[test]
     fn the_server_jvm_setting_is_the_base_every_server_starts_from() {
-        let mut settings = crate::config::LauncherSettings::default();
-        settings.jvm_args = "-XX:+ClientOnlyFlag".into();
-        settings.server_jvm_args = "-Xms{{min_ram}}M -Xmx{{max_ram}}M -XX:+UseG1GC".into();
+        let settings = crate::config::LauncherSettings {
+            jvm_args: "-XX:+ClientOnlyFlag".into(),
+            server_jvm_args: "-Xms{{min_ram}}M -Xmx{{max_ram}}M -XX:+UseG1GC".into(),
+            ..Default::default()
+        };
 
         let args = launch_arguments(
             &settings,

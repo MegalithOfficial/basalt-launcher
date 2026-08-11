@@ -3,7 +3,7 @@ import { Check, ClipboardCopy, Loader2 } from "lucide-react";
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
-import { flavorLabel, needsFlavorVersion } from "../../lib/servers";
+import { flavorLabel, isNative, needsFlavorVersion } from "../../lib/servers";
 import type { JavaInfo, Server, SystemStats } from "../../lib/types";
 import { MemoryRange } from "../MemoryRange";
 import { Select } from "../Select";
@@ -39,6 +39,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function ServerSettingsPanel({ server, live }: { server: Server; live: boolean }) {
   const refreshServers = useStore((s) => s.refreshServers);
+  const software = useStore((s) => s.serverSoftware);
   const settings = useStore((s) => s.settings);
 
   const [name, setName] = useState(server.name);
@@ -89,7 +90,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
 
   useEffect(() => {
     setBuilds([]);
-    if (!needsFlavorVersion(server.flavor)) return;
+    if (!needsFlavorVersion(software, server.flavor)) return;
     let alive = true;
     setBuildsLoading(true);
     api
@@ -118,6 +119,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
 
   useEffect(loadCommand, [server]);
 
+  const native = isNative(software, server.flavor);
   const sliderMin = Number(minMem) || settings?.server_min_memory_mb || 1024;
   const sliderMax = Number(maxMem) || settings?.server_max_memory_mb || 4096;
   const ceiling = stats?.total_memory_mb ?? CEILING_FALLBACK;
@@ -132,7 +134,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
         server.id,
         name.trim(),
         versionId,
-        needsFlavorVersion(server.flavor) ? flavorVersion : null,
+        needsFlavorVersion(software, server.flavor) ? flavorVersion : null,
         minMem.trim() === "" ? null : Number(minMem),
         maxMem.trim() === "" ? null : Number(maxMem),
         javaPath.trim() || null,
@@ -197,22 +199,28 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
             />
           </Row>
           <Row label="Version">
-            <div className="w-44">
-              <Select
-                compact
-                value={versionId}
-                options={
-                  gameVersions.includes(versionId)
-                    ? gameVersions
-                    : [versionId, ...gameVersions]
-                }
-                onChange={(next) => {
-                  setVersionId(next);
-                  setFlavorVersion(null);
-                }}
-              />
-            </div>
-            {needsFlavorVersion(server.flavor) && (
+            {native ? (
+              <span className="text-[12px] text-content-muted">
+                Nightly, whatever Minecraft version this build targets
+              </span>
+            ) : (
+              <div className="w-44">
+                <Select
+                  compact
+                  value={versionId}
+                  options={
+                    gameVersions.includes(versionId)
+                      ? gameVersions
+                      : [versionId, ...gameVersions]
+                  }
+                  onChange={(next) => {
+                    setVersionId(next);
+                    setFlavorVersion(null);
+                  }}
+                />
+              </div>
+            )}
+            {needsFlavorVersion(software, server.flavor) && (
               <div className="w-56">
                 <Select
                   compact
@@ -222,7 +230,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                       ? "Loading builds"
                       : builds.length === 0
                         ? "Nothing published"
-                        : `Pick a ${flavorLabel(server.flavor)} build`
+                        : `Pick a ${flavorLabel(software, server.flavor)} build`
                   }
                   options={builds.slice(0, 80)}
                   onChange={setFlavorVersion}
@@ -245,127 +253,131 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
           </Row>
         </div>
 
-        <SectionLabel>Memory</SectionLabel>
-        <div className="mb-8 mt-3 max-w-2xl">
-          <div className="mb-2 flex items-end justify-between gap-4">
-            <div>
-              <div className="text-[11px] font-medium text-content-muted">Minimum</div>
-              <div className="mt-1 flex items-center gap-1.5">
-                <input
-                  type="number"
-                  value={minMem}
-                  onChange={(event) => setMinMem(event.target.value)}
-                  placeholder="default"
-                  className={cn(inputCls, "w-24 text-right tabular-nums")}
-                />
-                <span className="text-xs text-content-faint">MB</span>
+        {!native && (
+          <>
+          <SectionLabel>Memory</SectionLabel>
+          <div className="mb-8 mt-3 max-w-2xl">
+            <div className="mb-2 flex items-end justify-between gap-4">
+              <div>
+                <div className="text-[11px] font-medium text-content-muted">Minimum</div>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={minMem}
+                    onChange={(event) => setMinMem(event.target.value)}
+                    placeholder="default"
+                    className={cn(inputCls, "w-24 text-right tabular-nums")}
+                  />
+                  <span className="text-xs text-content-faint">MB</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[11px] font-medium text-content-muted">Maximum</div>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={maxMem}
+                    onChange={(event) => setMaxMem(event.target.value)}
+                    placeholder="default"
+                    className={cn(inputCls, "w-24 text-right tabular-nums")}
+                  />
+                  <span className="text-xs text-content-faint">MB</span>
+                </div>
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-[11px] font-medium text-content-muted">Maximum</div>
-              <div className="mt-1 flex items-center gap-1.5">
-                <input
-                  type="number"
-                  value={maxMem}
-                  onChange={(event) => setMaxMem(event.target.value)}
-                  placeholder="default"
-                  className={cn(inputCls, "w-24 text-right tabular-nums")}
-                />
-                <span className="text-xs text-content-faint">MB</span>
-              </div>
-            </div>
-          </div>
-          <div className="px-1 pt-3">
-            <MemoryRange
-              min={sliderMin}
-              max={sliderMax}
-              ceiling={ceiling}
-              available={stats?.available_memory_mb}
-              onChange={(low, high) => {
-                setMinMem(String(low));
-                setMaxMem(String(high));
-              }}
-            />
-          </div>
-          <p className="mt-2 text-[11px] text-content-faint">
-            Leave both empty to follow the server default in Settings
-            {settings
-              ? `, now ${settings.server_min_memory_mb} MB to ${settings.server_max_memory_mb} MB`
-              : ""}
-            .
-          </p>
-        </div>
-
-        <SectionLabel>Java</SectionLabel>
-        <div className="mb-8 mt-1">
-          <Row label="Runtime">
-            <div className="w-full max-w-md">
-              <Select
-                compact
-                value={
-                  javaCustom
-                    ? JAVA_CUSTOM
-                    : !javaPath
-                      ? JAVA_AUTO
-                      : javas.find((entry) => entry.path === javaPath)
-                        ? `Java ${javas.find((entry) => entry.path === javaPath)!.major} · ${javaPath}`
-                        : JAVA_CUSTOM
-                }
-                options={[
-                  JAVA_AUTO,
-                  ...javas.map((entry) => `Java ${entry.major} · ${entry.path}`),
-                  JAVA_CUSTOM,
-                ]}
-                onChange={(choice) => {
-                  if (choice === JAVA_AUTO) {
-                    setJavaCustom(false);
-                    setJavaPath("");
-                    return;
-                  }
-                  if (choice === JAVA_CUSTOM) {
-                    setJavaCustom(true);
-                    return;
-                  }
-                  const picked = javas.find(
-                    (entry) => `Java ${entry.major} · ${entry.path}` === choice,
-                  );
-                  if (picked) {
-                    setJavaCustom(false);
-                    setJavaPath(picked.path);
-                  }
+            <div className="px-1 pt-3">
+              <MemoryRange
+                min={sliderMin}
+                max={sliderMax}
+                ceiling={ceiling}
+                available={stats?.available_memory_mb}
+                onChange={(low, high) => {
+                  setMinMem(String(low));
+                  setMaxMem(String(high));
                 }}
               />
             </div>
-          </Row>
-          {(javaCustom || (!!javaPath && !javas.some((entry) => entry.path === javaPath))) && (
-            <Row label="Custom path">
-              <input
-                value={javaPath}
-                onChange={(event) => setJavaPath(event.target.value)}
-                placeholder="/path/to/bin/java"
-                className={cn(inputCls, "w-full max-w-md font-mono text-xs")}
-              />
+            <p className="mt-2 text-[11px] text-content-faint">
+              Leave both empty to follow the server default in Settings
+              {settings
+                ? `, now ${settings.server_min_memory_mb} MB to ${settings.server_max_memory_mb} MB`
+                : ""}
+              .
+            </p>
+          </div>
+
+          <SectionLabel>Java</SectionLabel>
+          <div className="mb-8 mt-1">
+            <Row label="Runtime">
+              <div className="w-full max-w-md">
+                <Select
+                  compact
+                  value={
+                    javaCustom
+                      ? JAVA_CUSTOM
+                      : !javaPath
+                        ? JAVA_AUTO
+                        : javas.find((entry) => entry.path === javaPath)
+                          ? `Java ${javas.find((entry) => entry.path === javaPath)!.major} · ${javaPath}`
+                          : JAVA_CUSTOM
+                  }
+                  options={[
+                    JAVA_AUTO,
+                    ...javas.map((entry) => `Java ${entry.major} · ${entry.path}`),
+                    JAVA_CUSTOM,
+                  ]}
+                  onChange={(choice) => {
+                    if (choice === JAVA_AUTO) {
+                      setJavaCustom(false);
+                      setJavaPath("");
+                      return;
+                    }
+                    if (choice === JAVA_CUSTOM) {
+                      setJavaCustom(true);
+                      return;
+                    }
+                    const picked = javas.find(
+                      (entry) => `Java ${entry.major} · ${entry.path}` === choice,
+                    );
+                    if (picked) {
+                      setJavaCustom(false);
+                      setJavaPath(picked.path);
+                    }
+                  }}
+                />
+              </div>
             </Row>
-          )}
-          <Row label="Arguments">
-            <textarea
-              value={jvmArgs}
-              onChange={(event) => setJvmArgs(event.target.value)}
-              rows={2}
-              spellCheck={false}
-              placeholder={settings?.server_jvm_args.trim() || "-XX:+UseG1GC -Dsome.flag=true"}
-              className={cn(inputCls, "w-full max-w-md resize-y font-mono text-xs")}
-            />
-            <div className="w-44 shrink-0 self-start">
-              <Select
-                compact
-                value={jvmArgsMode === "replace" ? REPLACE : APPEND}
-                options={MODES}
-                onChange={(choice) => setJvmArgsMode(choice === REPLACE ? "replace" : "append")}
+            {(javaCustom || (!!javaPath && !javas.some((entry) => entry.path === javaPath))) && (
+              <Row label="Custom path">
+                <input
+                  value={javaPath}
+                  onChange={(event) => setJavaPath(event.target.value)}
+                  placeholder="/path/to/bin/java"
+                  className={cn(inputCls, "w-full max-w-md font-mono text-xs")}
+                />
+              </Row>
+            )}
+            <Row label="Arguments">
+              <textarea
+                value={jvmArgs}
+                onChange={(event) => setJvmArgs(event.target.value)}
+                rows={2}
+                spellCheck={false}
+                placeholder={settings?.server_jvm_args.trim() || "-XX:+UseG1GC -Dsome.flag=true"}
+                className={cn(inputCls, "w-full max-w-md resize-y font-mono text-xs")}
               />
-            </div>
-          </Row>
-        </div>
+              <div className="w-44 shrink-0 self-start">
+                <Select
+                  compact
+                  value={jvmArgsMode === "replace" ? REPLACE : APPEND}
+                  options={MODES}
+                  onChange={(choice) => setJvmArgsMode(choice === REPLACE ? "replace" : "append")}
+                />
+              </div>
+            </Row>
+          </div>
+          </>
+        )}
 
         <SectionLabel>Launch command</SectionLabel>
         <div className="mb-8 mt-3 max-w-4xl">
