@@ -2,7 +2,7 @@ import { Check, Clock, Download, Heart, Loader2, Package } from "lucide-react";
 
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
-import type { Instance, ProjectDetails, SearchProvider } from "../../lib/types";
+import type { Instance, ProjectDetails, SearchProvider, Server } from "../../lib/types";
 import { accentFrom, formatCount } from "../ContentResults";
 import { InstanceTargetPicker } from "../InstanceTargetPicker";
 
@@ -32,6 +32,9 @@ export function ProjectHero({
   instances,
   target,
   onSelectTarget,
+  servers,
+  selectedServerId,
+  onSelectServer,
   showTargetPicker,
   onInstall,
   onOpenInstalled,
@@ -46,6 +49,9 @@ export function ProjectHero({
   instances: Instance[];
   target: Instance | null;
   onSelectTarget: (instance: Instance | null) => void;
+  servers?: Server[];
+  selectedServerId?: string | null;
+  onSelectServer?: (serverId: string) => void;
   showTargetPicker: boolean;
   onInstall: () => void;
   onOpenInstalled: () => void;
@@ -162,6 +168,9 @@ export function ProjectHero({
               instances={instances}
               selected={target}
               onSelect={onSelectTarget}
+              servers={servers}
+              selectedServerId={selectedServerId}
+              onSelectServer={onSelectServer}
             />
           )}
         </div>

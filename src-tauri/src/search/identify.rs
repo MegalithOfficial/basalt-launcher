@@ -6,7 +6,7 @@ use std::{
 
 use serde::Deserialize;
 
-use super::{curseforge, model::Provider, modrinth, resolve_projects};
+use super::{curseforge, model::ContentKind, model::Provider, modrinth, resolve_projects};
 use crate::{content, db::ContentFile, error::Result, state::AppState};
 
 const MURMUR_M: u32 = 0x5bd1_e995;
@@ -282,20 +282,23 @@ pub fn identify_file(files: &crate::files::FileManager, path: &Path) -> Result<F
     })
 }
 
-pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Result<()> {
-    let items = content::list(&state.files, instance_id, kind)?;
+pub async fn reconcile(
+    state: &AppState,
+    target: crate::search::resolve::Target<'_>,
+    kind: &str,
+) -> Result<()> {
+    let content_kind = ContentKind::parse(kind)?;
+    let dir = target.dir(state, content_kind)?;
+    let items = content::list_in(&state.files, &dir)?;
     if items.is_empty() {
         return Ok(());
     }
 
-    let known: HashMap<String, ContentFile> = state
-        .db
-        .content_files(instance_id, kind)?
+    let known: HashMap<String, ContentFile> = target
+        .installed(state, content_kind)
         .into_iter()
         .map(|f| (f.file_name.clone(), f))
         .collect();
-
-    let dir = content::dir_for(&state.paths, instance_id, kind)?;
     let mut hashed: Vec<(String, String, u32)> = Vec::new();
 
     for item in &items {
@@ -314,9 +317,9 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         let Ok(identity) = identify_file(&state.files, &path) else {
             continue;
         };
-        state.db.merge_identity(
-            instance_id,
-            kind,
+        target.merge_identity(
+            state,
+            content_kind,
             &item.file_name,
             Some(&identity.sha1),
             None,
@@ -326,9 +329,7 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         )?;
         if existing.is_none() {
             if let Some(name) = &identity.display_name {
-                state
-                    .db
-                    .set_fallback_title(instance_id, kind, &item.file_name, name)?;
+                target.set_fallback_title(state, content_kind, &item.file_name, name)?;
             }
         }
         hashed.push((item.file_name.clone(), identity.sha1, identity.murmur2));
@@ -372,9 +373,9 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
             let Some(project) = project_info.get(project_id.as_str()) else {
                 continue;
             };
-            state.db.merge_provider_identity(
-                instance_id,
-                kind,
+            target.merge_provider_identity(
+                state,
+                content_kind,
                 file_name,
                 provider.as_str(),
                 project_id,
@@ -416,9 +417,9 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         match by_hash.get(sha1) {
             Some(version) => {
                 let project = info.get(version.project_id.as_str());
-                state.db.merge_provider_identity(
-                    instance_id,
-                    kind,
+                target.merge_provider_identity(
+                    state,
+                    content_kind,
                     file_name,
                     Provider::Modrinth.as_str(),
                     &version.project_id,
@@ -455,9 +456,9 @@ pub async fn reconcile(state: &AppState, instance_id: &str, kind: &str) -> Resul
         };
         let project_id = entry.file.mod_id.to_string();
         let project = cf_info.get(project_id.as_str());
-        state.db.merge_provider_identity(
-            instance_id,
-            kind,
+        target.merge_provider_identity(
+            state,
+            content_kind,
             file_name,
             Provider::Curseforge.as_str(),
             &project_id,

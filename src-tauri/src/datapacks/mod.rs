@@ -341,7 +341,7 @@ pub async fn install(
         state,
         provider,
         project_id,
-        &instance.id,
+        resolve::Target::Instance(&instance.id),
         ContentKind::DataPack,
         &instance.version_id,
         None,

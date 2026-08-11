@@ -10,7 +10,8 @@ import type {
 export interface ContentInstallOptions {
   provider: SearchProvider;
   projectId: string;
-  instanceId: string;
+  instanceId: string | null;
+  serverId?: string | null;
   kind: ContentKind;
   gameVersion: string;
   loader: string | null;

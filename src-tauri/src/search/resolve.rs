@@ -24,14 +24,191 @@ fn ensure_loader_for(kind: ContentKind, loader: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-fn ensure_instance_supports(state: &AppState, instance_id: &str, kind: ContentKind) -> Result<()> {
-    let instance = state
-        .db
-        .list_instances(&state.files)?
-        .into_iter()
-        .find(|instance| instance.id == instance_id)
-        .ok_or_else(|| crate::error::Error::NotFound(format!("instance {instance_id}")))?;
-    ensure_loader_for(kind, instance.loader.as_deref())
+#[derive(Clone, Copy)]
+pub enum Target<'a> {
+    Instance(&'a str),
+    Server(&'a crate::servers::Server),
+}
+
+impl<'a> Target<'a> {
+    pub fn instance_id(self) -> Option<&'a str> {
+        match self {
+            Target::Instance(id) => Some(id),
+            Target::Server(_) => None,
+        }
+    }
+
+    pub fn server_id(self) -> Option<&'a str> {
+        match self {
+            Target::Instance(_) => None,
+            Target::Server(server) => Some(&server.id),
+        }
+    }
+
+    fn supports(self, state: &AppState, kind: ContentKind) -> Result<()> {
+        match self {
+            Target::Instance(id) => {
+                let instance = state
+                    .db
+                    .list_instances(&state.files)?
+                    .into_iter()
+                    .find(|instance| instance.id == id)
+                    .ok_or_else(|| crate::error::Error::NotFound(format!("instance {id}")))?;
+                ensure_loader_for(kind, instance.loader.as_deref())
+            }
+            Target::Server(server) => {
+                if kind != ContentKind::Mod {
+                    return Err(crate::error::Error::other(format!(
+                        "A server takes no {}.",
+                        kind.as_str()
+                    )));
+                }
+                crate::servers::content::dir_of(server).map(|_| ())
+            }
+        }
+    }
+
+    pub fn dir(self, state: &AppState, kind: ContentKind) -> Result<std::path::PathBuf> {
+        match self {
+            Target::Instance(id) => content::dir_for(&state.paths, id, kind.as_str()),
+            Target::Server(server) => crate::servers::content::dir_of(server),
+        }
+    }
+
+    pub fn installed(self, state: &AppState, kind: ContentKind) -> Vec<ContentFile> {
+        match self {
+            Target::Instance(id) => state.db.content_files(id, kind.as_str()),
+            Target::Server(server) => state.db.server_content_files(&server.id, kind.as_str()),
+        }
+        .unwrap_or_default()
+    }
+
+    fn record(self, state: &AppState, kind: ContentKind, file: &ContentFile) {
+        let _ = match self {
+            Target::Instance(id) => state.db.record_content_file(id, kind.as_str(), file),
+            Target::Server(server) => {
+                state
+                    .db
+                    .record_server_content_file(&server.id, kind.as_str(), file)
+            }
+        };
+    }
+
+    fn forget(self, state: &AppState, kind: ContentKind, file_name: &str) {
+        let _ = match self {
+            Target::Instance(id) => state.db.delete_content_file(id, kind.as_str(), file_name),
+            Target::Server(server) => {
+                state
+                    .db
+                    .delete_server_content_file(&server.id, kind.as_str(), file_name)
+            }
+        };
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn merge_identity(
+        self,
+        state: &AppState,
+        kind: ContentKind,
+        file_name: &str,
+        sha1: Option<&str>,
+        sha512: Option<&str>,
+        murmur2: Option<i64>,
+        mod_id: Option<&str>,
+        mod_version: Option<&str>,
+    ) -> Result<()> {
+        match self {
+            Target::Instance(id) => state.db.merge_identity(
+                id,
+                kind.as_str(),
+                file_name,
+                sha1,
+                sha512,
+                murmur2,
+                mod_id,
+                mod_version,
+            ),
+            Target::Server(server) => state.db.merge_server_identity(
+                &server.id,
+                kind.as_str(),
+                file_name,
+                sha1,
+                sha512,
+                murmur2,
+                mod_id,
+                mod_version,
+            ),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn merge_provider_identity(
+        self,
+        state: &AppState,
+        kind: ContentKind,
+        file_name: &str,
+        provider: &str,
+        project_id: &str,
+        version_id: Option<&str>,
+        title: Option<&str>,
+        icon_url: Option<&str>,
+    ) -> Result<()> {
+        match self {
+            Target::Instance(id) => state.db.merge_provider_identity(
+                id,
+                kind.as_str(),
+                file_name,
+                provider,
+                project_id,
+                version_id,
+                title,
+                icon_url,
+            ),
+            Target::Server(server) => state.db.merge_server_provider_identity(
+                &server.id,
+                kind.as_str(),
+                file_name,
+                provider,
+                project_id,
+                version_id,
+                title,
+                icon_url,
+            ),
+        }
+    }
+
+    pub fn set_fallback_title(
+        self,
+        state: &AppState,
+        kind: ContentKind,
+        file_name: &str,
+        title: &str,
+    ) -> Result<()> {
+        match self {
+            Target::Instance(id) => {
+                state
+                    .db
+                    .set_fallback_title(id, kind.as_str(), file_name, title)
+            }
+            Target::Server(server) => {
+                state
+                    .db
+                    .set_server_fallback_title(&server.id, kind.as_str(), file_name, title)
+            }
+        }
+    }
+
+    fn name(self, state: &AppState) -> Option<String> {
+        match self {
+            Target::Instance(id) => state
+                .db
+                .list_instances(&state.files)
+                .ok()
+                .and_then(|list| list.into_iter().find(|entry| entry.id == id))
+                .map(|entry| entry.name),
+            Target::Server(server) => Some(server.name.clone()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -141,11 +318,8 @@ struct InstalledIndex {
     stems: HashSet<String>,
 }
 
-fn index_installed(state: &AppState, instance_id: &str, kind: ContentKind) -> InstalledIndex {
-    let files = state
-        .db
-        .content_files(instance_id, kind.as_str())
-        .unwrap_or_default();
+fn index_installed(state: &AppState, target: Target, kind: ContentKind) -> InstalledIndex {
+    let files = target.installed(state, kind);
 
     let mut by_project = HashMap::new();
     let mut mod_ids = HashSet::new();
@@ -207,16 +381,16 @@ pub async fn plan(
     state: &AppState,
     provider: Provider,
     project_id: &str,
-    instance_id: &str,
+    target: Target<'_>,
     kind: ContentKind,
     game_version: &str,
     loader: Option<&str>,
     version_id: Option<&str>,
     with_dependencies: bool,
 ) -> Result<InstallPlan> {
-    ensure_instance_supports(state, instance_id, kind)?;
+    target.supports(state, kind)?;
 
-    let installed = index_installed(state, instance_id, kind);
+    let installed = index_installed(state, target, kind);
     let mut plan = InstallPlan::default();
 
     let version = fetch_version(
@@ -385,17 +559,17 @@ pub async fn apply(
     state: &AppState,
     plan: &InstallPlan,
     provider: Provider,
-    instance_id: &str,
+    target: Target<'_>,
     kind: ContentKind,
     pack_version_id: Option<&str>,
 ) -> Result<Vec<InstalledItem>> {
-    ensure_instance_supports(state, instance_id, kind)?;
+    target.supports(state, kind)?;
 
     if plan.is_empty() {
         return Ok(Vec::new());
     }
 
-    let dir = content::dir_for(&state.paths, instance_id, kind.as_str())?;
+    let dir = target.dir(state, kind)?;
     state.files.ensure_dir(&dir)?;
 
     let files = plan.files();
@@ -412,12 +586,7 @@ pub async fn apply(
         .collect();
 
     let task = if let Some(app) = app {
-        let instance_name = state
-            .db
-            .list_instances(&state.files)
-            .ok()
-            .and_then(|list| list.into_iter().find(|i| i.id == instance_id))
-            .map(|i| i.name);
+        let target_name = target.name(state);
         Some(
             state.tasks.start(
                 app,
@@ -431,10 +600,10 @@ pub async fn apply(
                         .as_ref()
                         .map(|f| f.title.clone())
                         .unwrap_or_else(|| "Content".to_string()),
-                    subtitle: instance_name.map(|name| format!("into {name}")),
+                    subtitle: target_name.map(|name| format!("into {name}")),
                     icon_url: plan.primary.as_ref().and_then(|f| f.icon_url.clone()),
-                    instance_id: Some(instance_id.to_string()),
-                    server_id: None,
+                    instance_id: target.instance_id().map(str::to_owned),
+                    server_id: target.server_id().map(str::to_owned),
                     project_id: plan.primary.as_ref().map(|f| f.project_id.clone()),
                     total: total as u64,
                     total_bytes: plan.total_bytes,
@@ -500,10 +669,8 @@ pub async fn apply(
 
     for file in files {
         if let Some(old) = &file.replaces {
-            let _ = content::delete(&state.files, instance_id, kind.as_str(), old);
-            let _ = state
-                .db
-                .delete_content_file(instance_id, kind.as_str(), old);
+            let _ = content::delete_in(&state.files, &dir, old);
+            target.forget(state, kind, old);
         }
 
         let record = ContentFile {
@@ -529,9 +696,7 @@ pub async fn apply(
             pack_version_id: pack_version_id.map(str::to_owned),
             installed_at: now,
         };
-        let _ = state
-            .db
-            .record_content_file(instance_id, kind.as_str(), &record);
+        target.record(state, kind, &record);
         written.push(InstalledItem {
             file_name: file.file_name.clone(),
             title: file.title.clone(),
@@ -578,14 +743,11 @@ fn requires(file: &crate::db::ContentFile, project_id: &str) -> bool {
 
 pub fn plan_removal(
     state: &AppState,
-    instance_id: &str,
+    target: Target<'_>,
     kind: ContentKind,
     file_name: &str,
 ) -> RemovalPlan {
-    let files = state
-        .db
-        .content_files(instance_id, kind.as_str())
-        .unwrap_or_default();
+    let files = target.installed(state, kind);
 
     let Some(target) = files.iter().find(|f| f.file_name == file_name).cloned() else {
         return RemovalPlan {
@@ -658,16 +820,12 @@ pub fn plan_removal(
 
 pub fn dependents_of(
     state: &AppState,
-    instance_id: &str,
+    target: Target<'_>,
     kind: ContentKind,
     project_id: &str,
 ) -> Vec<String> {
-    let files = state
-        .db
-        .content_files(instance_id, kind.as_str())
-        .unwrap_or_default();
-
-    files
+    target
+        .installed(state, kind)
         .into_iter()
         .filter(|file| {
             file.project_id.as_deref() != Some(project_id)

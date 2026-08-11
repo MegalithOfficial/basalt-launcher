@@ -245,7 +245,7 @@ impl Db {
         Ok(())
     }
 
-    fn read_content_file(row: &rusqlite::Row) -> rusqlite::Result<ContentFile> {
+    pub(super) fn read_content_file(row: &rusqlite::Row) -> rusqlite::Result<ContentFile> {
         Ok(ContentFile {
             file_name: row.get(0)?,
             sha1: row.get(1)?,

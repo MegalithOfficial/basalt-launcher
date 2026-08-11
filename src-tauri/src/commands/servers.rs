@@ -352,6 +352,7 @@ pub fn delete_server(state: State<AppState>, server_id: String, delete_files: bo
             .files
             .remove_managed_dir_all_if_exists(PathBuf::from(&server.dir))?;
     }
+    state.db.forget_server_content(&server_id)?;
     state.db.delete_server(&server_id)?;
     runtime::forget(&state, &server_id);
     crate::servers::adopt_imported_dirs(&state)?;
@@ -477,13 +478,39 @@ pub fn set_server_properties(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
-pub fn list_server_content(
-    state: State<AppState>,
+pub async fn list_server_content(
+    state: State<'_, AppState>,
     server_id: String,
+    reconcile: Option<bool>,
 ) -> Result<Vec<crate::content::ContentItem>> {
     let server = super::find_server(&state, &server_id)?;
     reachable(&server)?;
-    content::list(&state.files, &server)
+    if reconcile.unwrap_or(false) {
+        crate::search::identify::reconcile(
+            &state,
+            crate::search::resolve::Target::Server(&server),
+            "mods",
+        )
+        .await?;
+    }
+    let mut items = content::list(&state.files, &server)?;
+    let mut sources: std::collections::HashMap<String, crate::db::ContentFile> = state
+        .db
+        .server_content_files(&server.id, "mods")?
+        .into_iter()
+        .map(|file| (file.file_name.clone(), file))
+        .collect();
+    let mut updates: std::collections::HashMap<String, crate::db::ContentUpdate> = state
+        .db
+        .server_content_updates(&server.id)?
+        .into_iter()
+        .map(|update| (update.file_name.clone(), update))
+        .collect();
+    for item in &mut items {
+        item.source = sources.remove(&item.file_name);
+        item.update = updates.remove(&item.file_name);
+    }
+    Ok(items)
 }
 
 #[tauri::command]
@@ -507,7 +534,10 @@ pub fn delete_server_content(
 ) -> Result<()> {
     let server = super::find_server(&state, &server_id)?;
     reachable(&server)?;
-    content::delete(&state.files, &server, &file_name)
+    content::delete(&state.files, &server, &file_name)?;
+    state
+        .db
+        .delete_server_content_file(&server.id, "mods", &file_name)
 }
 
 #[tauri::command]
@@ -520,6 +550,95 @@ pub fn add_server_content(
     let server = super::find_server(&state, &server_id)?;
     reachable(&server)?;
     content::add(&state.files, &server, &sources)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn plan_server_content_removal(
+    state: State<AppState>,
+    server_id: String,
+    file_name: String,
+) -> Result<crate::search::resolve::RemovalPlan> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    Ok(crate::search::resolve::plan_removal(
+        &state,
+        crate::search::resolve::Target::Server(&server),
+        crate::search::ContentKind::Mod,
+        &file_name,
+    ))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn check_server_content_updates(
+    state: State<'_, AppState>,
+    server_id: String,
+    force: Option<bool>,
+) -> Result<Vec<crate::db::ContentUpdate>> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    let checked_at = state.db.server_updates_checked_at(&server_id)?;
+    if !force.unwrap_or(false) && !crate::search::updates::is_stale(checked_at) {
+        return state.db.server_content_updates(&server_id);
+    }
+    crate::search::updates::check_server(&state, &server).await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn plan_server_content_install(
+    state: State<'_, AppState>,
+    server_id: String,
+    provider: String,
+    project_id: String,
+    version_id: Option<String>,
+) -> Result<crate::search::resolve::InstallPlan> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    crate::search::resolve::plan(
+        &state,
+        crate::search::Provider::parse(&provider)?,
+        &project_id,
+        crate::search::resolve::Target::Server(&server),
+        crate::search::ContentKind::Mod,
+        &server.version_id,
+        Some(server.flavor.id()),
+        version_id.as_deref(),
+        true,
+    )
+    .await
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state, app), err)]
+pub async fn install_server_content(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    provider: String,
+    project_id: String,
+    version_id: Option<String>,
+    with_dependencies: Option<bool>,
+) -> Result<Vec<crate::search::resolve::InstalledItem>> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    let provider = crate::search::Provider::parse(&provider)?;
+    let kind = crate::search::ContentKind::Mod;
+    let target = crate::search::resolve::Target::Server(&server);
+    let plan = crate::search::resolve::plan(
+        &state,
+        provider,
+        &project_id,
+        target,
+        kind,
+        &server.version_id,
+        Some(server.flavor.id()),
+        version_id.as_deref(),
+        with_dependencies.unwrap_or(true),
+    )
+    .await?;
+    crate::search::resolve::apply(Some(&app), &state, &plan, provider, target, kind, None).await
 }
 
 #[tauri::command]

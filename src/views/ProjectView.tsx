@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Package, TriangleAlert } from "lucide-react";
 
 import { cn } from "../lib/cn";
@@ -6,7 +6,6 @@ import { api } from "../lib/api";
 import type {
   Changelog,
   ContentKind,
-  Instance,
   ProjectDetails,
   ProjectSummary,
   ProjectVersion,
@@ -19,6 +18,7 @@ import { ProjectHero } from "../components/project/ProjectHero";
 import { ProjectSidebar } from "../components/project/ProjectSidebar";
 import { VersionBrowser } from "../components/project/VersionBrowser";
 import { useActiveProjectIds } from "../lib/useTasks";
+import type { InstallTarget } from "../lib/target";
 import { useStore } from "../store";
 
 interface PendingInstall {
@@ -38,6 +38,38 @@ export function ProjectView() {
   );
   const instances = useStore((s) => s.instances);
   const setDiscoverTarget = useStore((s) => s.setDiscoverTarget);
+  const setDiscoverServer = useStore((s) => s.setDiscoverServer);
+  const serverId = useStore((s) => s.discoverServerId);
+  const servers = useStore((s) => s.servers);
+  const serverSoftware = useStore((s) => s.serverSoftware);
+  const refreshServerContentSources = useStore((s) => s.refreshServerContentSources);
+  const server = servers.find((entry) => entry.id === serverId) ?? null;
+  const contentServers = useMemo(
+    () =>
+      servers.filter(
+        (entry) =>
+          entry.available &&
+          !!serverSoftware.find((spec) => spec.id === entry.flavor)?.content_dir,
+      ),
+    [servers, serverSoftware],
+  );
+  const destination: InstallTarget | null = server
+    ? {
+        id: server.id,
+        name: server.name,
+        version_id: server.version_id,
+        loader: server.flavor,
+        isServer: true,
+      }
+    : instance
+      ? {
+          id: instance.id,
+          name: instance.name,
+          version_id: instance.version_id,
+          loader: instance.loader,
+          isServer: false,
+        }
+      : null;
   const activeProjects = useActiveProjectIds();
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
@@ -46,7 +78,9 @@ export function ProjectView() {
       ? (s.instances.find((i) => i.pack_project_id === s.projectRef?.id) ?? null)
       : null,
   );
-  const sourcesMap = useStore((s) => s.contentSources[`${instance?.id}:${s.searchKind}`]);
+  const sourcesMap = useStore(
+    (s) => s.contentSources[`${s.discoverServerId ?? instance?.id}:${s.searchKind}`],
+  );
   const refreshContentSources = useStore((s) => s.refreshContentSources);
 
   const [tab, setTab] = useState<Tab>("description");
@@ -66,12 +100,13 @@ export function ProjectView() {
   const [pickingTarget, setPickingTarget] = useState(false);
 
   const isPack = kind === "modpacks";
-  const loader = kind === "mods" ? (instance?.loader ?? null) : null;
+  const loader = kind === "mods" ? (destination?.loader ?? null) : null;
   const contentInstaller = useContentInstaller();
 
   useEffect(() => {
-    if (instance && storeKind) void refreshContentSources(instance.id, storeKind);
-  }, [instance?.id, storeKind, refreshContentSources]);
+    if (serverId) void refreshServerContentSources(serverId);
+    else if (instance && storeKind) void refreshContentSources(instance.id, storeKind);
+  }, [instance?.id, serverId, storeKind, refreshContentSources, refreshServerContentSources]);
 
   useEffect(() => {
     if (!projectRef) return;
@@ -108,7 +143,7 @@ export function ProjectView() {
         projectRef.provider,
         projectRef.id,
         kind,
-        instance?.version_id ?? "",
+        destination?.version_id ?? "",
         loader,
       )
       .then((v) => live && setVersions(v))
@@ -173,7 +208,7 @@ export function ProjectView() {
     }
   };
 
-  const doInstall = async (target: PendingInstall, destination: Instance) => {
+  const doInstall = async (target: PendingInstall, into: InstallTarget) => {
     setInstalling(target.key);
     setError(null);
     setNotice(null);
@@ -181,10 +216,11 @@ export function ProjectView() {
       const files = await contentInstaller.installContent({
         provider: projectRef.provider,
         projectId: target.projectId,
-        instanceId: destination.id,
+        instanceId: into.isServer ? null : into.id,
+        serverId: into.isServer ? into.id : null,
         kind,
-        gameVersion: destination.version_id,
-        loader: kind === "mods" ? destination.loader : null,
+        gameVersion: into.version_id,
+        loader: kind === "mods" ? into.loader : null,
         versionId: target.versionId,
         title: details?.title ?? projectRef.title ?? "Content",
         iconUrl: details?.icon_url ?? null,
@@ -193,8 +229,8 @@ export function ProjectView() {
       setInstalled((prev) => new Set(prev).add(target.key));
       setNotice(
         files.length > 1
-          ? `Installed ${files[0]?.title ?? "the file"} and ${files.length - 1} more into ${destination.name}`
-          : `Installed ${files[0]?.title ?? "the file"} into ${destination.name}`,
+          ? `Installed ${files[0]?.title ?? "the file"} and ${files.length - 1} more into ${into.name}`
+          : `Installed ${files[0]?.title ?? "the file"} into ${into.name}`,
       );
     } catch (e) {
       setError(String(e));
@@ -203,7 +239,10 @@ export function ProjectView() {
     }
   };
 
-  const beginInstall = async (target: PendingInstall, into: Instance | null = instance ?? null) => {
+  const beginInstall = async (
+    target: PendingInstall,
+    into: InstallTarget | null = destination,
+  ) => {
     if (isPack) {
       await installPack(target.versionId);
       return;
@@ -282,6 +321,9 @@ export function ProjectView() {
         instances={instances}
         target={instance ?? null}
         onSelectTarget={(picked) => setDiscoverTarget(picked?.id ?? null)}
+        servers={kind === "mods" ? contentServers : []}
+        selectedServerId={serverId}
+        onSelectServer={setDiscoverServer}
         showTargetPicker={!isPack}
         onInstall={() => install(null)}
         onOpenInstalled={() =>
@@ -338,7 +380,7 @@ export function ProjectView() {
             </div>
             <ProjectSidebar
               details={details}
-              instanceVersion={instance?.version_id ?? null}
+              instanceVersion={destination?.version_id ?? null}
               instanceLoader={loader}
             />
           </div>
@@ -354,9 +396,9 @@ export function ProjectView() {
                 versions={versions}
                 kind={kind}
                 isPack={isPack}
-                instanceVersion={instance?.version_id ?? null}
+                instanceVersion={destination?.version_id ?? null}
                 instanceLoader={loader}
-                hasInstance={!!instance}
+                hasInstance={!!destination}
                 installedVersionId={installedEntry?.version_id ?? null}
                 installingKey={installing ?? contentInstaller.installingVersionId}
                 installedKeys={installed}
@@ -393,7 +435,15 @@ export function ProjectView() {
             setPickingTarget(false);
             if (picked) {
               setDiscoverTarget(picked.id);
-              if (target) void beginInstall(target, picked);
+              if (target) {
+                void beginInstall(target, {
+                  id: picked.id,
+                  name: picked.name,
+                  version_id: picked.version_id,
+                  loader: picked.loader,
+                  isServer: false,
+                });
+              }
             }
           }}
         />

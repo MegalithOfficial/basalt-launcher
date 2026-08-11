@@ -495,15 +495,22 @@ export function ContentInstallerProvider({ children }: { children: React.ReactNo
         },
       );
       try {
-        const plan = await api.planContentInstall(
-          options.provider,
-          options.projectId,
-          options.instanceId,
-          options.kind,
-          options.gameVersion,
-          options.loader,
-          options.versionId ?? null,
-        );
+        const plan = options.serverId
+          ? await api.planServerContentInstall(
+              options.serverId,
+              options.provider,
+              options.projectId,
+              options.versionId ?? null,
+            )
+          : await api.planContentInstall(
+              options.provider,
+              options.projectId,
+              options.instanceId ?? "",
+              options.kind,
+              options.gameVersion,
+              options.loader,
+              options.versionId ?? null,
+            );
         const replaces =
           !!plan.primary?.replaces || plan.dependencies.some((file) => !!file.replaces);
         const trivial =
@@ -523,6 +530,7 @@ export function ContentInstallerProvider({ children }: { children: React.ReactNo
           provider: options.provider,
           projectId: options.projectId,
           instanceId: options.instanceId,
+          serverId: options.serverId,
           kind: options.kind,
           gameVersion: options.gameVersion,
           loader: options.loader,

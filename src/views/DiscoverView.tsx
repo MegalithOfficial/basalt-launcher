@@ -46,6 +46,7 @@ import {
   useActiveProjectIds,
   useActiveTasksByProject,
 } from "../lib/useTasks";
+import type { InstallTarget } from "../lib/target";
 import { useStore } from "../store";
 
 const KINDS: Array<{ id: ContentKind; label: string }> = [
@@ -71,23 +72,60 @@ const SORTS: Array<{ id: SortOrder; label: string }> = [
 
 const PAGE_SIZE = 40;
 
+
+
 export function DiscoverView() {
   const kind = useStore((s) => s.discoverKind);
   const setKind = useStore((s) => s.setDiscoverKind);
   const targetId = useStore((s) => s.discoverTargetId);
   const setTarget = useStore((s) => s.setDiscoverTarget);
   const instances = useStore((s) => s.instances);
-  const target = useMemo(
-    () => instances.find((i) => i.id === targetId) ?? null,
-    [instances, targetId],
+  const serverId = useStore((s) => s.discoverServerId);
+  const servers = useStore((s) => s.servers);
+  const serverSoftware = useStore((s) => s.serverSoftware);
+  const setDiscoverServer = useStore((s) => s.setDiscoverServer);
+  const contentServers = useMemo(
+    () =>
+      servers.filter(
+        (entry) =>
+          entry.available &&
+          !!serverSoftware.find((spec) => spec.id === entry.flavor)?.content_dir,
+      ),
+    [servers, serverSoftware],
   );
+  const target = useMemo<InstallTarget | null>(() => {
+    if (serverId) {
+      const server = servers.find((entry) => entry.id === serverId);
+      return server
+        ? {
+            id: server.id,
+            name: server.name,
+            version_id: server.version_id,
+            loader: server.flavor,
+            isServer: true,
+          }
+        : null;
+    }
+    const instance = instances.find((entry) => entry.id === targetId);
+    return instance
+      ? {
+          id: instance.id,
+          name: instance.name,
+          version_id: instance.version_id,
+          loader: instance.loader,
+          isServer: false,
+        }
+      : null;
+  }, [instances, servers, targetId, serverId]);
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
+  const openServer = useStore((s) => s.openServer);
   const activeProjects = useActiveProjectIds();
   const activeTasks = useActiveTasksByProject();
   const allSources = useStore((s) => s.contentSources);
   const sources = allSources[`${targetId}:${kind}`];
   const refreshContentSources = useStore((s) => s.refreshContentSources);
+  const refreshServerContentSources = useStore((s) => s.refreshServerContentSources);
   const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key || s.bundledCurseforgeKey);
 
   const browse = useStore((s) => s.discoverBrowse);
@@ -117,7 +155,7 @@ export function DiscoverView() {
   const [planning, setPlanning] = useState<string | null>(null);
   const [pickingWorld, setPickingWorld] = useState<{
     project: ProjectSummary;
-    destination: Instance;
+    destination: InstallTarget;
     worlds: WorldSummary[];
   } | null>(null);
   const [worldFilter, setWorldFilter] = useState("");
@@ -174,6 +212,7 @@ export function DiscoverView() {
             ...emptyFilters,
             gameVersions: [target.version_id],
             loaders: usesLoaders && target.loader ? [target.loader] : [],
+            environment: target.isServer ? "server" : emptyFilters.environment,
           }
         : emptyFilters,
     });
@@ -191,11 +230,19 @@ export function DiscoverView() {
   useEffect(() => {
     if (kind === "modpacks") return;
     if (target) {
-      void refreshContentSources(target.id, kind);
+      if (target.isServer) void refreshServerContentSources(target.id);
+      else void refreshContentSources(target.id, kind);
       return;
     }
     for (const instance of instances) void refreshContentSources(instance.id, kind);
-  }, [target?.id, kind, instances, refreshContentSources]);
+  }, [
+    target?.id,
+    target?.isServer,
+    kind,
+    instances,
+    refreshContentSources,
+    refreshServerContentSources,
+  ]);
 
   const installedIn = useCallback(
     (projectId: string) =>
@@ -293,7 +340,15 @@ export function DiscoverView() {
       return;
     }
 
-    const destination = into ?? target;
+    const destination: InstallTarget | null = into
+      ? {
+          id: into.id,
+          name: into.name,
+          version_id: into.version_id,
+          loader: into.loader,
+          isServer: false,
+        }
+      : target;
     if (!destination) {
       setNeedsTarget(project);
       return;
@@ -333,7 +388,8 @@ export function DiscoverView() {
       const files = await contentInstaller.installContent({
         provider,
         projectId: project.id,
-        instanceId: destination.id,
+        instanceId: destination.isServer ? null : destination.id,
+        serverId: destination.isServer ? destination.id : null,
         kind,
         gameVersion: destination.version_id,
         loader: kind === "mods" ? destination.loader : null,
@@ -437,8 +493,11 @@ export function DiscoverView() {
               instances={
                 kind === "mods" ? instances.filter((instance) => !!instance.loader) : instances
               }
-              selected={target}
+              selected={instances.find((instance) => instance.id === targetId) ?? null}
               onSelect={(instance) => setTarget(instance?.id ?? null)}
+              servers={kind === "mods" ? contentServers : []}
+              selectedServerId={serverId}
+              onSelectServer={setDiscoverServer}
             />
           )}
         </div>
@@ -672,6 +731,7 @@ export function DiscoverView() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (isPack && packInstance) openInstance(packInstance.id);
+                          else if (target?.isServer) openServer(target.id);
                           else if (target) openInstance(target.id);
                         }}
                         className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-ok/15 px-3 text-xs font-semibold text-ok transition-colors hover:bg-ok/25"

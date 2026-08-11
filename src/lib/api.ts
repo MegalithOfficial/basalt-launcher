@@ -498,14 +498,44 @@ export const api = {
   inspectPaths: (paths: string[]) => call<PathKind[]>("inspect_paths", { paths }),
   listServers: () => call<Server[]>("list_servers"),
   listServerSoftware: () => call<ServerSoftware[]>("list_server_software"),
-  listServerContent: (serverId: string) =>
-    call<ContentItem[]>("list_server_content", { serverId }),
+  listServerContent: (serverId: string, reconcile?: boolean) =>
+    call<ContentItem[]>("list_server_content", { serverId, reconcile }),
+  planServerContentRemoval: (serverId: string, fileName: string) =>
+    call<RemovalPlan>("plan_server_content_removal", { serverId, fileName }),
   toggleServerContent: (serverId: string, fileName: string) =>
     call<boolean>("toggle_server_content", { serverId, fileName }),
   deleteServerContent: (serverId: string, fileName: string) =>
     call<void>("delete_server_content", { serverId, fileName }),
   addServerContent: (serverId: string, sources: string[]) =>
     call<number>("add_server_content", { serverId, sources }),
+  checkServerContentUpdates: (serverId: string, force?: boolean) =>
+    call<ContentUpdate[]>("check_server_content_updates", { serverId, force }),
+  planServerContentInstall: (
+    serverId: string,
+    provider: string,
+    projectId: string,
+    versionId: string | null,
+  ) =>
+    call<InstallPlan>("plan_server_content_install", {
+      serverId,
+      provider,
+      projectId,
+      versionId,
+    }),
+  installServerContent: (
+    serverId: string,
+    provider: string,
+    projectId: string,
+    versionId: string | null,
+    withDependencies: boolean,
+  ) =>
+    call<InstalledItem[]>("install_server_content", {
+      serverId,
+      provider,
+      projectId,
+      versionId,
+      withDependencies,
+    }),
   listServerFlavorVersions: (flavor: ServerFlavor, versionId: string) =>
     call<string[]>("list_server_flavor_versions", { flavor, versionId }),
   createServer: (

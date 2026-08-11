@@ -21,7 +21,12 @@ pub async fn list_instance_content(
 ) -> Result<Vec<ContentItem>> {
     find_instance(&state, &instance_id)?;
     if reconcile.unwrap_or(false) {
-        search::identify::reconcile(&state, &instance_id, &kind).await?;
+        search::identify::reconcile(
+            &state,
+            search::resolve::Target::Instance(&instance_id),
+            &kind,
+        )
+        .await?;
     }
 
     let mut items = content::list(&state.files, &instance_id, &kind)?;
@@ -67,7 +72,12 @@ pub async fn list_instance_content_bundle(
     let mut bundle = std::collections::HashMap::with_capacity(kinds.len());
     for kind in kinds {
         if reconcile {
-            search::identify::reconcile(&state, &instance_id, &kind).await?;
+            search::identify::reconcile(
+                &state,
+                search::resolve::Target::Instance(&instance_id),
+                &kind,
+            )
+            .await?;
         }
 
         let mut items = content::list(&state.files, &instance_id, &kind)?;
@@ -106,7 +116,7 @@ pub fn plan_content_removal(
     let kind = search::ContentKind::parse(&kind)?;
     Ok(search::resolve::plan_removal(
         &state,
-        &instance_id,
+        search::resolve::Target::Instance(&instance_id),
         kind,
         &file_name,
     ))
@@ -156,7 +166,7 @@ pub fn get_content_dependents(
     };
     Ok(search::resolve::dependents_of(
         &state,
-        &instance_id,
+        search::resolve::Target::Instance(&instance_id),
         kind_enum,
         &project_id,
     ))
@@ -171,7 +181,13 @@ pub async fn add_instance_content(
 ) -> Result<usize> {
     find_instance(&state, &instance_id)?;
     let copied = content::add(&state.files, &instance_id, &kind, &sources)?;
-    if let Err(error) = search::identify::reconcile(&state, &instance_id, &kind).await {
+    if let Err(error) = search::identify::reconcile(
+        &state,
+        search::resolve::Target::Instance(&instance_id),
+        &kind,
+    )
+    .await
+    {
         tracing::warn!(%error, "could not identify added content");
     }
     tracing::info!(copied, offered = sources.len(), "content added from disk");
@@ -302,7 +318,7 @@ pub async fn plan_content_install(
         &state,
         provider,
         &project_id,
-        &instance_id,
+        search::resolve::Target::Instance(&instance_id),
         kind,
         &game_version,
         loader.as_deref(),
@@ -333,7 +349,7 @@ pub async fn install_content(
         &state,
         provider,
         &project_id,
-        &instance_id,
+        search::resolve::Target::Instance(&instance_id),
         kind,
         &game_version,
         loader.as_deref(),
@@ -346,7 +362,7 @@ pub async fn install_content(
         &state,
         &plan,
         provider,
-        &instance_id,
+        search::resolve::Target::Instance(&instance_id),
         kind,
         None,
     )
@@ -544,7 +560,7 @@ pub async fn apply_content_update(
         &state,
         provider,
         &project_id,
-        &instance_id,
+        search::resolve::Target::Instance(&instance_id),
         kind_enum,
         &instance.version_id,
         instance.loader.as_deref(),
@@ -557,7 +573,7 @@ pub async fn apply_content_update(
         &state,
         &plan,
         provider,
-        &instance_id,
+        search::resolve::Target::Instance(&instance_id),
         kind_enum,
         None,
     )

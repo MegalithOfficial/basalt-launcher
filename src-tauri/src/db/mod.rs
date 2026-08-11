@@ -17,6 +17,7 @@ mod migrations;
 mod models;
 mod operations;
 mod runs;
+mod server_content;
 mod servers;
 mod settings;
 mod skins;

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Boxes, Check, ChevronDown, Compass, X } from "lucide-react";
+import { Boxes, Check, ChevronDown, Compass, Server as ServerIcon, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { loaderLabel } from "../lib/loader";
+import { flavorLabel } from "../lib/servers";
+import { useStore } from "../store";
 import { Modal } from "./Modal";
-import type { Instance } from "../lib/types";
+import type { Instance, Server } from "../lib/types";
 
 function InstanceRow({
   instance,
@@ -70,6 +72,39 @@ function InstanceRow({
   );
 }
 
+function ServerRow({
+  server,
+  label,
+  selected,
+  onClick,
+}: {
+  server: Server;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
+        selected ? "bg-(--accent-glow)" : "hover:bg-surface-2",
+      )}
+    >
+      <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
+        <ServerIcon className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-content">{server.name}</div>
+        <div className="truncate text-[11px] text-content-faint">
+          {server.version_id} · {label}
+        </div>
+      </div>
+      {selected && <Check className="size-4 shrink-0 text-(--accent)" />}
+    </button>
+  );
+}
+
 export function InstanceTargetPicker({
   instances,
   selected,
@@ -78,6 +113,9 @@ export function InstanceTargetPicker({
   modalFor,
   isCompatible,
   isInstalled,
+  servers = [],
+  selectedServerId = null,
+  onSelectServer,
 }: {
   instances: Instance[];
   selected: Instance | null;
@@ -86,7 +124,12 @@ export function InstanceTargetPicker({
   modalFor?: string | null;
   isCompatible?: (instance: Instance) => boolean;
   isInstalled?: (instance: Instance) => boolean;
+  servers?: Server[];
+  selectedServerId?: string | null;
+  onSelectServer?: (serverId: string) => void;
 }) {
+  const software = useStore((s) => s.serverSoftware);
+  const selectedServer = servers.find((entry) => entry.id === selectedServerId) ?? null;
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -171,14 +214,20 @@ export function InstanceTargetPicker({
         }}
         className={cn(
           "inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors",
-          selected
+          selected || selectedServer
             ? "border-border bg-surface-2 text-content hover:bg-surface-3"
             : "border-dashed border-border text-content-faint hover:text-content",
         )}
       >
-        {selected ? <Boxes className="size-3.5" /> : <Compass className="size-3.5" />}
+        {selectedServer ? (
+          <ServerIcon className="size-3.5" />
+        ) : selected ? (
+          <Boxes className="size-3.5" />
+        ) : (
+          <Compass className="size-3.5" />
+        )}
         <span className="max-w-56 truncate">
-          {selected ? selected.name : "Browsing only"}
+          {selectedServer ? selectedServer.name : selected ? selected.name : "Browsing only"}
         </span>
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
       </button>
@@ -203,7 +252,7 @@ export function InstanceTargetPicker({
               }}
               className={cn(
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-                selected ? "hover:bg-surface-2" : "bg-(--accent-glow)",
+                selected || selectedServer ? "hover:bg-surface-2" : "bg-(--accent-glow)",
               )}
             >
               <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
@@ -215,7 +264,9 @@ export function InstanceTargetPicker({
                   Pick an instance when you install
                 </div>
               </div>
-              {!selected && <Check className="size-4 shrink-0 text-(--accent)" />}
+              {!selected && !selectedServer && (
+                <Check className="size-4 shrink-0 text-(--accent)" />
+              )}
             </button>
 
             <div className="my-1 h-px bg-border-soft" />
@@ -236,6 +287,27 @@ export function InstanceTargetPicker({
                   }}
                 />
               ))
+            )}
+
+            {onSelectServer && servers.length > 0 && (
+              <>
+                <div className="my-1 h-px bg-border-soft" />
+                <div className="px-3 pb-1 pt-1.5 font-pixel text-[10px] uppercase tracking-[0.28em] text-content-faint">
+                  Servers
+                </div>
+                {servers.map((server) => (
+                  <ServerRow
+                    key={server.id}
+                    server={server}
+                    label={flavorLabel(software, server.flavor)}
+                    selected={selectedServerId === server.id}
+                    onClick={() => {
+                      onSelectServer(server.id);
+                      setOpen(false);
+                    }}
+                  />
+                ))}
+              </>
             )}
           </div>,
           document.body,

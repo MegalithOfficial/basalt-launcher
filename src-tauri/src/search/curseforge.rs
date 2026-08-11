@@ -11,6 +11,15 @@ const GAME_MINECRAFT: u32 = 432;
 const PAGE_SIZE_MAX: u32 = 50;
 const SEARCH_INDEX_MAX: u32 = 10_000;
 
+const BUKKIT_PLUGINS: u32 = 5;
+
+pub fn class_for(kind: ContentKind, loaders: &[String]) -> u32 {
+    if kind == ContentKind::Mod && loaders.iter().any(|loader| is_plugin_loader(loader)) {
+        return BUKKIT_PLUGINS;
+    }
+    class_id(kind)
+}
+
 pub fn class_id(kind: ContentKind) -> u32 {
     match kind {
         ContentKind::Mod => 6,
@@ -302,7 +311,10 @@ pub async fn search(
 
     let mut params: Vec<(String, String)> = vec![
         ("gameId".into(), GAME_MINECRAFT.to_string()),
-        ("classId".into(), class_id(kind).to_string()),
+        (
+            "classId".into(),
+            class_for(kind, &query.loaders).to_string(),
+        ),
         ("searchFilter".into(), query.query.clone()),
         ("sortField".into(), sort_field(query.sort).to_string()),
         ("sortOrder".into(), "desc".into()),

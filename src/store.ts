@@ -186,6 +186,7 @@ interface AppStore {
   searchKind: ContentKind | null;
   discoverKind: ContentKind;
   discoverTargetId: string | null;
+  discoverServerId: string | null;
   discoverWorld: string | null;
   discoverBrowse: DiscoverBrowse;
   projectRef: { provider: SearchProvider; id: string; title?: string } | null;
@@ -294,6 +295,8 @@ interface AppStore {
   setDiscoverBrowse: (patch: Partial<DiscoverBrowse>) => void;
   resetDiscoverBrowse: (patch: Partial<DiscoverBrowse>) => void;
   setDiscoverTarget: (instanceId: string | null) => void;
+  openServerDiscover: (serverId: string) => void;
+  setDiscoverServer: (serverId: string) => void;
   setDiscoverWorld: (world: string | null) => void;
   installModpack: (
     provider: SearchProvider,
@@ -304,10 +307,12 @@ interface AppStore {
   goBack: () => void;
   goBackTo: (index: number) => void;
   refreshContentSources: (instanceId: string, kind: string) => Promise<void>;
+  refreshServerContentSources: (serverId: string) => Promise<void>;
   installContent: (params: {
     provider: SearchProvider;
     projectId: string;
-    instanceId: string;
+    instanceId: string | null;
+    serverId?: string | null;
     kind: string;
     gameVersion: string;
     loader: string | null;
@@ -514,6 +519,7 @@ export const useStore = create<AppStore>((set) => ({
   searchKind: null,
   discoverKind: "mods",
   discoverTargetId: null,
+  discoverServerId: null,
   discoverWorld: null,
   discoverBrowse: emptyBrowse,
   projectRef: null,
@@ -547,6 +553,7 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({
       searchKind: kind,
       discoverKind: kind,
+      discoverServerId: null,
       discoverTargetId: s.detailInstanceId,
       view: "discover",
       viewStack: pushStack(s.viewStack, s.view, "discover"),
@@ -557,19 +564,40 @@ export const useStore = create<AppStore>((set) => ({
       discoverKind: kind ?? s.discoverKind,
       searchKind: kind ?? s.discoverKind,
       discoverTargetId: targetInstanceId !== undefined ? targetInstanceId : s.discoverTargetId,
+      discoverServerId: null,
       discoverWorld: world !== undefined ? world : s.discoverWorld,
       view: "discover",
       viewStack: pushStack(s.viewStack, s.view, "discover"),
     })),
 
-  setDiscoverKind: (kind) => set({ discoverKind: kind, searchKind: kind }),
+  openServerDiscover: (serverId) =>
+    set((s) => ({
+      discoverKind: "mods",
+      searchKind: "mods",
+      discoverTargetId: null,
+      discoverServerId: serverId,
+      discoverWorld: null,
+      view: "discover",
+      viewStack: pushStack(s.viewStack, s.view, "discover"),
+    })),
+
+  setDiscoverKind: (kind) =>
+    set((s) => ({
+      discoverKind: kind,
+      searchKind: kind,
+      discoverServerId: kind === "mods" ? s.discoverServerId : null,
+    })),
 
   setDiscoverBrowse: (patch) =>
     set((s) => ({ discoverBrowse: { ...s.discoverBrowse, ...patch } })),
 
   resetDiscoverBrowse: (patch) => set({ discoverBrowse: { ...emptyBrowse, ...patch } }),
 
-  setDiscoverTarget: (instanceId) => set({ discoverTargetId: instanceId, discoverWorld: null }),
+  setDiscoverTarget: (instanceId) =>
+    set({ discoverTargetId: instanceId, discoverServerId: null, discoverWorld: null }),
+
+  setDiscoverServer: (serverId) =>
+    set({ discoverServerId: serverId, discoverTargetId: null, discoverWorld: null }),
 
   setDiscoverWorld: (world) => set({ discoverWorld: world }),
 
@@ -597,6 +625,26 @@ export const useStore = create<AppStore>((set) => ({
     return instance;
   },
 
+  refreshServerContentSources: async (serverId) => {
+    try {
+      const items = await api.listServerContent(serverId);
+      const map: Record<string, { file_name: string; version_id: string | null }> = {};
+      items.forEach((item) => {
+        if (item.source?.project_id) {
+          map[item.source.project_id] = {
+            file_name: item.file_name,
+            version_id: item.source.version_id,
+          };
+        }
+      });
+      set((s) => ({
+        contentSources: { ...s.contentSources, [`${serverId}:mods`]: map },
+      }));
+    } catch {
+      return;
+    }
+  },
+
   refreshContentSources: async (instanceId, kind) => {
     try {
       const items = await api.listInstanceContent(instanceId, kind);
@@ -621,24 +669,38 @@ export const useStore = create<AppStore>((set) => ({
     installsInFlight += 1;
     let items: InstalledItem[];
     try {
-      items = await api.installContent(
-        params.provider,
-        params.projectId,
-        params.instanceId,
-        params.kind,
-        params.gameVersion,
-        params.loader,
-        params.versionId ?? null,
-        params.withDependencies ?? true,
-      );
+      items = params.serverId
+        ? await api.installServerContent(
+            params.serverId,
+            params.provider,
+            params.projectId,
+            params.versionId ?? null,
+            params.withDependencies ?? true,
+          )
+        : await api.installContent(
+            params.provider,
+            params.projectId,
+            params.instanceId ?? "",
+            params.kind,
+            params.gameVersion,
+            params.loader,
+            params.versionId ?? null,
+            params.withDependencies ?? true,
+          );
     } finally {
       installsInFlight -= 1;
     }
-    const into =
-      useStore.getState().instances.find((i) => i.id === params.instanceId)?.name ??
-      "this instance";
+    const state = useStore.getState();
+    const into = params.serverId
+      ? (state.servers.find((entry) => entry.id === params.serverId)?.name ?? "this server")
+      : (state.instances.find((entry) => entry.id === params.instanceId)?.name ??
+        "this instance");
     notifyInstalled(items, into);
-    await useStore.getState().refreshContentSources(params.instanceId, params.kind);
+    if (params.serverId) {
+      await useStore.getState().refreshServerContentSources(params.serverId);
+    } else if (params.instanceId) {
+      await useStore.getState().refreshContentSources(params.instanceId, params.kind);
+    }
     return items;
   },
 

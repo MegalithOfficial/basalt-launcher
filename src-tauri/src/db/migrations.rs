@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 14;
+pub(super) const SCHEMA_VERSION: i64 = 15;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -94,6 +94,38 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             latest_file_name TEXT NOT NULL,
             checked_at INTEGER NOT NULL,
             PRIMARY KEY (instance_id, kind, file_name)
+        );
+        CREATE TABLE IF NOT EXISTS server_content_files(
+            server_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            sha1 TEXT,
+            sha512 TEXT,
+            murmur2 INTEGER,
+            provider TEXT,
+            project_id TEXT,
+            version_id TEXT,
+            title TEXT,
+            icon_url TEXT,
+            mod_id TEXT,
+            mod_version TEXT,
+            dependencies TEXT,
+            origin TEXT NOT NULL DEFAULT 'user',
+            pack_version_id TEXT,
+            installed_at INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (server_id, kind, file_name)
+        );
+        CREATE INDEX IF NOT EXISTS server_content_files_project
+            ON server_content_files(server_id, kind, project_id);
+        CREATE TABLE IF NOT EXISTS server_content_updates(
+            server_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            latest_version_id TEXT NOT NULL,
+            latest_name TEXT NOT NULL,
+            latest_file_name TEXT NOT NULL,
+            checked_at INTEGER NOT NULL,
+            PRIMARY KEY (server_id, kind, file_name)
         );
         CREATE TABLE IF NOT EXISTS world_datapacks(
             instance_id TEXT NOT NULL,

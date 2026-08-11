@@ -16,16 +16,12 @@ pub fn is_stale(checked_at: Option<i64>) -> bool {
 
 async fn modrinth_updates(
     state: &AppState,
-    instance_id: &str,
+    files: &[crate::db::ContentFile],
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
     include_pack: bool,
 ) -> Vec<ContentUpdate> {
-    let files = state
-        .db
-        .content_files(instance_id, kind)
-        .unwrap_or_default();
     let candidates: Vec<(String, String, String)> = files
         .iter()
         .filter(|f| include_pack || f.origin != "pack")
@@ -85,7 +81,7 @@ async fn modrinth_updates(
 
 async fn curseforge_updates(
     state: &AppState,
-    instance_id: &str,
+    files: &[crate::db::ContentFile],
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
@@ -98,10 +94,6 @@ async fn curseforge_updates(
         return Vec::new();
     };
 
-    let files = state
-        .db
-        .content_files(instance_id, kind)
-        .unwrap_or_default();
     let tracked: Vec<(String, String, Option<String>)> = files
         .iter()
         .filter(|f| include_pack || f.origin != "pack")
@@ -166,16 +158,36 @@ pub async fn check(
         .unwrap_or(false);
     let mut all = Vec::new();
     for kind in KINDS {
+        let files = state
+            .db
+            .content_files(instance_id, kind)
+            .unwrap_or_default();
+        all.extend(modrinth_updates(state, &files, kind, game_version, loader, include_pack).await);
         all.extend(
-            modrinth_updates(state, instance_id, kind, game_version, loader, include_pack).await,
-        );
-        all.extend(
-            curseforge_updates(state, instance_id, kind, game_version, loader, include_pack).await,
+            curseforge_updates(state, &files, kind, game_version, loader, include_pack).await,
         );
     }
     state
         .db
         .replace_content_updates(instance_id, &all, chrono::Utc::now().timestamp())?;
+    Ok(all)
+}
+
+pub async fn check_server(
+    state: &AppState,
+    server: &crate::servers::Server,
+) -> Result<Vec<ContentUpdate>> {
+    let kind = ContentKind::Mod.as_str();
+    let files = state
+        .db
+        .server_content_files(&server.id, kind)
+        .unwrap_or_default();
+    let loader = Some(server.flavor.id());
+    let mut all = modrinth_updates(state, &files, kind, &server.version_id, loader, true).await;
+    all.extend(curseforge_updates(state, &files, kind, &server.version_id, loader, true).await);
+    state
+        .db
+        .replace_server_content_updates(&server.id, &all, chrono::Utc::now().timestamp())?;
     Ok(all)
 }
 
