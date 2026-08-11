@@ -721,6 +721,8 @@ export type View =
   | "accounts"
   | "settings"
   | "instance"
+  | "servers"
+  | "server"
   | "discover"
   | "project"
   | "stats"

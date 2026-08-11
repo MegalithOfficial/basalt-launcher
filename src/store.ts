@@ -179,6 +179,7 @@ interface AppStore {
   logsTab: LogsTab;
   media: Record<string, VersionMedia | null>;
   detailInstanceId: string | null;
+  detailServerId: string | null;
   viewStack: View[];
   searchKind: ContentKind | null;
   discoverKind: ContentKind;
@@ -201,6 +202,7 @@ interface AppStore {
   init: () => Promise<void>;
   refreshInstances: () => Promise<void>;
   refreshServers: () => Promise<void>;
+  openServer: (id: string) => void;
   createServer: (
     name: string,
     flavor: ServerFlavor,
@@ -503,6 +505,7 @@ export const useStore = create<AppStore>((set) => ({
   media: {},
   selectedInstanceId: null,
   detailInstanceId: null,
+  detailServerId: null,
   viewStack: [],
   searchKind: null,
   discoverKind: "mods",
@@ -1248,6 +1251,13 @@ export const useStore = create<AppStore>((set) => ({
     }));
   },
 
+  openServer: (id) =>
+    set((s) => ({
+      detailServerId: id,
+      view: "server",
+      viewStack: pushStack(s.viewStack, s.view, "server"),
+    })),
+
   refreshServers: async () => {
     set({ servers: await api.listServers() });
   },
@@ -1306,11 +1316,17 @@ export const useStore = create<AppStore>((set) => ({
       delete serverRunning[serverId];
       delete serverConsole[serverId];
       delete serverUsage[serverId];
+      const closingDetail = s.detailServerId === serverId;
       return {
         servers: s.servers.filter((server) => server.id !== serverId),
         serverRunning,
         serverConsole,
         serverUsage,
+        detailServerId: closingDetail ? null : s.detailServerId,
+        view: closingDetail && s.view === "server" ? "servers" : s.view,
+        viewStack: closingDetail
+          ? s.viewStack.filter((view) => view !== "server")
+          : s.viewStack,
       };
     });
   },

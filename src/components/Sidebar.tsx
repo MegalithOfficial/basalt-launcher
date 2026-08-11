@@ -13,6 +13,7 @@ import {
   PinOff,
   Play,
   Plus,
+  Server,
   Settings,
   Share,
   SquareChartGantt,
@@ -40,6 +41,7 @@ const DOCK_HEADING = 25;
 const NAV: Array<{ id: View; label: string; icon: typeof Play }> = [
   { id: "home", label: "Play", icon: Play },
   { id: "instances", label: "Instances", icon: Boxes },
+  { id: "servers", label: "Servers", icon: Server },
   { id: "discover", label: "Discover", icon: Compass },
 ];
 

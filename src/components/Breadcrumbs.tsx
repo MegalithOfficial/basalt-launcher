@@ -11,6 +11,8 @@ const LABELS: Record<View, string> = {
   accounts: "Accounts",
   settings: "Settings",
   instance: "Instance",
+  servers: "Servers",
+  server: "Server",
   discover: "Discover",
   project: "Project",
   stats: "Stats",

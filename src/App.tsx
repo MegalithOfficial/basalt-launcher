@@ -16,6 +16,8 @@ import { AccountsView } from "./views/AccountsView";
 import { HomeView } from "./views/HomeView";
 import { InstanceView } from "./views/InstanceView";
 import { InstancesView } from "./views/InstancesView";
+import { ServerView } from "./views/ServerView";
+import { ServersView } from "./views/ServersView";
 import { DiscoverView } from "./views/DiscoverView";
 import { LogsView } from "./views/LogsView";
 import { ProjectView } from "./views/ProjectView";
@@ -33,6 +35,8 @@ const VIEWS: Record<View, React.ComponentType> = {
   accounts: AccountsView,
   settings: SettingsView,
   instance: InstanceView,
+  servers: ServersView,
+  server: ServerView,
   discover: DiscoverView,
   project: ProjectView,
   stats: StatsView,
