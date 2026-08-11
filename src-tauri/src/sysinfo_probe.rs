@@ -26,6 +26,15 @@ pub struct DiskInfo {
     pub removable: bool,
 }
 
+/// The address other machines on the network reach this one on. No packets are
+/// sent, the socket is only asked which route it would take.
+pub fn lan_address() -> Option<String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("1.1.1.1:80").ok()?;
+    let address = socket.local_addr().ok()?.ip();
+    (!address.is_loopback() && !address.is_unspecified()).then(|| address.to_string())
+}
+
 pub fn disk_for(path: &std::path::Path) -> Option<DiskInfo> {
     let disks = Disks::new_with_refreshed_list();
     let disk = disks

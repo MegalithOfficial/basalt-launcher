@@ -43,6 +43,8 @@ import type {
   LogLevel,
   NetworkProbe,
   ProxyMode,
+  ServerConsoleLayout,
+  ServerShutdown,
   SystemStats,
   UpdateInfo,
 } from "../lib/types";
@@ -54,6 +56,7 @@ const TABS = [
   { id: "general", label: "General" },
   { id: "java", label: "Java" },
   { id: "game", label: "Game" },
+  { id: "servers", label: "Servers" },
   { id: "integrations", label: "Integrations" },
   { id: "network", label: "Network" },
   { id: "appearance", label: "Look and feel" },
@@ -140,11 +143,44 @@ const PROXY_LABELS: Record<ProxyMode, string> = {
   socks5: "SOCKS5 proxy",
 };
 
+const SHUTDOWN_ASK = "Ask before closing";
+const SHUTDOWN_STOP = "Stop them and close";
+const SHUTDOWN_LEAVE = "Leave them running";
+const SHUTDOWN_LABELS: Record<ServerShutdown, string> = {
+  ask: SHUTDOWN_ASK,
+  stop: SHUTDOWN_STOP,
+  leave: SHUTDOWN_LEAVE,
+};
+
+const CONSOLE_LAYOUTS: Record<ServerConsoleLayout, { label: string; hint: string }> = {
+  sidebar: {
+    label: "Beside",
+    hint: "Charts, address and who is online sit in a column next to the console",
+  },
+  below: {
+    label: "Below",
+    hint: "Memory, CPU and players sit under the console as wide panels",
+  },
+  header: {
+    label: "In the header",
+    hint: "One quiet strip in the header row, the console gets the whole page",
+  },
+};
+
 const AUTO_DETECT = "Auto-detect";
 const CUSTOM_PATH = "Custom path";
 
 const inputCls =
   "rounded-lg border border-border bg-void px-3 py-2 text-sm text-content outline-none transition-colors placeholder:text-content-faint focus:border-(--accent)";
+
+const AIKAR_FLAGS =
+  "-Xms{{min_ram}}M -Xmx{{max_ram}}M -XX:+UseG1GC -XX:+ParallelRefProcEnabled " +
+  "-XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC " +
+  "-XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 " +
+  "-XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 " +
+  "-XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 " +
+  "-XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 " +
+  "-XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1";
 
 const numberCls =
   "w-24 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
@@ -989,6 +1025,130 @@ export function SettingsView() {
           </div>
         )}
 
+        {tab === "servers" && (
+          <div className="gap-6 [column-fill:balance] lg:columns-2">
+          <Section
+            title="Memory"
+            description="Applied to every server unless it sets its own."
+          >
+            <div className="px-5 py-5">
+              <div className="mb-2 flex items-end justify-between gap-4">
+                <div>
+                  <div className="text-[11px] font-medium text-content-muted">Minimum</div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={draft.server_min_memory_mb}
+                      onChange={(e) =>
+                        set({ server_min_memory_mb: parseNum(e.target.value, 512) })
+                      }
+                      className={cn(inputCls, numberCls)}
+                    />
+                    <span className="text-xs text-content-faint">MB</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] font-medium text-content-muted">Maximum</div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={draft.server_max_memory_mb}
+                      onChange={(e) =>
+                        set({ server_max_memory_mb: parseNum(e.target.value, 4096) })
+                      }
+                      className={cn(inputCls, numberCls)}
+                    />
+                    <span className="text-xs text-content-faint">MB</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-1 pt-3">
+                <MemoryRange
+                  min={draft.server_min_memory_mb}
+                  max={draft.server_max_memory_mb}
+                  ceiling={Math.max(4096, stats?.total_memory_mb ?? 16384)}
+                  available={stats?.available_memory_mb}
+                  onChange={(low, high) =>
+                    set({ server_min_memory_mb: low, server_max_memory_mb: high })
+                  }
+                />
+              </div>
+
+              <div className="mt-4 border-t border-border-soft pt-3 text-[11px] text-content-faint">
+                A server holds this whether anyone is online or not, so leave room for the game
+                you play on the same machine.
+              </div>
+            </div>
+          </Section>
+
+          <Section
+            title="Java arguments"
+            description="The base every server starts from. Instance arguments never apply to servers."
+          >
+            <Row label="Arguments" hint="{{min_ram}} and {{max_ram}} are filled in" stacked>
+              <textarea
+                value={draft.server_jvm_args}
+                onChange={(e) => set({ server_jvm_args: e.target.value })}
+                rows={3}
+                spellCheck={false}
+                placeholder="-Xms{{min_ram}}M -Xmx{{max_ram}}M"
+                className={cn(inputCls, "w-full resize-y font-mono text-xs")}
+              />
+            </Row>
+            <Row label="Aikar's flags" hint="the usual tuning for a public server" stacked>
+              <button
+                onClick={() => set({ server_jvm_args: AIKAR_FLAGS })}
+                className={chipCls}
+              >
+                Use them
+              </button>
+            </Row>
+          </Section>
+
+          <Section title="Shutting down" description="What happens to a running server.">
+            <Row label="When Basalt closes" stacked>
+              <div className="w-full">
+                <Select
+                  value={SHUTDOWN_LABELS[draft.server_shutdown]}
+                  options={[SHUTDOWN_ASK, SHUTDOWN_STOP, SHUTDOWN_LEAVE]}
+                  onChange={(choice) =>
+                    set({
+                      server_shutdown:
+                        choice === SHUTDOWN_STOP
+                          ? "stop"
+                          : choice === SHUTDOWN_LEAVE
+                            ? "leave"
+                            : "ask",
+                    })
+                  }
+                />
+              </div>
+            </Row>
+            <Row
+              label="Wait before killing"
+              hint="seconds a server gets to save the world after stop"
+            >
+              <input
+                type="number"
+                min={5}
+                max={600}
+                value={draft.server_stop_timeout_secs}
+                onChange={(e) => set({ server_stop_timeout_secs: parseNum(e.target.value, 60) })}
+                className={cn(inputCls, numberCls)}
+              />
+            </Row>
+            {draft.server_shutdown === "leave" && (
+              <Row
+                label="Left running"
+                hint="Basalt reattaches on the next start, but the console cannot take commands until you restart the server from Basalt"
+                stacked
+              />
+            )}
+          </Section>
+          </div>
+        )}
+
         {tab === "integrations" && (
           <div>
           <Section
@@ -1270,6 +1430,30 @@ export function SettingsView() {
 
         {tab === "appearance" && (
           <div className="gap-6 [column-fill:balance] lg:columns-2">
+          <Section
+            title="Server console"
+            description="Where a running server reports how it is doing."
+          >
+            <Row label="Layout" hint={CONSOLE_LAYOUTS[draft.server_console_layout].hint} stacked>
+              <div className="flex w-full gap-1.5">
+                {(Object.keys(CONSOLE_LAYOUTS) as ServerConsoleLayout[]).map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => set({ server_console_layout: id })}
+                    aria-pressed={draft.server_console_layout === id}
+                    className={cn(
+                      "flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+                      draft.server_console_layout === id
+                        ? "border-(--accent) bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-content"
+                        : "border-border bg-surface-2 text-content-muted hover:bg-surface-3 hover:text-content",
+                    )}
+                  >
+                    {CONSOLE_LAYOUTS[id].label}
+                  </button>
+                ))}
+              </div>
+            </Row>
+          </Section>
           <Section
             title="Accent colour"
             description="The colour Basalt uses for buttons, highlights and progress."

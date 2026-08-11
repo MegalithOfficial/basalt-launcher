@@ -341,6 +341,12 @@ pub fn inspect_paths(paths: Vec<String>) -> Result<Vec<PathKind>> {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip_all)]
+pub fn get_lan_address() -> Option<String> {
+    sysinfo_probe::lan_address()
+}
+
+#[tauri::command]
 #[tracing::instrument(skip_all, err)]
 pub fn get_system_stats(state: State<AppState>) -> Result<SystemStats> {
     Ok(sysinfo_probe::collect(&state.paths))

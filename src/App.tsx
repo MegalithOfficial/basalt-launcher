@@ -1,9 +1,12 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "motion/react";
 
 import { applyTheme, themeVars } from "./lib/accent";
+import { api } from "./lib/api";
+import { isLive } from "./lib/servers";
 import { cn } from "./lib/cn";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { RecoveryBanner } from "./components/RecoveryBanner";
@@ -52,19 +55,50 @@ function App() {
     s.selectedInstanceId ? (s.media[s.selectedInstanceId]?.accent ?? null) : null,
   );
   const settings = useStore((s) => s.settings);
+  const servers = useStore((s) => s.servers);
+  const serverRunning = useStore((s) => s.serverRunning);
 
   const [maximized, setMaximized] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const closeApproved = useRef(false);
   const onboarding = useStore((s) => s.ready && s.settings?.onboarded === false);
 
   useEffect(() => {
     init();
   }, [init]);
 
+  const stopServersAndClose = async () => {
+    const running = Object.values(useStore.getState().serverRunning).filter(isLive);
+    await Promise.allSettled(running.map((info) => api.stopServer(info.server_id)));
+    closeApproved.current = true;
+    await getCurrentWindow().destroy();
+  };
+
   useEffect(() => {
     const win = getCurrentWindow();
     const sync = () => win.isMaximized().then(setMaximized);
     sync();
     const unlisten = win.onResized(sync);
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const unlisten = win.onCloseRequested((event) => {
+      if (closeApproved.current) return;
+      const state = useStore.getState();
+      const running = Object.values(state.serverRunning).filter(isLive);
+      if (running.length === 0) return;
+      if (state.settings?.server_shutdown === "leave") return;
+      event.preventDefault();
+      if (state.settings?.server_shutdown === "stop") {
+        void stopServersAndClose();
+        return;
+      }
+      setClosing(true);
+    });
     return () => {
       unlisten.then((fn) => fn());
     };
@@ -159,6 +193,23 @@ function App() {
       </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={closing}
+        tone="warn"
+        title="Servers are still running"
+        description={Object.values(serverRunning)
+          .filter(isLive)
+          .map(
+            (info) =>
+              servers.find((server) => server.id === info.server_id)?.name ?? info.server_id,
+          )
+          .join(", ")}
+        confirmLabel="Stop them and close"
+        cancelLabel="Keep playing"
+        onCancel={() => setClosing(false)}
+        onConfirm={stopServersAndClose}
+      />
     </div>
     </ContentInstallerProvider>
   );

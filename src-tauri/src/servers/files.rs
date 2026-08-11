@@ -23,6 +23,8 @@ pub enum FileKind {
     Jar,
     Archive,
     Image,
+    Schematic,
+    Nbt,
 }
 
 impl FileKind {
@@ -39,6 +41,8 @@ impl FileKind {
             "jar" => FileKind::Jar,
             "zip" | "gz" | "tgz" | "tar" | "rar" | "7z" | "mrpack" => FileKind::Archive,
             "png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" => FileKind::Image,
+            "schematic" | "schem" | "litematic" => FileKind::Schematic,
+            "nbt" | "dat" | "dat_old" | "mca" | "mcr" => FileKind::Nbt,
             _ => FileKind::Text,
         }
     }
@@ -155,6 +159,20 @@ pub fn entries(files: &FileManager, dir: &Path, relative: &str) -> Result<Vec<Se
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(entries)
+}
+
+pub fn disk_usage(files: &FileManager, dir: &Path) -> u64 {
+    let Ok(entries) = files.read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .into_iter()
+        .map(|path| match files.symlink_metadata(&path) {
+            Ok(meta) if meta.is_dir() => disk_usage(files, &path),
+            Ok(meta) if meta.is_file() => meta.len(),
+            _ => 0,
+        })
+        .sum()
 }
 
 pub fn read_text(files: &FileManager, dir: &Path, relative: &str) -> Result<ServerText> {

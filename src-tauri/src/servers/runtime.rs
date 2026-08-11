@@ -37,7 +37,6 @@ const FLUSH_INTERVAL: Duration = Duration::from_millis(60);
 const LIVENESS_INTERVAL: Duration = Duration::from_secs(2);
 const TAIL_INTERVAL: Duration = Duration::from_millis(500);
 const STOP_POLL_INTERVAL: Duration = Duration::from_millis(200);
-const DEFAULT_STOP_TIMEOUT_SECS: u32 = 60;
 const MIN_STOP_TIMEOUT_SECS: u32 = 5;
 const MAX_STOP_TIMEOUT_SECS: u32 = 600;
 const DEFAULT_PORT: u16 = 25565;
@@ -117,14 +116,6 @@ fn emit_state(app: &AppHandle, info: ServerRunningInfo) {
     let _ = app.emit("server:state", info);
 }
 
-fn stop_timeout(server: &Server) -> Duration {
-    let secs = server
-        .stop_timeout_secs
-        .unwrap_or(DEFAULT_STOP_TIMEOUT_SECS)
-        .clamp(MIN_STOP_TIMEOUT_SECS, MAX_STOP_TIMEOUT_SECS);
-    Duration::from_secs(u64::from(secs))
-}
-
 pub fn read_properties(files: &FileManager, dir: &Path) -> Properties {
     files
         .read(dir.join("server.properties"))
@@ -169,10 +160,10 @@ fn port_is_free(port: u16) -> bool {
 }
 
 fn jvm_template(settings: &crate::config::LauncherSettings, server: &Server) -> String {
-    let base = if settings.jvm_args.trim().is_empty() {
+    let base = if settings.server_jvm_args.trim().is_empty() {
         crate::config::DEFAULT_JVM_ARGS
     } else {
-        settings.jvm_args.as_str()
+        settings.server_jvm_args.as_str()
     };
     let extra = server.jvm_args.as_deref().unwrap_or("").trim();
     if extra.is_empty() {
@@ -183,6 +174,28 @@ fn jvm_template(settings: &crate::config::LauncherSettings, server: &Server) -> 
     } else {
         format!("{base} {extra}")
     }
+}
+
+fn server_memory(
+    settings: &crate::config::LauncherSettings,
+    server: &Server,
+) -> Result<MemoryLimits> {
+    MemoryLimits::new(
+        server
+            .min_memory_mb
+            .unwrap_or(settings.server_min_memory_mb),
+        server
+            .max_memory_mb
+            .unwrap_or(settings.server_max_memory_mb),
+    )
+}
+
+fn stop_timeout(settings: &crate::config::LauncherSettings, server: &Server) -> Duration {
+    let secs = server
+        .stop_timeout_secs
+        .unwrap_or(settings.server_stop_timeout_secs)
+        .clamp(MIN_STOP_TIMEOUT_SECS, MAX_STOP_TIMEOUT_SECS);
+    Duration::from_secs(u64::from(secs))
 }
 
 fn launch_arguments(
@@ -219,6 +232,40 @@ fn launch_arguments(
 
     args.push("nogui".to_string());
     Ok(args)
+}
+
+pub async fn launch_preview(state: &AppState, server: &Server) -> Result<String> {
+    let settings = state.runtime_settings()?;
+    let memory = server_memory(&settings, server)?;
+    let version = install::load_merged_version(state, &server.version_id).await?;
+    let java = java::find_for_major(
+        &state.files,
+        version.required_java_major(),
+        server.java_path.as_deref(),
+    )
+    .await
+    .ok_or_else(|| {
+        Error::other(format!(
+            "No Java {} found for this server.",
+            version.required_java_major()
+        ))
+    })?;
+    let running_id = uuid::Uuid::new_v4().to_string();
+    let args = launch_arguments(&settings, server, memory, &running_id)?;
+    let mut line = quoted(&java.path);
+    for argument in &args {
+        line.push(' ');
+        line.push_str(&quoted(argument));
+    }
+    Ok(line)
+}
+
+fn quoted(value: &str) -> String {
+    if value.contains(char::is_whitespace) {
+        format!("\"{value}\"")
+    } else {
+        value.to_string()
+    }
 }
 
 fn push_console(
@@ -360,7 +407,7 @@ pub async fn start(
     }
 
     let settings = state.runtime_settings()?;
-    let memory = MemoryLimits::resolve(&settings, server.min_memory_mb, server.max_memory_mb)?;
+    let memory = server_memory(&settings, server)?;
     let version = install::load_merged_version(state, &server.version_id).await?;
     let java = java::find_for_major(
         &state.files,
@@ -604,7 +651,7 @@ pub async fn stop(app: &AppHandle, state: &AppState, server: &Server) -> Result<
         }
     }
 
-    let deadline = tokio::time::Instant::now() + stop_timeout(server);
+    let deadline = tokio::time::Instant::now() + stop_timeout(&state.runtime_settings()?, server);
     while tokio::time::Instant::now() < deadline {
         if !state
             .servers
@@ -791,7 +838,6 @@ fn watch_recovered(app: AppHandle, db: crate::db::Db, registry: Registry, run: A
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::LauncherSettings;
 
     fn server() -> Server {
         Server {
@@ -825,8 +871,8 @@ mod tests {
 
     #[test]
     fn a_jar_server_is_launched_with_the_memory_it_was_given() {
-        let settings = LauncherSettings::default();
         let memory = MemoryLimits::new(1024, 4096).unwrap();
+        let settings = crate::config::LauncherSettings::default();
         let args = launch_arguments(&settings, &server(), memory, "run-1").unwrap();
 
         assert!(args.contains(&"-Xms1024M".to_string()));
@@ -849,7 +895,7 @@ mod tests {
             ),
         ];
         let args = launch_arguments(
-            &LauncherSettings::default(),
+            &crate::config::LauncherSettings::default(),
             &server,
             MemoryLimits::new(1024, 4096).unwrap(),
             "run-2",
@@ -866,12 +912,12 @@ mod tests {
     }
 
     #[test]
-    fn server_jvm_arguments_add_to_or_replace_the_launcher_ones() {
-        let settings = LauncherSettings::default();
+    fn server_jvm_arguments_add_to_or_replace_the_memory_flags() {
         let memory = MemoryLimits::new(512, 1024).unwrap();
 
         let mut added = server();
         added.jvm_args = Some("-XX:+UseG1GC".into());
+        let settings = crate::config::LauncherSettings::default();
         let args = launch_arguments(&settings, &added, memory, "run-3").unwrap();
         assert!(args.contains(&"-Xmx1024M".to_string()));
         assert!(args.contains(&"-XX:+UseG1GC".to_string()));
@@ -881,6 +927,17 @@ mod tests {
         let args = launch_arguments(&settings, &replaced, memory, "run-4").unwrap();
         assert!(!args.contains(&"-Xmx1024M".to_string()));
         assert!(args.contains(&"-XX:+UseG1GC".to_string()));
+    }
+
+    #[test]
+    fn the_launcher_jvm_arguments_never_reach_a_server() {
+        let memory = MemoryLimits::new(512, 1024).unwrap();
+        let settings = crate::config::LauncherSettings::default();
+        let args = launch_arguments(&settings, &server(), memory, "run-5").unwrap();
+
+        assert_eq!(args[0], "-Xms512M");
+        assert_eq!(args[1], "-Xmx1024M");
+        assert_eq!(args[2], run_marker("run-5"));
     }
 
     #[test]
@@ -899,12 +956,49 @@ mod tests {
     }
 
     #[test]
-    fn the_stop_timeout_stays_inside_its_bounds() {
+    fn the_stop_timeout_falls_back_to_the_setting_and_stays_in_bounds() {
+        let settings = crate::config::LauncherSettings::default();
         let mut server = server();
-        assert_eq!(stop_timeout(&server).as_secs(), 60);
+        assert_eq!(stop_timeout(&settings, &server).as_secs(), 60);
         server.stop_timeout_secs = Some(1);
-        assert_eq!(stop_timeout(&server).as_secs(), 5);
+        assert_eq!(stop_timeout(&settings, &server).as_secs(), 5);
         server.stop_timeout_secs = Some(9000);
-        assert_eq!(stop_timeout(&server).as_secs(), 600);
+        assert_eq!(stop_timeout(&settings, &server).as_secs(), 600);
+    }
+
+    #[test]
+    fn a_server_without_its_own_memory_follows_the_server_setting() {
+        let mut settings = crate::config::LauncherSettings::default();
+        settings.min_memory_mb = 512;
+        settings.max_memory_mb = 2048;
+        settings.server_min_memory_mb = 2048;
+        settings.server_max_memory_mb = 8192;
+
+        let mut server = server();
+        server.min_memory_mb = None;
+        server.max_memory_mb = None;
+        let memory = server_memory(&settings, &server).unwrap();
+
+        assert_eq!(memory.min_mb, 2048);
+        assert_eq!(memory.max_mb, 8192);
+    }
+
+    #[test]
+    fn the_server_jvm_setting_is_the_base_every_server_starts_from() {
+        let mut settings = crate::config::LauncherSettings::default();
+        settings.jvm_args = "-XX:+ClientOnlyFlag".into();
+        settings.server_jvm_args = "-Xms{{min_ram}}M -Xmx{{max_ram}}M -XX:+UseG1GC".into();
+
+        let args = launch_arguments(
+            &settings,
+            &server(),
+            MemoryLimits::new(1024, 4096).unwrap(),
+            "run-6",
+        )
+        .unwrap();
+
+        assert!(args.contains(&"-XX:+UseG1GC".to_string()));
+        assert!(args.contains(&"-Xmx4096M".to_string()));
+        assert!(!args.iter().any(|arg| arg == "-XX:+ClientOnlyFlag"));
     }
 }

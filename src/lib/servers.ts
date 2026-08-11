@@ -1,4 +1,10 @@
-import type { Server, ServerFlavor, ServerRunningInfo, ServerState } from "./types";
+import type {
+  ConsoleLine,
+  Server,
+  ServerFlavor,
+  ServerRunningInfo,
+  ServerState,
+} from "./types";
 
 export const FLAVORS: Array<{ id: ServerFlavor; label: string; hint: string }> = [
   { id: "vanilla", label: "Vanilla", hint: "Mojang's own server, no mods or plugins." },
@@ -36,8 +42,11 @@ export function serverPort(server: Server): number {
 }
 
 export function serverAddress(server: Server): string {
-  const port = serverPort(server);
-  return port === DEFAULT_PORT ? "localhost" : `localhost:${port}`;
+  return `localhost:${serverPort(server)}`;
+}
+
+export function lanAddress(server: Server, host: string | null): string | null {
+  return host ? `${host}:${serverPort(server)}` : null;
 }
 
 export function stateLabel(state: ServerState | undefined, server: Server): string {
@@ -81,4 +90,25 @@ export function readConsoleLine(stream: string, line: string): ConsoleParts {
     message: match ? line.slice(match[0].length) : line,
     level,
   };
+}
+
+const JOINED = /(?:^|\]:?\s)([A-Za-z0-9_]{3,16}) joined the game\s*$/;
+const LEFT = /(?:^|\]:?\s)([A-Za-z0-9_]{3,16}) left the game\s*$/;
+
+export function onlinePlayers(lines: ConsoleLine[]): string[] {
+  const online: string[] = [];
+  for (const entry of lines) {
+    if (entry.stream === "input") continue;
+    const joined = JOINED.exec(entry.line);
+    if (joined && !online.includes(joined[1])) {
+      online.push(joined[1]);
+      continue;
+    }
+    const left = LEFT.exec(entry.line);
+    if (left) {
+      const at = online.indexOf(left[1]);
+      if (at >= 0) online.splice(at, 1);
+    }
+  }
+  return online;
 }

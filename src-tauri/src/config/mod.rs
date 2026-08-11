@@ -80,6 +80,18 @@ pub struct LauncherSettings {
     pub discord_rpc_show_logo: bool,
     #[serde(default)]
     pub discord_app_id: String,
+    #[serde(default = "default_min_memory_mb")]
+    pub server_min_memory_mb: u32,
+    #[serde(default = "default_server_max_memory_mb")]
+    pub server_max_memory_mb: u32,
+    #[serde(default)]
+    pub server_jvm_args: String,
+    #[serde(default = "default_server_shutdown")]
+    pub server_shutdown: String,
+    #[serde(default = "default_server_stop_timeout_secs")]
+    pub server_stop_timeout_secs: u32,
+    #[serde(default = "default_server_console_layout")]
+    pub server_console_layout: String,
 }
 
 pub fn default_proxy_mode() -> String {
@@ -108,6 +120,26 @@ pub fn default_danger_color() -> String {
 
 pub fn default_true() -> bool {
     true
+}
+
+pub fn default_min_memory_mb() -> u32 {
+    DEFAULT_MIN_MEMORY_MB
+}
+
+pub fn default_server_max_memory_mb() -> u32 {
+    4096
+}
+
+pub fn default_server_shutdown() -> String {
+    "ask".to_string()
+}
+
+pub fn default_server_stop_timeout_secs() -> u32 {
+    60
+}
+
+pub fn default_server_console_layout() -> String {
+    "sidebar".to_string()
 }
 
 pub fn default_timeout_secs() -> u64 {
@@ -160,6 +192,12 @@ impl Default for LauncherSettings {
             discord_rpc_show_streak: true,
             discord_rpc_show_logo: true,
             discord_app_id: String::new(),
+            server_min_memory_mb: default_min_memory_mb(),
+            server_max_memory_mb: default_server_max_memory_mb(),
+            server_jvm_args: String::new(),
+            server_shutdown: default_server_shutdown(),
+            server_stop_timeout_secs: default_server_stop_timeout_secs(),
+            server_console_layout: default_server_console_layout(),
         }
     }
 }

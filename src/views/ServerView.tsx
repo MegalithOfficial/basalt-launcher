@@ -1,26 +1,45 @@
 import { useEffect, useState } from "react";
 import {
   CircleStop,
+  ClipboardCopy,
   Download,
   FolderOpen,
   Loader2,
   Play,
+  RotateCw,
   Server as ServerIcon,
   Zap,
 } from "lucide-react";
 
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ContextMenu, useContextMenu } from "../components/ContextMenu";
 import { ConsolePanel } from "../components/servers/ConsolePanel";
+import { FilesPanel } from "../components/servers/FilesPanel";
+import { PropertiesPanel } from "../components/servers/PropertiesPanel";
+import { ServerSettingsPanel } from "../components/servers/ServerSettingsPanel";
 import { ServerStatusPill } from "../components/servers/ServerStatusPill";
+import { ConsoleStats } from "../components/servers/ConsoleStats";
+import { StatsSidebar } from "../components/servers/StatsSidebar";
 import { UsageMeter } from "../components/servers/UsageMeter";
 import { api } from "../lib/api";
+import { cn } from "../lib/cn";
 import { openFolder } from "../lib/reveal";
-import { flavorLabel, isLive, serverAddress } from "../lib/servers";
+import { flavorLabel, isLive, lanAddress, serverAddress } from "../lib/servers";
 import { useUptime } from "../lib/useUptime";
 import { EmptyState } from "../components/ui";
 import { useStore } from "../store";
 
 const EMPTY_USAGE: never[] = [];
+const DISK_POLL_MS = 30000;
+
+const TABS = [
+  { id: "console", label: "Console" },
+  { id: "files", label: "Files" },
+  { id: "properties", label: "Properties" },
+  { id: "settings", label: "Settings" },
+] as const;
+
+type ServerTab = (typeof TABS)[number]["id"];
 
 export function ServerView() {
   const detailServerId = useStore((s) => s.detailServerId);
@@ -29,21 +48,52 @@ export function ServerView() {
   const startServer = useStore((s) => s.startServer);
   const stopServer = useStore((s) => s.stopServer);
   const forceStopServer = useStore((s) => s.forceStopServer);
+  const restartServer = useStore((s) => s.restartServer);
   const installServer = useStore((s) => s.installServer);
+  const layout = useStore((s) => s.settings?.server_console_layout ?? "sidebar");
 
   const server = servers.find((entry) => entry.id === detailServerId);
   const usage = useStore((s) => (detailServerId ? s.serverUsage[detailServerId] : undefined));
   const info = detailServerId ? serverRunning[detailServerId] : undefined;
 
+  const [tab, setTab] = useState<ServerTab>("console");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forcing, setForcing] = useState(false);
   const [acceptingEula, setAcceptingEula] = useState(false);
+  const [disk, setDisk] = useState<number | null>(null);
+  const [lan, setLan] = useState<string | null>(null);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const uptime = useUptime(info?.started_at ?? 0, isLive(info));
 
   useEffect(() => {
+    let alive = true;
+    void api
+      .getLanAddress()
+      .then((host) => alive && setLan(host))
+      .catch(() => alive && setLan(null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     setError(null);
+    setDisk(null);
+    if (!detailServerId) return;
+    let alive = true;
+    const measure = () =>
+      api
+        .getServerDiskUsage(detailServerId)
+        .then((bytes) => alive && setDisk(bytes))
+        .catch(() => alive && setDisk(null));
+    void measure();
+    const timer = setInterval(measure, DISK_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [detailServerId]);
 
   if (!server) {
@@ -83,94 +133,135 @@ export function ServerView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-4 border-b border-border-soft px-8 py-5">
-        <span className="grid size-11 shrink-0 place-items-center rounded-2xl border border-border-soft bg-surface-3 text-content-muted">
-          <ServerIcon className="size-5" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border-soft px-8 py-2.5">
+        <h1 className="wrap-break-word font-display text-lg font-semibold tracking-tight text-content">
+          {server.name}
+        </h1>
+        <ServerStatusPill server={server} info={info} />
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-content-muted">
+          <span>{flavorLabel(server.flavor)}</span>
+          {server.flavor_version && (
+            <>
+              <span className="text-content-faint">·</span>
+              <span>build {server.flavor_version}</span>
+            </>
+          )}
+          <span className="text-content-faint">·</span>
+          <span>{server.version_id}</span>
+          {layout !== "sidebar" && (
+            <>
+              <span className="text-content-faint">·</span>
+              <button
+                onClick={(event) =>
+                  openMenu(
+                    event,
+                    [
+                      {
+                        label: serverAddress(server),
+                        icon: ClipboardCopy,
+                        onSelect: () =>
+                          void navigator.clipboard.writeText(serverAddress(server)),
+                      },
+                      ...(lanAddress(server, lan)
+                        ? [
+                            {
+                              label: lanAddress(server, lan)!,
+                              icon: ClipboardCopy,
+                              onSelect: () =>
+                                void navigator.clipboard.writeText(lanAddress(server, lan)!),
+                            },
+                          ]
+                        : []),
+                    ],
+                    "Copy an address",
+                    { below: true },
+                  )
+                }
+                title="Show the addresses"
+                className="font-mono text-content-muted underline decoration-dotted underline-offset-2 hover:text-content"
+              >
+                {serverAddress(server)}
+              </button>
+              {live && (
+                <>
+                  <span className="text-content-faint">·</span>
+                  <span>up {uptime}</span>
+                </>
+              )}
+            </>
+          )}
         </span>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate font-display text-xl font-semibold tracking-tight text-content">
-              {server.name}
-            </h1>
-            <ServerStatusPill server={server} info={info} />
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-content-muted">
-            <span>{flavorLabel(server.flavor)}</span>
-            {server.flavor_version && (
-              <>
-                <span className="text-content-faint">·</span>
-                <span>build {server.flavor_version}</span>
-              </>
-            )}
-            <span className="text-content-faint">·</span>
-            <span>{server.version_id}</span>
-            <span className="text-content-faint">·</span>
-            <button
-              onClick={() => void navigator.clipboard.writeText(serverAddress(server))}
-              title="Copy the address"
-              className="font-mono text-content-muted underline decoration-dotted underline-offset-2 hover:text-content"
-            >
-              {serverAddress(server)}
-            </button>
-            {live && (
-              <>
-                <span className="text-content-faint">·</span>
-                <span>up {uptime}</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {live && <UsageMeter samples={usage ?? EMPTY_USAGE} maxMemoryMb={server.max_memory_mb} />}
-
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-5">
+          {layout === "header" && (
+            <UsageMeter
+              samples={usage ?? EMPTY_USAGE}
+              maxMemoryMb={server.max_memory_mb}
+              diskBytes={disk}
+              live={live}
+            />
+          )}
+          <div className="flex items-center gap-2">
           <button
             onClick={() => openFolder(server.dir)}
             disabled={!server.available}
             title="Open the folder"
-            className="grid size-9 place-items-center rounded-lg border border-border bg-surface-2 text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-50"
+            className="grid size-8 place-items-center rounded-lg border border-border bg-surface-2 text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <FolderOpen className="size-4" />
+            <FolderOpen className="size-3.5" />
           </button>
 
           {!server.installed_at ? (
             <button
               onClick={() => void run(installServer(server.id))}
               disabled={busy || !server.available}
-              className="inline-flex items-center gap-2 rounded-lg bg-(--accent) px-4 py-2 text-sm font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-(--accent) px-3 py-1.5 text-[13px] font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+              {busy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
               Install
             </button>
           ) : live ? (
             <>
               <button
+                onClick={() => void run(restartServer(server.id))}
+                disabled={busy || info?.state === "stopping"}
+                title="Stop it and start it again"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-[13px] font-semibold text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RotateCw className="size-3.5" />
+                Restart
+              </button>
+              <button
                 onClick={() => void run(stopServer(server.id))}
                 disabled={busy}
-                className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-semibold text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-[13px] font-semibold text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <CircleStop className="size-4" />
+                <CircleStop className="size-3.5" />
                 {info?.state === "stopping" ? "Stopping" : "Stop"}
               </button>
               <button
                 onClick={() => setForcing(true)}
                 title="Kill the process without letting it save"
-                className="grid size-9 place-items-center rounded-lg border border-danger/40 bg-danger/10 text-danger transition-colors hover:bg-danger/20"
+                className="grid size-8 place-items-center rounded-lg border border-danger/40 bg-danger/10 text-danger transition-colors hover:bg-danger/20"
               >
-                <Zap className="size-4" />
+                <Zap className="size-3.5" />
               </button>
             </>
           ) : (
             <button
               onClick={() => void run(startServer(server.id))}
               disabled={busy || !server.available}
-              className="inline-flex items-center gap-2 rounded-lg bg-(--accent) px-4 py-2 text-sm font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-(--accent) px-3 py-1.5 text-[13px] font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
               Start
             </button>
           )}
+          </div>
         </div>
       </div>
 
@@ -201,7 +292,51 @@ export function ServerView() {
         </div>
       )}
 
-      <ConsolePanel serverId={server.id} live={live} attached={info?.attached ?? false} />
+      <div className="flex items-center gap-1 border-b border-border-soft px-6 pt-1">
+        {TABS.map((entry) => (
+          <button
+            key={entry.id}
+            onClick={() => setTab(entry.id)}
+            className={cn(
+              "relative rounded-t-lg px-3.5 py-2 text-[13px] font-medium transition-colors",
+              tab === entry.id
+                ? "text-content"
+                : "text-content-faint hover:text-content-muted",
+            )}
+          >
+            {entry.label}
+            {tab === entry.id && (
+              <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-(--accent)" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "console" && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1">
+            <ConsolePanel serverId={server.id} live={live} attached={info?.attached ?? false} />
+            {layout === "sidebar" && (
+              <StatsSidebar
+                server={server}
+                samples={usage ?? EMPTY_USAGE}
+                diskBytes={disk}
+                live={live}
+                uptime={uptime}
+                lan={lan}
+              />
+            )}
+          </div>
+          {layout === "below" && (
+            <ConsoleStats server={server} samples={usage ?? EMPTY_USAGE} live={live} />
+          )}
+        </div>
+      )}
+      {tab === "files" && <FilesPanel server={server} />}
+      {tab === "properties" && <PropertiesPanel server={server} live={live} />}
+      {tab === "settings" && <ServerSettingsPanel server={server} live={live} />}
+
+      <ContextMenu menu={menu} onClose={closeMenu} />
 
       <ConfirmDialog
         open={forcing}

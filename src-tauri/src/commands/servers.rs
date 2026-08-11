@@ -237,6 +237,8 @@ pub fn update_server_settings(
     state: State<AppState>,
     server_id: String,
     name: String,
+    version_id: String,
+    flavor_version: Option<String>,
     min_memory_mb: Option<u32>,
     max_memory_mb: Option<u32>,
     java_path: Option<String>,
@@ -249,12 +251,31 @@ pub fn update_server_settings(
     if name.is_empty() {
         return Err(Error::other("Give the server a name first."));
     }
+    let version_id = version_id.trim();
+    if version_id.is_empty() {
+        return Err(Error::other("Pick a Minecraft version first."));
+    }
     if let (Some(min), Some(max)) = (min_memory_mb, max_memory_mb) {
         crate::config::MemoryLimits::new(min, max)?;
+    }
+    let current = super::find_server(&state, &server_id)?;
+    let reinstall = current.version_id != version_id
+        || current.flavor_version.as_deref() != flavor_version.as_deref();
+    if reinstall
+        && state
+            .servers
+            .lock()
+            .unwrap()
+            .get(&server_id)
+            .is_some_and(runtime::ServerHandle::live)
+    {
+        return Err(Error::other("Stop the server before changing its version."));
     }
     state.db.update_server_settings(
         &server_id,
         name,
+        version_id,
+        flavor_version,
         min_memory_mb,
         max_memory_mb,
         java_path,
@@ -263,7 +284,20 @@ pub fn update_server_settings(
         stop_timeout_secs,
         notes,
     )?;
+    if reinstall {
+        state.db.clear_server_launch(&server_id)?;
+    }
     super::find_server(&state, &server_id)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn get_server_launch_command(
+    state: State<'_, AppState>,
+    server_id: String,
+) -> Result<String> {
+    let server = super::find_server(&state, &server_id)?;
+    runtime::launch_preview(&state, &server).await
 }
 
 #[tauri::command]
@@ -331,9 +365,37 @@ pub async fn stop_server(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub async fn restart_server(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+) -> Result<runtime::ServerRunningInfo> {
+    let server = super::find_server(&state, &server_id)?;
+    if state
+        .servers
+        .lock()
+        .unwrap()
+        .get(&server_id)
+        .is_some_and(runtime::ServerHandle::live)
+    {
+        runtime::stop(&app, &state, &server).await?;
+    }
+    runtime::start(&app, &state, &server).await
+}
+
+#[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub fn force_stop_server(state: State<AppState>, server_id: String) -> Result<()> {
     runtime::force_stop(&state, &server_id)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn get_server_disk_usage(state: State<AppState>, server_id: String) -> Result<u64> {
+    let server = super::find_server(&state, &server_id)?;
+    let dir = reachable(&server)?;
+    Ok(crate::servers::files::disk_usage(&state.files, &dir))
 }
 
 #[tauri::command]

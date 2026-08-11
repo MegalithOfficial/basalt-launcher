@@ -219,6 +219,7 @@ interface AppStore {
   installServer: (serverId: string) => Promise<void>;
   startServer: (serverId: string) => Promise<void>;
   stopServer: (serverId: string) => Promise<void>;
+  restartServer: (serverId: string) => Promise<void>;
   forceStopServer: (serverId: string) => Promise<void>;
   sendServerCommand: (serverId: string, line: string) => Promise<void>;
   deleteServer: (serverId: string, deleteFiles: boolean) => Promise<void>;
@@ -1291,6 +1292,11 @@ export const useStore = create<AppStore>((set) => ({
 
   stopServer: async (serverId) => {
     await api.stopServer(serverId);
+  },
+
+  restartServer: async (serverId) => {
+    const info = await api.restartServer(serverId);
+    set((s) => ({ serverRunning: { ...s.serverRunning, [serverId]: info } }));
   },
 
   forceStopServer: async (serverId) => {

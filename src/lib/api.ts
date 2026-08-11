@@ -518,6 +518,8 @@ export const api = {
   updateServerSettings: (
     serverId: string,
     name: string,
+    versionId: string,
+    flavorVersion: string | null,
     minMemoryMb: number | null,
     maxMemoryMb: number | null,
     javaPath: string | null,
@@ -529,6 +531,8 @@ export const api = {
     call<Server>("update_server_settings", {
       serverId,
       name,
+      versionId,
+      flavorVersion,
       minMemoryMb,
       maxMemoryMb,
       javaPath,
@@ -537,12 +541,16 @@ export const api = {
       stopTimeoutSecs,
       notes,
     }),
+  getServerLaunchCommand: (serverId: string) =>
+    call<string>("get_server_launch_command", { serverId }),
   acceptServerEula: (serverId: string) => call<Server>("accept_server_eula", { serverId }),
   deleteServer: (serverId: string, deleteFiles: boolean) =>
     call<void>("delete_server", { serverId, deleteFiles }),
   startServer: (serverId: string) => call<ServerRunningInfo>("start_server", { serverId }),
   stopServer: (serverId: string) => call<void>("stop_server", { serverId }),
+  restartServer: (serverId: string) => call<ServerRunningInfo>("restart_server", { serverId }),
   forceStopServer: (serverId: string) => call<void>("force_stop_server", { serverId }),
+  getServerDiskUsage: (serverId: string) => call<number>("get_server_disk_usage", { serverId }),
   sendServerCommand: (serverId: string, line: string) =>
     call<void>("send_server_command", { serverId, line }),
   getServerConsole: (serverId: string) => call<ConsoleLine[]>("get_server_console", { serverId }),
@@ -569,6 +577,7 @@ export const api = {
     call<number>("upload_server_files", { serverId, path, sources }),
   openFolder: (path: string) => call<void>("open_folder", { path }),
   openFile: (path: string) => call<void>("open_file", { path }),
+  getLanAddress: () => call<string | null>("get_lan_address"),
   getSystemStats: () => call<SystemStats>("get_system_stats"),
   getSystemUsage: () => call<SystemUsage>("get_system_usage"),
   getDataLocations: () => call<DataLocation[]>("get_data_locations"),

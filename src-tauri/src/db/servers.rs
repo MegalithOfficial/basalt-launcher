@@ -175,6 +175,8 @@ impl Db {
         &self,
         server_id: &str,
         name: &str,
+        version_id: &str,
+        flavor_version: Option<String>,
         min_memory_mb: Option<u32>,
         max_memory_mb: Option<u32>,
         java_path: Option<String>,
@@ -187,17 +189,21 @@ impl Db {
         conn.execute(
             "UPDATE servers SET
                 name = ?2,
-                min_memory_mb = ?3,
-                max_memory_mb = ?4,
-                java_path = ?5,
-                jvm_args = ?6,
-                jvm_args_mode = ?7,
-                stop_timeout_secs = ?8,
-                notes = ?9
+                version_id = ?3,
+                flavor_version = ?4,
+                min_memory_mb = ?5,
+                max_memory_mb = ?6,
+                java_path = ?7,
+                jvm_args = ?8,
+                jvm_args_mode = ?9,
+                stop_timeout_secs = ?10,
+                notes = ?11
              WHERE id = ?1",
             params![
                 server_id,
                 name,
+                version_id,
+                flavor_version,
                 min_memory_mb,
                 max_memory_mb,
                 java_path,
@@ -206,6 +212,16 @@ impl Db {
                 stop_timeout_secs,
                 notes
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_server_launch(&self, server_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE servers SET launch_jar = NULL, launch_argfiles = '[]', installed_at = NULL
+             WHERE id = ?1",
+            params![server_id],
         )?;
         Ok(())
     }

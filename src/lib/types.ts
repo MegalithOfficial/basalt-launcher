@@ -39,7 +39,17 @@ export interface LauncherSettings {
   discord_rpc_show_streak: boolean;
   discord_rpc_show_logo: boolean;
   discord_app_id: string;
+  server_min_memory_mb: number;
+  server_max_memory_mb: number;
+  server_jvm_args: string;
+  server_shutdown: ServerShutdown;
+  server_stop_timeout_secs: number;
+  server_console_layout: ServerConsoleLayout;
 }
+
+export type ServerConsoleLayout = "sidebar" | "below" | "header";
+
+export type ServerShutdown = "ask" | "stop" | "leave";
 
 export type AccentMode = "banner" | "custom" | "default";
 
@@ -1077,7 +1087,9 @@ export type FileKind =
   | "text"
   | "jar"
   | "archive"
-  | "image";
+  | "image"
+  | "schematic"
+  | "nbt";
 
 export interface ServerEntry {
   name: string;

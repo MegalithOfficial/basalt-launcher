@@ -1,5 +1,16 @@
 import { useState } from "react";
-import { CircleStop, FolderOpen, Play, Plus, Server as ServerIcon, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  CircleStop,
+  ClipboardCopy,
+  FolderOpen,
+  Play,
+  Plus,
+  Server as ServerIcon,
+  Trash2,
+} from "lucide-react";
+
+import { api } from "../lib/api";
 
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ContextMenu, useContextMenu, type MenuItem } from "../components/ContextMenu";
@@ -53,6 +64,21 @@ export function ServersView() {
         label: "Open folder",
         icon: FolderOpen,
         onSelect: () => openFolder(server.dir),
+      },
+      {
+        label: "Copy launch command",
+        icon: ClipboardCopy,
+        onSelect: () => {
+          api
+            .getServerLaunchCommand(server.id)
+            .then(async (line) => {
+              await navigator.clipboard.writeText(line);
+              toast.success("Copied launch command", { description: line });
+            })
+            .catch((cause) =>
+              toast.error("Could not copy the launch command", { description: String(cause) }),
+            );
+        },
       },
       {
         label: "Remove",
@@ -118,7 +144,7 @@ export function ServersView() {
                   </span>
 
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-content">{server.name}</div>
+                    <div className="wrap-break-word text-sm font-medium text-content">{server.name}</div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-content-muted">
                       <span>{flavorLabel(server.flavor)}</span>
                       <span className="text-content-faint">·</span>
