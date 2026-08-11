@@ -1,3 +1,4 @@
+import { stripAnsi } from "./ansi";
 import type {
   ConsoleLine,
   Server,
@@ -71,10 +72,11 @@ export interface ConsoleParts {
   level: "error" | "warn" | "info";
 }
 
-export function readConsoleLine(stream: string, line: string): ConsoleParts {
+export function readConsoleLine(stream: string, raw: string): ConsoleParts {
   if (stream === "input") {
-    return { time: null, source: null, message: line, level: "info" };
+    return { time: null, source: null, message: raw, level: "info" };
   }
+  const line = stripAnsi(raw);
   const match = TIMESTAMP.exec(line);
   const source = match?.[2] ?? null;
   const upper = (source ?? line).toUpperCase();
@@ -98,12 +100,13 @@ export function onlinePlayers(lines: ConsoleLine[]): string[] {
   const online: string[] = [];
   for (const entry of lines) {
     if (entry.stream === "input") continue;
-    const joined = JOINED.exec(entry.line);
+    const line = stripAnsi(entry.line);
+    const joined = JOINED.exec(line);
     if (joined && !online.includes(joined[1])) {
       online.push(joined[1]);
       continue;
     }
-    const left = LEFT.exec(entry.line);
+    const left = LEFT.exec(line);
     if (left) {
       const at = online.indexOf(left[1]);
       if (at >= 0) online.splice(at, 1);

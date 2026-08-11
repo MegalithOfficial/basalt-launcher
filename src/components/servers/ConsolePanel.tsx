@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, CornerDownLeft } from "lucide-react";
 
+import { hasAnsi, parseAnsi } from "../../lib/ansi";
 import { cn } from "../../lib/cn";
 import { readConsoleLine } from "../../lib/servers";
+import { AnsiText } from "./AnsiText";
 import type { ConsoleLine } from "../../lib/types";
 import { useStore } from "../../store";
 
@@ -105,6 +107,13 @@ export function ConsolePanel({
             </div>
           ) : (
             visible.map((entry, index) => {
+              if (entry.stream !== "input" && hasAnsi(entry.line)) {
+                return (
+                  <div key={index} className="whitespace-pre-wrap wrap-break-word text-content">
+                    <AnsiText spans={parseAnsi(entry.line)} />
+                  </div>
+                );
+              }
               const parts = readConsoleLine(entry.stream, entry.line);
               return (
                 <div key={index} className="whitespace-pre-wrap wrap-break-word">
