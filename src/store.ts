@@ -928,6 +928,7 @@ export const useStore = create<AppStore>((set) => ({
         recoveredRuns,
         appUpdateStatus,
         servers,
+        serverSoftware,
         runningServers,
       ] = await Promise.all([
         api.getSettings(),
@@ -940,6 +941,7 @@ export const useStore = create<AppStore>((set) => ({
         api.listRunning().catch(() => [] as RunningInfo[]),
         api.getAppUpdateStatus().catch(() => null),
         api.listServers().catch(() => [] as Server[]),
+        api.listServerSoftware().catch(() => [] as ServerSoftware[]),
         api.listRunningServers().catch(() => [] as ServerRunningInfo[]),
       ]);
       const bundledCurseforgeKey = await api
@@ -1000,6 +1002,7 @@ export const useStore = create<AppStore>((set) => ({
           accounts,
           installedIds,
           servers,
+          serverSoftware,
           serverRunning: Object.fromEntries(
             runningServers.map((info) => [info.server_id, info]),
           ),
@@ -1263,12 +1266,7 @@ export const useStore = create<AppStore>((set) => ({
     })),
 
   refreshServers: async () => {
-    const known = useStore.getState().serverSoftware;
-    const [servers, serverSoftware] = await Promise.all([
-      api.listServers(),
-      known.length ? known : api.listServerSoftware(),
-    ]);
-    set({ servers, serverSoftware });
+    set({ servers: await api.listServers() });
   },
 
   createServer: async (name, flavor, versionId, flavorVersion) => {
