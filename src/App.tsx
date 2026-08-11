@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 
 import { applyTheme, themeVars } from "./lib/accent";
 import { cn } from "./lib/cn";
+import { api } from "./lib/api";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { Sidebar } from "./components/Sidebar";
 import { RecoveryBanner } from "./components/RecoveryBanner";
@@ -39,6 +40,18 @@ const VIEWS: Record<View, React.ComponentType> = {
   logs: LogsView,
 };
 
+const IDLE_LINES: Record<View, string> = {
+  home: "In launcher",
+  instances: "Managing instances",
+  accounts: "Managing accounts",
+  settings: "Customizing settings",
+  instance: "Viewing an instance",
+  discover: "Browsing modpacks",
+  project: "Browsing modpacks",
+  stats: "Viewing statistics",
+  logs: "Reading logs",
+};
+
 function App() {
   const view = useStore((s) => s.view);
   const ready = useStore((s) => s.ready);
@@ -69,6 +82,12 @@ function App() {
   useEffect(() => {
     applyTheme(themeVars(settings, onboarding ? null : banner));
   }, [settings, banner, onboarding]);
+
+  useEffect(() => {
+    if (ready && !onboarding) {
+      api.setIdlePresence(IDLE_LINES[view]).catch(() => {});
+    }
+  }, [view, ready, onboarding]);
 
 
   const Current = VIEWS[view];

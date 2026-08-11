@@ -288,6 +288,10 @@ pub fn spawn_process(
         .current_dir(cwd)
         .stdout(Stdio::from(stdout_log))
         .stderr(Stdio::from(stderr_log));
+    #[cfg(windows)]
+    {
+        command.creation_flags(0x08000000);
+    }
 
     let mut child = command.spawn().inspect_err(|e| {
         tracing::error!(program, error = %e, "could not spawn game process");
@@ -398,7 +402,7 @@ pub fn spawn_process(
                 "game exited"
             );
         }
-        presence.clear();
+        presence.clear_run(&sup_running_id);
         match db.finalize_active_run(&sup_running_id, ended_at, state == "crashed") {
             Ok(true) => {}
             Ok(false) => tracing::warn!(
@@ -479,7 +483,7 @@ fn monitor_recovered_process(
             }
             let ended_at = chrono::Utc::now().timestamp();
             let played_secs = ended_at.saturating_sub(run.started_at);
-            presence.clear();
+            presence.clear_run(&run.running_id);
             if let Err(error) = db.finalize_active_run(&run.running_id, ended_at, false) {
                 tracing::warn!(error = %error, "could not finalize recovered game playtime");
             }
@@ -580,7 +584,7 @@ pub fn recover_processes(
                     super::presence_detail(db, instance),
                     run.started_at,
                 ) {
-                    presence.set(activity);
+                    presence.set(run.running_id.clone(), activity);
                 }
             }
         }

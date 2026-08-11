@@ -10,6 +10,7 @@ use crate::{
 
 use super::{ActiveServerRun, Db};
 
+#[allow(dead_code)]
 impl Db {
     fn read_server(row: &rusqlite::Row, paths: &Paths) -> rusqlite::Result<Server> {
         let id: String = row.get(0)?;
@@ -57,6 +58,7 @@ impl Db {
         })
     }
 
+    #[allow(dead_code)]
     pub fn list_servers(&self, paths: &Paths) -> Result<Vec<Server>> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -165,6 +167,7 @@ impl Db {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn update_server_settings(
         &self,
         server_id: &str,
@@ -229,6 +232,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn start_server_run(&self, server_id: &str, started_at: i64) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
@@ -292,6 +296,7 @@ impl Db {
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
+    #[allow(dead_code)]
     pub fn clear_active_server_run(&self, running_id: &str) -> Result<bool> {
         let conn = self.0.lock().unwrap();
         let removed = conn.execute(

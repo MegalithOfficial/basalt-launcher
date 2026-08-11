@@ -29,11 +29,13 @@ fn parse_major(text: &str) -> Option<u32> {
 }
 
 pub async fn probe(path: &str) -> Option<JavaInfo> {
-    let output = tokio::process::Command::new(path)
-        .arg("-version")
-        .output()
-        .await
-        .ok()?;
+    let mut command = tokio::process::Command::new(path);
+    command.arg("-version");
+    #[cfg(windows)]
+    {
+        command.creation_flags(0x08000000);
+    }
+    let output = command.output().await.ok()?;
     let mut text = String::from_utf8_lossy(&output.stderr).into_owned();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
     let major = parse_major(&text)?;

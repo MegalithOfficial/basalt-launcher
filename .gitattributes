@@ -1,0 +1,5 @@
+* text=auto
+
+# Rust source must stay LF (rustfmt.toml: newline_style = "Unix")
+*.rs text eol=lf
+*.toml text eol=lf

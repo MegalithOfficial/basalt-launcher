@@ -192,6 +192,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["ready.jar"]
         );
+        drop(files);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

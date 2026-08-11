@@ -129,6 +129,26 @@ pub async fn reconnect_discord(state: State<'_, AppState>) -> Result<()> {
         .map_err(Error::other)
 }
 
+#[tauri::command]
+#[tracing::instrument(skip_all)]
+pub fn set_idle_presence(state: State<'_, AppState>, line: String) -> Result<()> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Ok(());
+    }
+    let settings = state.db.load_settings()?;
+    if !settings.discord_rpc {
+        return Ok(());
+    }
+    let Some(app_id) = crate::presence::app_id(&settings) else {
+        return Ok(());
+    };
+    state
+        .presence
+        .idle(app_id, line.to_string(), chrono::Utc::now().timestamp());
+    Ok(())
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct NetworkProbe {
     pub ok: bool,

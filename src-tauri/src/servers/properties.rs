@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use super::TextProblem;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum Line {
     Kept(String),
     Entry {
@@ -17,10 +18,12 @@ enum Line {
 }
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct Properties {
     lines: Vec<Line>,
 }
 
+#[allow(dead_code)]
 impl Properties {
     pub fn parse(bytes: &[u8]) -> Self {
         let mut lines = Vec::new();
@@ -133,6 +136,7 @@ impl Properties {
     }
 }
 
+#[allow(dead_code)]
 pub fn validate(text: &str) -> Option<TextProblem> {
     let mut seen: HashMap<String, usize> = HashMap::new();
     for (index, raw) in text.lines().enumerate() {
@@ -165,10 +169,12 @@ pub fn validate(text: &str) -> Option<TextProblem> {
     None
 }
 
+#[allow(dead_code)]
 fn decode(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| *byte as char).collect()
 }
 
+#[allow(dead_code)]
 fn encode(text: &str) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(text.len());
     for character in text.chars() {
@@ -181,6 +187,7 @@ fn encode(text: &str) -> Vec<u8> {
     bytes
 }
 
+#[allow(dead_code)]
 fn escape_unicode(character: char) -> String {
     let mut buffer = [0u16; 2];
     character
@@ -190,6 +197,7 @@ fn escape_unicode(character: char) -> String {
         .collect()
 }
 
+#[allow(dead_code)]
 fn split_lines(text: &str) -> Vec<String> {
     let mut lines = text
         .split('\n')
@@ -201,10 +209,12 @@ fn split_lines(text: &str) -> Vec<String> {
     lines
 }
 
+#[allow(dead_code)]
 fn continues(line: &str) -> bool {
     line.chars().rev().take_while(|c| *c == '\\').count() % 2 == 1
 }
 
+#[allow(dead_code)]
 fn parse_line(raw: String) -> Line {
     let indent_len = raw.len() - raw.trim_start().len();
     let rest = &raw[indent_len..];
@@ -254,6 +264,7 @@ fn parse_line(raw: String) -> Line {
     }
 }
 
+#[allow(dead_code)]
 fn unescape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars();
@@ -287,6 +298,7 @@ fn unescape(text: &str) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn malformed_escape(line: &str) -> Option<usize> {
     let characters = line.chars().collect::<Vec<_>>();
     let mut index = 0;
@@ -316,6 +328,7 @@ fn malformed_escape(line: &str) -> Option<usize> {
     None
 }
 
+#[allow(dead_code)]
 fn encode_key(key: &str) -> String {
     let mut out = String::with_capacity(key.len());
     for character in key.chars() {
@@ -335,6 +348,7 @@ fn encode_key(key: &str) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn encode_value(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for (index, character) in value.chars().enumerate() {

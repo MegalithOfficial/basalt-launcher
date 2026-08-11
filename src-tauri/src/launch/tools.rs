@@ -66,6 +66,10 @@ fn shell(command: &str) -> tokio::process::Command {
         spawned
     };
     spawned.arg(command);
+    #[cfg(windows)]
+    {
+        spawned.creation_flags(0x08000000);
+    }
     spawned
 }
 

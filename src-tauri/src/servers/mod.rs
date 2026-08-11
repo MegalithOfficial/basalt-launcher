@@ -5,6 +5,7 @@ use crate::error::{Error, Result};
 pub mod properties;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[allow(dead_code)]
 pub struct TextProblem {
     pub line: usize,
     pub column: usize,
@@ -13,6 +14,7 @@ pub struct TextProblem {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum ServerFlavor {
     Vanilla,
     Paper,
@@ -22,6 +24,7 @@ pub enum ServerFlavor {
     Forge,
 }
 
+#[allow(dead_code)]
 impl ServerFlavor {
     pub fn parse(value: &str) -> Result<Self> {
         match value {
@@ -48,6 +51,7 @@ impl ServerFlavor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Server {
     pub id: String,
     pub name: String,

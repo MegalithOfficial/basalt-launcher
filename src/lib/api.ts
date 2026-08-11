@@ -100,6 +100,8 @@ export const api = {
   getPlayStats: (days: number | null, page: number | null = null) =>
     call<PlayStats>("get_play_stats", { days, page }),
   reconnectDiscord: () => call<void>("reconnect_discord"),
+  setIdlePresence: (line: string) =>
+    call<void>("set_idle_presence", { line }),
   getInstanceOrganization: () =>
     call<InstanceOrganization>("get_instance_organization"),
   createInstanceGroup: (name: string) =>

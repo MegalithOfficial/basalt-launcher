@@ -186,14 +186,18 @@ async fn run_installer(
         .ok_or_else(|| Error::other("No Java found to run the loader installer."))?;
 
     tracing::info!(java = %java.path, installer = %installer_path.display(), "running loader installer");
-    let output = tokio::process::Command::new(&java.path)
+    let mut command = tokio::process::Command::new(&java.path);
+    command
         .arg("-jar")
         .arg(&installer_path)
         .arg("--installClient")
         .arg(&state.paths.root)
-        .current_dir(&installer_dir)
-        .output()
-        .await?;
+        .current_dir(&installer_dir);
+    #[cfg(windows)]
+    {
+        command.creation_flags(0x08000000);
+    }
+    let output = command.output().await?;
 
     if !state.files.is_file(state.paths.version_json(expected_id))? {
         let mut text = String::from_utf8_lossy(&output.stdout).into_owned();

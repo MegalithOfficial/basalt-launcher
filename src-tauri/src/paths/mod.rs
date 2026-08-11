@@ -84,6 +84,7 @@ impl DataRoot {
     }
 }
 
+#[allow(dead_code)]
 pub const MAX_EXTRA_ROOTS: usize = 64;
 
 #[derive(Debug, Clone)]
@@ -117,6 +118,7 @@ impl Paths {
         *self.overrides.write().unwrap() = overrides;
     }
 
+    #[allow(dead_code)]
     pub fn adopt_extras(&self, extras: Vec<PathBuf>) {
         let managed = self.managed_roots();
         let mut kept: Vec<PathBuf> = Vec::new();
@@ -136,6 +138,7 @@ impl Paths {
         *self.extras.write().unwrap() = kept;
     }
 
+    #[allow(dead_code)]
     pub fn extras(&self) -> Vec<PathBuf> {
         self.extras.read().unwrap().clone()
     }
@@ -242,6 +245,7 @@ impl Paths {
     pub fn servers(&self) -> PathBuf {
         self.located(DataRoot::Servers)
     }
+    #[allow(dead_code)]
     pub fn server_dir(&self, id: &str) -> PathBuf {
         self.servers().join(id)
     }
@@ -325,6 +329,8 @@ impl Paths {
         Some(dir)
     }
 
+    #[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn server_dir_checked(&self, id: &str) -> Option<PathBuf> {
         let id = id.trim();
         if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") {
@@ -417,7 +423,11 @@ mod tests {
     use super::Paths;
 
     fn paths() -> Paths {
-        Paths::plain(PathBuf::from("/tmp/basalt-test"))
+        Paths::plain(std::env::temp_dir().join("basalt-test"))
+    }
+
+    fn external_extra_root() -> PathBuf {
+        std::env::temp_dir().join("basalt-smp")
     }
 
     #[test]
@@ -458,13 +468,14 @@ mod tests {
     #[test]
     fn extra_roots_drop_anything_already_covered() {
         let p = paths();
+        let smp = external_extra_root();
         p.adopt_extras(vec![
             p.root.join("servers").join("inside"),
-            PathBuf::from("/mnt/disk/smp"),
-            PathBuf::from("/mnt/disk/smp/world"),
+            smp.clone(),
+            smp.join("world"),
             PathBuf::from("relative/path"),
         ]);
-        assert_eq!(p.extra_roots(), vec![PathBuf::from("/mnt/disk/smp")]);
+        assert_eq!(p.extra_roots(), vec![smp]);
         assert!(p.capability_roots().iter().all(|root| *root == p.root));
         assert!(p.unavailable().is_empty());
     }
@@ -472,11 +483,9 @@ mod tests {
     #[test]
     fn an_extra_root_replaces_the_nested_ones_it_covers() {
         let p = paths();
-        p.adopt_extras(vec![
-            PathBuf::from("/mnt/disk/smp/world"),
-            PathBuf::from("/mnt/disk/smp"),
-        ]);
-        assert_eq!(p.extra_roots(), vec![PathBuf::from("/mnt/disk/smp")]);
+        let smp = external_extra_root();
+        p.adopt_extras(vec![smp.join("world"), smp.clone()]);
+        assert_eq!(p.extra_roots(), vec![smp]);
     }
 
     #[test]

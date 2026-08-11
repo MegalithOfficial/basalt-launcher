@@ -1019,7 +1019,7 @@ export function SettingsView() {
           </Section>
           <Section
             title="Discord"
-            description="Shows what you are playing on your Discord profile while an instance is running. Nothing leaves your machine when Discord is not open."
+            description="Shows what you are playing on your Discord profile while an instance is running, and what you are doing in the launcher (browsing modpacks, reading logs, ...) when no game is running. Nothing leaves your machine when Discord is not open."
           >
             <div className="flex flex-col gap-6 px-4 py-4 lg:flex-row lg:items-start">
               <DiscordPreview

@@ -1,8 +1,10 @@
-use std::{
-    io::{Read, Write},
-    path::PathBuf,
-    time::Duration,
-};
+use std::io::{Read, Write};
+
+#[cfg(any(unix, test))]
+use std::time::Duration;
+
+#[cfg(unix)]
+use std::path::PathBuf;
 
 use serde_json::{json, Value};
 
@@ -14,6 +16,7 @@ const OP_CLOSE: u32 = 2;
 const OP_PING: u32 = 3;
 const OP_PONG: u32 = 4;
 
+#[cfg(unix)]
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 const SOCKET_SLOTS: u8 = 10;

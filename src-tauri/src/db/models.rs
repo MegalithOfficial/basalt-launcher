@@ -31,6 +31,7 @@ pub struct ActiveRun {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct ActiveServerRun {
     pub running_id: String,
     pub server_id: String,

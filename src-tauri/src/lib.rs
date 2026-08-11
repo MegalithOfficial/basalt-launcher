@@ -183,6 +183,7 @@ pub fn run() {
             commands::app::update_settings,
             commands::app::get_app_info,
             commands::app::reconnect_discord,
+            commands::app::set_idle_presence,
             commands::app::list_javas,
             commands::app::install_java_runtime,
             commands::instances::list_instances,

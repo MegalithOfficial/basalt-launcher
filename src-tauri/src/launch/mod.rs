@@ -24,6 +24,7 @@ fn publish_pack_icon(
     instance: &Instance,
     settings: &LauncherSettings,
     activity: crate::presence::PresenceActivity,
+    running_id: String,
 ) {
     if !settings.discord_rpc_show_logo {
         return;
@@ -48,10 +49,13 @@ fn publish_pack_icon(
             .filter(|url| url.starts_with("http"));
         let Some(icon) = icon else { return };
         tracing::debug!(icon, "publishing the pack icon to discord");
-        state.presence.set(crate::presence::PresenceActivity {
-            logo_url: Some(icon),
-            ..activity
-        });
+        state.presence.set(
+            running_id,
+            crate::presence::PresenceActivity {
+                logo_url: Some(icon),
+                ..activity
+            },
+        );
     });
 }
 
@@ -613,8 +617,8 @@ pub async fn launch_instance(
         presence_detail(&state.db, instance),
         started_at,
     ) {
-        state.presence.set(activity.clone());
-        publish_pack_icon(app, instance, &settings, activity);
+        state.presence.set(running_id.clone(), activity.clone());
+        publish_pack_icon(app, instance, &settings, activity, running_id.clone());
     }
 
     if launch_account.offline {
