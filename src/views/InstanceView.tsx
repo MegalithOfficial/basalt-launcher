@@ -4,7 +4,6 @@ import {
   Check,
   ClipboardCopy,
   DatabaseBackup,
-  FileBox,
   HardDriveUpload,
   ChevronDown,
   Compass,
@@ -32,7 +31,7 @@ import { ExportPackModal } from "../components/ExportPackModal";
 import { InstallPlanPrompt } from "../components/InstallPlanPrompt";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SuggestedContent } from "../components/SuggestedContent";
-import { DeferredImage } from "../components/DeferredImage";
+import { ContentItemCard } from "../components/content/ContentItemCard";
 import { useCurseforgeDownloads } from "../components/CurseForgeDownloadModal";
 import { Select } from "../components/Select";
 import { PlayButton } from "../components/PlayButton";
@@ -67,7 +66,6 @@ import type {
 } from "../lib/types";
 import { useActiveProjectIds, useInstanceTask } from "../lib/useTasks";
 import { useStore } from "../store";
-import { formatBytes } from "../lib/format";
 
 type InstanceTab = ContentKind | "worlds" | "screenshots";
 
@@ -171,36 +169,6 @@ function sortItems(items: ContentItem[], sort: ContentSort) {
   }
 }
 
-
-function Toggle({
-  on,
-  onClick,
-  disabled,
-}: {
-  on: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={on ? "Disable" : "Enable"}
-      className={cn(
-        "relative h-5 w-9 shrink-0 rounded-full transition-colors duration-300",
-        on ? "bg-(--accent)" : "bg-surface-3",
-        disabled && "cursor-not-allowed opacity-40",
-      )}
-    >
-      <span
-        className={cn(
-          "absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform duration-300",
-          on ? "translate-x-4" : "translate-x-0",
-        )}
-      />
-    </button>
-  );
-}
 
 export function InstanceView() {
   const detailId = useStore((s) => s.detailInstanceId);
@@ -1232,122 +1200,26 @@ export function InstanceView() {
           <div className="flex flex-col gap-1.5">
             {shownItems.map((item) => {
               const source = item.source;
-              const displayName = source?.title ?? item.file_name;
-              const linked = !!source?.provider && !!source.project_id;
               const busy =
                 (!!source?.project_id && activeProjects.has(source.project_id)) ||
                 updatingAll ||
                 updatingFile !== null;
               return (
-                <div
+                <ContentItemCard
                   key={item.file_name}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl border px-4 py-2.5 transition-opacity",
-                    item.update
-                      ? "border-warn/30 bg-warn/6"
-                      : "border-border-soft bg-surface-2/70",
-                    !item.enabled && "opacity-55",
-                  )}
-                >
-                  {source?.icon_url ? (
-                    <DeferredImage
-                      src={source.icon_url}
-                      alt=""
-                      className="size-9 shrink-0 rounded-lg bg-surface-3 object-cover"
-                      fallback={
-                        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
-                          <FileBox className="size-4" />
-                        </div>
-                      }
-                    />
-                  ) : (
-                    <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-content-faint">
-                      <FileBox className="size-4" />
-                    </div>
-                  )}
-                  <div
-                    className={cn("min-w-0 flex-1", linked && "cursor-pointer")}
-                    onClick={() =>
-                      linked &&
-                      openProject(
-                        source!.provider!,
-                        source!.project_id!,
-                        tab,
-                        source!.title ?? undefined,
-                      )
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-content">
-                        {displayName}
-                      </span>
-                      {source?.provider && (
-                        <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
-                          {source.provider}
-                        </span>
-                      )}
-                      {source?.origin === "pack" && (
-                        <span className="shrink-0 rounded bg-(--accent-glow) px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-muted">
-                          pack
-                        </span>
-                      )}
-                      {source?.origin === "dependency" && (
-                        <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint">
-                          dependency
-                        </span>
-                      )}
-                      {!linked && source?.mod_id && (
-                        <span
-                          title="Identified from the file itself, not linked to a provider"
-                          className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-faint"
-                        >
-                          local
-                        </span>
-                      )}
-                    </div>
-                    <div className="truncate text-[11px] text-content-faint">
-                      {source?.title ? `${item.file_name} · ` : ""}
-                      {source?.mod_version && `v${source.mod_version} · `}
-                      {formatBytes(item.size)}
-                      {!item.enabled && " · disabled"}
-                    </div>
-                  </div>
-
-                  {item.update && (
-                    <button
-                      onClick={() => updateOne(item)}
-                      disabled={busy || busyWithTask}
-                      title={
-                        busyWithTask
-                          ? "Wait for the current download to finish"
-                          : `Update to ${item.update.latest_name}`
-                      }
-                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-warn/15 px-3 text-xs font-semibold text-warn transition-colors hover:bg-warn/25 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {busy ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <ArrowUpCircle className="size-3.5" />
-                      )}
-                      Update
-                    </button>
-                  )}
-
-                  <Toggle
-                    on={item.enabled}
-                    disabled={busyWithTask}
-                    onClick={() => toggle(item)}
-                  />
-                  <button
-                    onClick={() => askRemove(item)}
-                    disabled={busyWithTask}
-                    aria-label="Delete file"
-                    title={busyWithTask ? "Wait for the current download to finish" : undefined}
-                    className="grid size-8 place-items-center rounded-lg text-content-faint transition-colors hover:bg-danger/15 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-faint"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
+                  item={item}
+                  busy={busy}
+                  disabled={busyWithTask}
+                  disabledReason={
+                    busyWithTask ? "Wait for the current download to finish" : undefined
+                  }
+                  onOpenProject={(provider, projectId, title) =>
+                    openProject(provider, projectId, tab, title)
+                  }
+                  onUpdate={() => updateOne(item)}
+                  onToggle={() => toggle(item)}
+                  onRemove={() => askRemove(item)}
+                />
               );
             })}
           </div>
