@@ -44,9 +44,12 @@ fn content_dir(paths: &Paths, instance_id: &str, kind: &str) -> Result<std::path
 }
 
 pub fn list(files: &FileManager, instance_id: &str, kind: &str) -> Result<Vec<ContentItem>> {
-    let paths = files.paths();
-    let dir = content_dir(paths, instance_id, kind)?;
-    let entries = match files.read_dir(&dir) {
+    let dir = content_dir(files.paths(), instance_id, kind)?;
+    list_in(files, &dir)
+}
+
+pub fn list_in(files: &FileManager, dir: &std::path::Path) -> Result<Vec<ContentItem>> {
+    let entries = match files.read_dir(dir) {
         Ok(entries) => entries,
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Vec::new())
@@ -88,9 +91,12 @@ pub fn list(files: &FileManager, instance_id: &str, kind: &str) -> Result<Vec<Co
 }
 
 pub fn toggle(files: &FileManager, instance_id: &str, kind: &str, file_name: &str) -> Result<bool> {
-    let paths = files.paths();
+    let dir = content_dir(files.paths(), instance_id, kind)?;
+    toggle_in(files, &dir, file_name)
+}
+
+pub fn toggle_in(files: &FileManager, dir: &std::path::Path, file_name: &str) -> Result<bool> {
     validate_file_name(file_name)?;
-    let dir = content_dir(paths, instance_id, kind)?;
     let enabled_path = dir.join(file_name);
     let disabled_path = dir.join(format!("{file_name}{DISABLED_SUFFIX}"));
 
@@ -106,9 +112,12 @@ pub fn toggle(files: &FileManager, instance_id: &str, kind: &str, file_name: &st
 }
 
 pub fn delete(files: &FileManager, instance_id: &str, kind: &str, file_name: &str) -> Result<()> {
-    let paths = files.paths();
+    let dir = content_dir(files.paths(), instance_id, kind)?;
+    delete_in(files, &dir, file_name)
+}
+
+pub fn delete_in(files: &FileManager, dir: &std::path::Path, file_name: &str) -> Result<()> {
     validate_file_name(file_name)?;
-    let dir = content_dir(paths, instance_id, kind)?;
     let enabled_path = dir.join(file_name);
     let disabled_path = dir.join(format!("{file_name}{DISABLED_SUFFIX}"));
     if files.is_file(&enabled_path)? {
@@ -145,9 +154,12 @@ pub fn add(
     kind: &str,
     sources: &[String],
 ) -> Result<usize> {
-    let paths = files.paths();
-    let dir = content_dir(paths, instance_id, kind)?;
-    files.ensure_dir(&dir)?;
+    let dir = content_dir(files.paths(), instance_id, kind)?;
+    add_into(files, &dir, sources)
+}
+
+pub fn add_into(files: &FileManager, dir: &std::path::Path, sources: &[String]) -> Result<usize> {
+    files.ensure_dir(dir)?;
     let mut copied = 0;
     for source in sources {
         let source_path = std::path::Path::new(source);

@@ -289,9 +289,26 @@ pub const KNOWN_LOADERS: &[&str] = &[
 
 pub const INSTALLABLE_LOADERS: &[&str] = &["fabric", "quilt", "neoforge", "forge"];
 
+pub const PLUGIN_LOADERS: &[&str] = &[
+    "bukkit",
+    "spigot",
+    "paper",
+    "purpur",
+    "folia",
+    "sponge",
+    "velocity",
+    "waterfall",
+    "bungeecord",
+];
+
 pub fn is_loader_token(value: &str) -> bool {
     let lowered = value.to_lowercase();
     KNOWN_LOADERS.contains(&lowered.as_str())
+}
+
+pub fn is_plugin_loader(value: &str) -> bool {
+    let lowered = value.to_lowercase();
+    PLUGIN_LOADERS.contains(&lowered.as_str())
 }
 
 pub fn is_installable_loader(value: &str) -> bool {

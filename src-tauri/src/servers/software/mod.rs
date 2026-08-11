@@ -11,7 +11,7 @@ use crate::{
     tasks::TaskHandle,
 };
 
-use super::{Server, provision::Provisioned};
+use super::{provision::Provisioned, Server};
 
 mod fabric;
 mod forge;
@@ -75,6 +75,7 @@ pub struct Spec {
     pub runtime: Runtime,
     pub builds: bool,
     pub config_file: &'static str,
+    pub content_dir: Option<&'static str>,
 }
 
 pub struct Install<'a> {
@@ -180,6 +181,10 @@ impl Software {
 
     pub fn config_file(self) -> &'static str {
         self.0.spec().config_file
+    }
+
+    pub fn content_dir(self) -> Option<&'static str> {
+        self.0.spec().content_dir
     }
 
     pub fn launch_args(self) -> &'static [&'static str] {

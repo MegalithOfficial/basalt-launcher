@@ -53,7 +53,15 @@ fn build_facets(kind: ContentKind, query: &SearchQuery) -> Vec<Vec<String>> {
     }
     match query.environment {
         Some(Environment::Client) => facets.push(vec!["client_side:required".to_string()]),
-        Some(Environment::Server) => facets.push(vec!["server_side:required".to_string()]),
+        Some(Environment::Server)
+            if !query.loaders.iter().any(|loader| is_plugin_loader(loader)) =>
+        {
+            facets.push(vec![
+                "server_side:required".to_string(),
+                "server_side:optional".to_string(),
+            ]);
+        }
+        Some(Environment::Server) => {}
         None => {}
     }
     if query.open_source_only {
@@ -726,6 +734,36 @@ mod tests {
         assert_eq!(facets[3], vec!["categories:optimization"]);
         assert_eq!(facets[4], vec!["client_side:required"]);
         assert_eq!(facets[5], vec!["open_source:true"]);
+    }
+
+    #[test]
+    fn a_server_search_keeps_mods_that_are_only_optional_there() {
+        let query = SearchQuery {
+            loaders: vec!["fabric".into()],
+            environment: Some(Environment::Server),
+            ..Default::default()
+        };
+        let facets = build_facets(ContentKind::Mod, &query);
+        assert!(facets.contains(&vec![
+            "server_side:required".to_string(),
+            "server_side:optional".to_string()
+        ]));
+    }
+
+    #[test]
+    fn a_plugin_search_never_filters_on_the_environment() {
+        let query = SearchQuery {
+            loaders: vec!["paper".into()],
+            environment: Some(Environment::Server),
+            ..Default::default()
+        };
+        let facets = build_facets(ContentKind::Mod, &query);
+        assert_eq!(facets[0], vec!["project_type:mod"]);
+        assert!(facets.iter().all(|group| {
+            group
+                .iter()
+                .all(|facet| !facet.starts_with("server_side") && !facet.starts_with("client_side"))
+        }));
     }
 
     #[test]

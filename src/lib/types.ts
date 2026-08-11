@@ -1017,6 +1017,7 @@ export interface ServerSoftware {
   runtime: "java" | "native";
   builds: boolean;
   config_file: string;
+  content_dir: string | null;
 }
 
 export interface Server {

@@ -23,6 +23,7 @@ impl ServerSoftware for Vanilla {
             runtime: Runtime::Java,
             builds: false,
             config_file: "server.properties",
+            content_dir: None,
         }
     }
 

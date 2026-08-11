@@ -19,12 +19,20 @@ import { PropertiesPanel } from "../components/servers/PropertiesPanel";
 import { ServerSettingsPanel } from "../components/servers/ServerSettingsPanel";
 import { ServerStatusPill } from "../components/servers/ServerStatusPill";
 import { ConsoleStats } from "../components/servers/ConsoleStats";
+import { ServerContentPanel } from "../components/servers/ServerContentPanel";
 import { StatsSidebar } from "../components/servers/StatsSidebar";
 import { UsageMeter } from "../components/servers/UsageMeter";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { openFolder } from "../lib/reveal";
-import { flavorLabel, isLive, isNative, lanAddress, serverAddress } from "../lib/servers";
+import {
+  contentLabel as contentTab,
+  flavorLabel,
+  isLive,
+  isNative,
+  lanAddress,
+  serverAddress,
+} from "../lib/servers";
 import { useUptime } from "../lib/useUptime";
 import { EmptyState } from "../components/ui";
 import { useStore } from "../store";
@@ -34,6 +42,7 @@ const DISK_POLL_MS = 30000;
 
 const TABS = [
   { id: "console", label: "Console" },
+  { id: "content", label: "Content" },
   { id: "files", label: "Files" },
   { id: "properties", label: "Properties" },
   { id: "settings", label: "Settings" },
@@ -108,6 +117,7 @@ export function ServerView() {
   }
 
   const live = isLive(info);
+  const contentLabel = contentTab(software, server.flavor);
   const run = async (action: Promise<unknown>) => {
     setBusy(true);
     setError(null);
@@ -294,7 +304,7 @@ export function ServerView() {
       )}
 
       <div className="flex items-center gap-1 border-b border-border-soft px-6 pt-1">
-        {TABS.map((entry) => (
+        {TABS.filter((entry) => entry.id !== "content" || contentLabel !== null).map((entry) => (
           <button
             key={entry.id}
             onClick={() => setTab(entry.id)}
@@ -305,7 +315,7 @@ export function ServerView() {
                 : "text-content-faint hover:text-content-muted",
             )}
           >
-            {entry.label}
+            {entry.id === "content" ? contentLabel : entry.label}
             {tab === entry.id && (
               <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-(--accent)" />
             )}
@@ -332,6 +342,9 @@ export function ServerView() {
             <ConsoleStats server={server} samples={usage ?? EMPTY_USAGE} live={live} />
           )}
         </div>
+      )}
+      {tab === "content" && contentLabel && (
+        <ServerContentPanel server={server} label={contentLabel} live={live} />
       )}
       {tab === "files" && <FilesPanel server={server} />}
       {tab === "properties" && <PropertiesPanel server={server} live={live} />}

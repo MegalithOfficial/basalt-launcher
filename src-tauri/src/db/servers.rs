@@ -5,7 +5,7 @@ use rusqlite::{params, OptionalExtension};
 use crate::{
     error::Result,
     paths::Paths,
-    servers::{Server, software},
+    servers::{software, Server},
 };
 
 use super::{ActiveServerRun, Db};

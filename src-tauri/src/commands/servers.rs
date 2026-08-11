@@ -6,9 +6,10 @@ use tauri::{AppHandle, State};
 use crate::{
     error::{Error, Result},
     servers::{
+        config, content,
         files::{FileKind, ServerEntry, ServerText},
         import::{self, ServerFolder},
-        Server, TextProblem, config, provision, runtime, software,
+        provision, runtime, software, Server, TextProblem,
     },
     state::AppState,
     tasks::{TaskKind, TaskSpec},
@@ -472,6 +473,53 @@ pub fn set_server_properties(
     let config = config::write(&state.files, &server, &edits, &removed)?;
     cache_config(&state, &server, &config)?;
     Ok(properties_of(config))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn list_server_content(
+    state: State<AppState>,
+    server_id: String,
+) -> Result<Vec<crate::content::ContentItem>> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    content::list(&state.files, &server)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn toggle_server_content(
+    state: State<AppState>,
+    server_id: String,
+    file_name: String,
+) -> Result<bool> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    content::toggle(&state.files, &server, &file_name)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn delete_server_content(
+    state: State<AppState>,
+    server_id: String,
+    file_name: String,
+) -> Result<()> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    content::delete(&state.files, &server, &file_name)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn add_server_content(
+    state: State<AppState>,
+    server_id: String,
+    sources: Vec<String>,
+) -> Result<usize> {
+    let server = super::find_server(&state, &server_id)?;
+    reachable(&server)?;
+    content::add(&state.files, &server, &sources)
 }
 
 #[tauri::command]

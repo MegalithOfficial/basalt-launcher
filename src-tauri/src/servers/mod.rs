@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{error::Result, state::AppState};
 
 pub mod config;
+pub mod content;
 pub mod files;
 pub mod import;
 pub mod properties;

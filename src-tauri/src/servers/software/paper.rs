@@ -49,6 +49,7 @@ impl ServerSoftware for Paper {
             runtime: Runtime::Java,
             builds: true,
             config_file: "server.properties",
+            content_dir: Some("plugins"),
         }
     }
 

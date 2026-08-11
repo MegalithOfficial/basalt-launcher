@@ -29,6 +29,7 @@ impl ServerSoftware for Fabric {
             runtime: Runtime::Java,
             builds: true,
             config_file: "server.properties",
+            content_dir: Some("mods"),
         }
     }
 

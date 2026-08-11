@@ -39,6 +39,7 @@ impl ServerSoftware for Purpur {
             runtime: Runtime::Java,
             builds: true,
             config_file: "server.properties",
+            content_dir: Some("plugins"),
         }
     }
 

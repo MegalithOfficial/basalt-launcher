@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    Software,
     software::{self, Folder},
+    Software,
 };
 
 #[derive(Debug, Clone, Serialize)]

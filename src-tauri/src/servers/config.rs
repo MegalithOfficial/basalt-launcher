@@ -7,7 +7,7 @@ use crate::{
     files::FileManager,
 };
 
-use super::{Server, properties::Properties};
+use super::{properties::Properties, Server};
 
 pub struct Entry {
     pub key: String,
@@ -197,10 +197,21 @@ fn set_path(document: &mut DocumentMut, key: &str, text: &str) -> Result<()> {
     };
 
     let decor = existing.decor().clone();
-    table.insert(&leaf, Item::Value(replacement.decorated(
-        decor.prefix().and_then(|prefix| prefix.as_str()).unwrap_or(" "),
-        decor.suffix().and_then(|suffix| suffix.as_str()).unwrap_or(""),
-    )));
+    table.insert(
+        &leaf,
+        Item::Value(
+            replacement.decorated(
+                decor
+                    .prefix()
+                    .and_then(|prefix| prefix.as_str())
+                    .unwrap_or(" "),
+                decor
+                    .suffix()
+                    .and_then(|suffix| suffix.as_str())
+                    .unwrap_or(""),
+            ),
+        ),
+    );
     Ok(())
 }
 
@@ -282,17 +293,15 @@ motd = "A Pumpkin server"
 
     #[test]
     fn a_value_keeps_the_type_the_file_gave_it() {
-        assert!(
-            write_toml(
-                PUMPKIN,
-                &[Entry {
-                    key: "server.max_players".to_string(),
-                    value: "many".to_string(),
-                }],
-                &[],
-            )
-            .is_err()
-        );
+        assert!(write_toml(
+            PUMPKIN,
+            &[Entry {
+                key: "server.max_players".to_string(),
+                value: "many".to_string(),
+            }],
+            &[],
+        )
+        .is_err());
 
         let rendered = write_toml(
             PUMPKIN,
@@ -303,7 +312,9 @@ motd = "A Pumpkin server"
             &[],
         )
         .unwrap();
-        assert!(String::from_utf8(rendered).unwrap().contains("max_players = 40"));
+        assert!(String::from_utf8(rendered)
+            .unwrap()
+            .contains("max_players = 40"));
     }
 
     #[test]

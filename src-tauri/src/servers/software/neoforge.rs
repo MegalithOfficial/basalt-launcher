@@ -6,7 +6,7 @@ use crate::{
     network::NetworkManager,
     servers::{
         import,
-        provision::{self, PLATFORM_PLACEHOLDER, Provisioned},
+        provision::{self, Provisioned, PLATFORM_PLACEHOLDER},
     },
 };
 
@@ -25,6 +25,7 @@ impl ServerSoftware for Neoforge {
             runtime: Runtime::Java,
             builds: true,
             config_file: "server.properties",
+            content_dir: Some("mods"),
         }
     }
 

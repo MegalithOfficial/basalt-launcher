@@ -57,10 +57,12 @@ impl ServerSoftware for Pumpkin {
         Spec {
             id: "pumpkin",
             label: "Pumpkin",
-            hint: "A server written in Rust. No Java, configured through pumpkin.toml, still early.",
+            hint:
+                "A server written in Rust. No Java, configured through pumpkin.toml, still early.",
             runtime: Runtime::Native,
             builds: false,
             config_file: CONFIG,
+            content_dir: None,
         }
     }
 

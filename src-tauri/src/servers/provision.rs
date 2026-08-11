@@ -10,7 +10,7 @@ use crate::{
     tasks::TaskHandle,
 };
 
-use super::{Server, software::Install};
+use super::{software::Install, Server};
 
 pub const PLATFORM_PLACEHOLDER: &str = "{platform}";
 pub const SERVER_JAR: &str = "server.jar";

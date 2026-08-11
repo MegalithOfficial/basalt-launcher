@@ -498,6 +498,14 @@ export const api = {
   inspectPaths: (paths: string[]) => call<PathKind[]>("inspect_paths", { paths }),
   listServers: () => call<Server[]>("list_servers"),
   listServerSoftware: () => call<ServerSoftware[]>("list_server_software"),
+  listServerContent: (serverId: string) =>
+    call<ContentItem[]>("list_server_content", { serverId }),
+  toggleServerContent: (serverId: string, fileName: string) =>
+    call<boolean>("toggle_server_content", { serverId, fileName }),
+  deleteServerContent: (serverId: string, fileName: string) =>
+    call<void>("delete_server_content", { serverId, fileName }),
+  addServerContent: (serverId: string, sources: string[]) =>
+    call<number>("add_server_content", { serverId, sources }),
   listServerFlavorVersions: (flavor: ServerFlavor, versionId: string) =>
     call<string[]>("list_server_flavor_versions", { flavor, versionId }),
   createServer: (

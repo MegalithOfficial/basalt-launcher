@@ -29,6 +29,15 @@ export function isNative(software: ServerSoftware[], flavor: ServerFlavor): bool
   return softwareOf(software, flavor)?.runtime === "native";
 }
 
+export function contentLabel(
+  software: ServerSoftware[],
+  flavor: ServerFlavor,
+): string | null {
+  const dir = softwareOf(software, flavor)?.content_dir;
+  if (!dir) return null;
+  return dir === "plugins" ? "Plugins" : "Mods";
+}
+
 export function configFile(software: ServerSoftware[], flavor: ServerFlavor): string {
   return softwareOf(software, flavor)?.config_file ?? "server.properties";
 }
