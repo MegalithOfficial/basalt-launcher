@@ -240,7 +240,7 @@ export function ServerView() {
             <FolderOpen className="size-3.5" />
           </button>
 
-          {!server.installed_at ? (
+          {!server.installed_at && !server.launch_script ? (
             <button
               onClick={() => void run(installServer(server.id))}
               disabled={busy || !server.available}

@@ -142,10 +142,21 @@ fn eula_accepted(dir: &Path) -> bool {
 
 pub struct Modded {
     pub version: String,
+    pub game_version: Option<String>,
     pub argfiles: Vec<String>,
 }
 
-pub fn modded_launch(dir: &Path, coordinates: &str) -> Option<Modded> {
+pub fn declared(text: &str, flag: &str) -> Option<String> {
+    let mut tokens = text.split_whitespace();
+    while let Some(token) = tokens.next() {
+        if token == flag {
+            return tokens.next().map(str::to_string).filter(|v| !v.is_empty());
+        }
+    }
+    None
+}
+
+pub fn modded_launch(dir: &Path, coordinates: &str, loader_flag: &str) -> Option<Modded> {
     let parent = dir.join("libraries").join(coordinates);
     let mut versions = std::fs::read_dir(&parent)
         .ok()?
@@ -160,10 +171,8 @@ pub fn modded_launch(dir: &Path, coordinates: &str) -> Option<Modded> {
         "libraries/{coordinates}/{version}/{}_args.txt",
         super::provision::PLATFORM_PLACEHOLDER
     );
-    if !dir
-        .join(super::provision::argfile_for_platform(&relative))
-        .is_file()
-    {
+    let resolved = dir.join(super::provision::argfile_for_platform(&relative));
+    if !resolved.is_file() {
         return None;
     }
 
@@ -172,7 +181,12 @@ pub fn modded_launch(dir: &Path, coordinates: &str) -> Option<Modded> {
         argfiles.push("user_jvm_args.txt".to_string());
     }
     argfiles.push(relative);
-    Some(Modded { version, argfiles })
+    let declared_text = std::fs::read_to_string(&resolved).unwrap_or_default();
+    Some(Modded {
+        version: declared(&declared_text, loader_flag).unwrap_or(version),
+        game_version: declared(&declared_text, "--fml.mcVersion"),
+        argfiles,
+    })
 }
 
 pub struct History {
@@ -210,6 +224,18 @@ mod tests {
         let dir = root.join("smp");
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_argument_file_is_believed_over_the_folder_name() {
+        let text = "-p libraries/foo.jar\nnet.neoforged.fml.startup.Server\n--fml.neoForgeVersion 26.2.0.59\n--fml.mcVersion 26.2\n--fml.neoFormVersion 2\n";
+        assert_eq!(declared(text, "--fml.mcVersion").as_deref(), Some("26.2"));
+        assert_eq!(
+            declared(text, "--fml.neoForgeVersion").as_deref(),
+            Some("26.2.0.59")
+        );
+        assert_eq!(declared(text, "--fml.forgeVersion"), None);
+        assert_eq!(declared("--fml.mcVersion", "--fml.mcVersion"), None);
     }
 
     #[test]

@@ -7,12 +7,15 @@ pub mod content;
 pub mod control;
 pub mod files;
 pub mod import;
+pub mod jvmargs;
 pub mod pack;
 pub mod players;
 pub mod properties;
 pub mod provision;
+pub mod rescan;
 pub mod runtime;
 pub mod software;
+pub mod startup;
 pub mod usage;
 pub mod zippack;
 
@@ -71,6 +74,10 @@ pub struct Server {
     pub max_players: Option<u32>,
     #[serde(default)]
     pub notes: Option<String>,
+    #[serde(default)]
+    pub launch_script: Option<String>,
+    #[serde(default)]
+    pub skip_launch_script: bool,
     #[serde(default)]
     pub pack_provider: Option<String>,
     #[serde(default)]

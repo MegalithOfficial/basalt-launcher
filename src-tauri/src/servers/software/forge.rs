@@ -80,12 +80,15 @@ impl ServerSoftware for Forge {
     }
 
     fn detect(&self, folder: &Folder) -> Option<Detected> {
-        let found = import::modded_launch(folder.dir, COORDINATES)?;
-        let (game, loader) = found
-            .version
-            .split_once('-')
-            .map(|(game, loader)| (Some(game.to_string()), loader.to_string()))
-            .unwrap_or((None, found.version));
+        let found = import::modded_launch(folder.dir, COORDINATES, "--fml.forgeVersion")?;
+        let (game, loader) = match found.game_version {
+            Some(game) => (Some(game), found.version),
+            None => found
+                .version
+                .split_once('-')
+                .map(|(game, loader)| (Some(game.to_string()), loader.to_string()))
+                .unwrap_or((None, found.version)),
+        };
         Some(Detected {
             certain: true,
             version_id: game,

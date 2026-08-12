@@ -22,7 +22,17 @@ impl Db {
         } else {
             PathBuf::from(external_dir.unwrap_or_default())
         };
+        let launch_jar: Option<String> = row.get(7)?;
         let launch_argfiles: Option<String> = row.get(8)?;
+        let nothing_to_launch = launch_jar.is_none()
+            && launch_argfiles
+                .as_deref()
+                .is_none_or(|raw| raw.trim().is_empty() || raw.trim() == "[]");
+        let launch_script = if nothing_to_launch {
+            super::super::servers::startup::find(&dir)
+        } else {
+            None
+        };
         let port: Option<u32> = row.get(19)?;
         Ok(Server {
             available: dir.is_dir(),
@@ -35,7 +45,7 @@ impl Db {
                 .map(|dt| dt.with_timezone(&chrono::Utc))
                 .unwrap_or_else(|_| chrono::Utc::now()),
             managed,
-            launch_jar: row.get(7)?,
+            launch_jar,
             launch_argfiles: launch_argfiles
                 .and_then(|value| serde_json::from_str(&value).ok())
                 .unwrap_or_default(),
@@ -54,6 +64,8 @@ impl Db {
             max_players: row.get(21)?,
             uptime_secs: row.get(22)?,
             notes: row.get(23)?,
+            launch_script,
+            skip_launch_script: row.get::<_, i64>(27).unwrap_or(0) != 0,
             pack_provider: row.get(24)?,
             pack_project_id: row.get(25)?,
             pack_version_id: row.get(26)?,
@@ -68,7 +80,7 @@ impl Db {
                     java_path, jvm_args, jvm_args_mode, stop_timeout_secs, eula_accepted_at,
                     installed_at, last_started_at, cached_port, cached_motd,
                     cached_max_players, uptime_secs, notes,
-                    pack_provider, pack_project_id, pack_version_id
+                    pack_provider, pack_project_id, pack_version_id, skip_launch_script
              FROM servers ORDER BY sort_order, created_at",
         )?;
         let rows = stmt.query_map([], |row| Self::read_server(row, paths))?;
@@ -84,7 +96,7 @@ impl Db {
                         java_path, jvm_args, jvm_args_mode, stop_timeout_secs, eula_accepted_at,
                         installed_at, last_started_at, cached_port, cached_motd,
                         cached_max_players, uptime_secs, notes,
-                        pack_provider, pack_project_id, pack_version_id
+                        pack_provider, pack_project_id, pack_version_id, skip_launch_script
                  FROM servers WHERE id = ?1",
                 params![server_id],
                 |row| Self::read_server(row, paths),
@@ -105,6 +117,15 @@ impl Db {
             .into_iter()
             .map(PathBuf::from)
             .collect())
+    }
+
+    pub fn set_server_skip_launch_script(&self, server_id: &str, skip: bool) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE servers SET skip_launch_script = ?2 WHERE id = ?1",
+            params![server_id, i64::from(skip)],
+        )?;
+        Ok(())
     }
 
     pub fn link_server_pack(
@@ -160,6 +181,24 @@ impl Db {
                 server.max_players,
                 server.notes,
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_server_software(&self, server_id: &str, software: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE servers SET flavor = ?2 WHERE id = ?1",
+            params![server_id, software],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_server_version(&self, server_id: &str, version_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE servers SET version_id = ?2 WHERE id = ?1",
+            params![server_id, version_id],
         )?;
         Ok(())
     }
@@ -380,6 +419,8 @@ mod tests {
             motd: Some("A Basalt server".into()),
             max_players: Some(20),
             notes: None,
+            launch_script: None,
+            skip_launch_script: false,
             pack_provider: None,
             pack_project_id: None,
             pack_version_id: None,

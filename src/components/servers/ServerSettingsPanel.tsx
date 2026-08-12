@@ -7,6 +7,7 @@ import { flavorLabel, isNative, needsFlavorVersion } from "../../lib/servers";
 import type { JavaInfo, Server, SystemStats } from "../../lib/types";
 import { MemoryRange } from "../MemoryRange";
 import { Select } from "../Select";
+import { Toggle } from "../ui";
 import { useStore } from "../../store";
 
 const JAVA_AUTO = "Auto-detect";
@@ -16,6 +17,7 @@ const REPLACE = "Replace defaults";
 const MODES = [APPEND, REPLACE];
 
 const CEILING_FALLBACK = 16384;
+const jvmargs = "user_jvm_args.txt";
 
 const inputCls =
   "rounded-lg border border-border bg-void px-3 py-2 text-sm text-content outline-none transition-colors focus:border-(--accent)";
@@ -64,6 +66,8 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scriptMemory, setScriptMemory] = useState<[string | null, string | null] | null>(null);
+  const [applying, setApplying] = useState(false);
 
   useEffect(() => {
     setName(server.name);
@@ -119,7 +123,34 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
 
   useEffect(loadCommand, [server]);
 
+  useEffect(() => {
+    setScriptMemory(null);
+    if (!server.launch_script) return;
+    let alive = true;
+    api
+      .getServerScriptMemory(server.id)
+      .then((found) => alive && setScriptMemory(found))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [server.id, server.launch_script]);
+
+  const applyScriptMemory = async () => {
+    setApplying(true);
+    setError(null);
+    try {
+      await api.applyServerScriptMemory(server.id);
+      setScriptMemory(await api.getServerScriptMemory(server.id));
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const native = isNative(software, server.flavor);
+  const scripted = !!server.launch_script && !server.skip_launch_script;
   const sliderMin = Number(minMem) || settings?.server_min_memory_mb || 1024;
   const sliderMax = Number(maxMem) || settings?.server_max_memory_mb || 4096;
   const ceiling = stats?.total_memory_mb ?? CEILING_FALLBACK;
@@ -199,7 +230,12 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
             />
           </Row>
           <Row label="Version">
-            {native ? (
+            {scripted ? (
+              <span className="text-[12px] text-content-muted">
+                {server.version_id || "unknown"}
+                {server.flavor_version && ` · ${server.flavor_version}`}, taken from the script
+              </span>
+            ) : native ? (
               <span className="text-[12px] text-content-muted">
                 Nightly, whatever Minecraft version this build targets
               </span>
@@ -304,6 +340,24 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                 : ""}
               .
             </p>
+
+            {scripted && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border-soft/50 pt-3">
+                <span className="text-[11px] text-content-muted">
+                  {scriptMemory
+                    ? `${jvmargs} asks for ${scriptMemory[0] ?? "no minimum"} to ${scriptMemory[1] ?? "no maximum"}`
+                    : `${server.launch_script} decides this until you write it into ${jvmargs}`}
+                </span>
+                <button
+                  onClick={() => void applyScriptMemory()}
+                  disabled={applying}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-content transition-colors hover:bg-surface-3 disabled:opacity-50"
+                >
+                  {applying && <Loader2 className="size-3 animate-spin" />}
+                  Put these values in it
+                </button>
+              </div>
+            )}
           </div>
 
           <SectionLabel>Java</SectionLabel>
@@ -376,6 +430,38 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
               </div>
             </Row>
           </div>
+          </>
+        )}
+
+        {server.launch_script && (
+          <>
+            <SectionLabel>Start script</SectionLabel>
+            <div className="mb-8 mt-1">
+              <Row label={server.launch_script}>
+                <Toggle
+                  label="Use the script this server ships"
+                  checked={!server.skip_launch_script}
+                  onChange={(next) =>
+                    void api
+                      .setServerLaunchScript(server.id, next)
+                      .then(() => refreshServers())
+                      .catch((cause) => setError(String(cause)))
+                  }
+                />
+                <span className="text-[12px] text-content-muted">
+                  {server.skip_launch_script
+                    ? "Off, Basalt runs its own command"
+                    : "On, Basalt runs this instead of its own command"}
+                </span>
+              </Row>
+              <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-content-faint">
+                The script installs the loader on its first run and decides the version, the memory
+                and the Java it uses. Basalt runs it through the supervisor and still tracks the
+                Java process it starts, so the console, the meters and stopping keep working. Turn
+                this off to have Basalt build the command itself, and everything above applies
+                again.
+              </p>
+            </div>
           </>
         )}
 

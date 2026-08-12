@@ -19,10 +19,14 @@ pub fn command(
     dir: &Path,
     program: &Path,
     arguments: &[String],
+    through_shell: bool,
 ) -> Command {
     let mut command = Command::new(exe);
+    command.arg(FLAG);
+    if through_shell {
+        command.arg("--shell");
+    }
     command
-        .arg(FLAG)
         .arg("--id")
         .arg(server_id)
         .arg("--root")
@@ -46,6 +50,7 @@ pub async fn start(
     dir: &Path,
     program: &Path,
     arguments: &[String],
+    through_shell: bool,
 ) -> Result<Outcome> {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
@@ -55,7 +60,17 @@ pub async fn start(
     let path = control_path(root, server_id);
     forget_control(&path);
 
-    let mut child = match command(&exe, server_id, root, dir, program, arguments).spawn() {
+    let mut child = match command(
+        &exe,
+        server_id,
+        root,
+        dir,
+        program,
+        arguments,
+        through_shell,
+    )
+    .spawn()
+    {
         Ok(child) => child,
         Err(error) => return Ok(Outcome::Unavailable(error.to_string())),
     };

@@ -63,6 +63,7 @@ export function GetServerModal({
         file.file_name,
         file.sha1,
         file.size,
+        version?.game_versions[0] ?? null,
       );
       await refreshServers();
       toast.success(`${created.name} is ready`, {

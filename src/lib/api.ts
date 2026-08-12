@@ -526,7 +526,17 @@ export const api = {
     fileName: string,
     sha1: string | null,
     size: number | null,
-  ) => call<Server>("install_server_zip", { name, url, localPath, fileName, sha1, size }),
+    gameVersion: string | null,
+  ) =>
+    call<Server>("install_server_zip", {
+      name,
+      url,
+      localPath,
+      fileName,
+      sha1,
+      size,
+      gameVersion,
+    }),
   checkServerPackUpdate: (serverId: string) =>
     call<ModpackUpgrade | null>("check_server_pack_update", { serverId }),
   installServerPack: (
@@ -535,6 +545,13 @@ export const api = {
     versionId: string,
     manualSources: ManualDownloadSource[] = [],
   ) => call<Server>("install_server_pack", { provider, projectId, versionId, manualSources }),
+  getServerScriptMemory: (serverId: string) =>
+    call<[string | null, string | null] | null>("get_server_script_memory", { serverId }),
+  applyServerScriptMemory: (serverId: string) =>
+    call<void>("apply_server_script_memory", { serverId }),
+  rescanServer: (serverId: string) => call<void>("rescan_server", { serverId }),
+  setServerLaunchScript: (serverId: string, useScript: boolean) =>
+    call<void>("set_server_launch_script", { serverId, useScript }),
   setServerWhitelist: (serverId: string, enabled: boolean) =>
     call<void>("set_server_whitelist", { serverId, enabled }),
   checkServerContentUpdates: (serverId: string, force?: boolean) =>

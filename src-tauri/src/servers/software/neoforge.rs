@@ -70,9 +70,10 @@ impl ServerSoftware for Neoforge {
     }
 
     fn detect(&self, folder: &Folder) -> Option<Detected> {
-        let found = import::modded_launch(folder.dir, COORDINATES)?;
+        let found = import::modded_launch(folder.dir, COORDINATES, "--fml.neoForgeVersion")?;
         Some(Detected {
             certain: true,
+            version_id: found.game_version,
             flavor_version: Some(found.version),
             launch_argfiles: found.argfiles,
             ..Default::default()

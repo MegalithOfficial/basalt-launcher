@@ -69,6 +69,48 @@ pub fn process_start(pid: u32) -> Option<u64> {
     system.process(pid).map(sysinfo::Process::start_time)
 }
 
+pub fn descendant_java(root: u32) -> Option<u32> {
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+    );
+
+    let mut best: Option<(u32, u64)> = None;
+    for (pid, process) in system.processes() {
+        let name = process
+            .exe()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if !name.starts_with("java") {
+            continue;
+        }
+        if !descends_from(&system, *pid, Pid::from_u32(root)) {
+            continue;
+        }
+        let started = process.start_time();
+        if best.is_none_or(|(_, seen)| started < seen) {
+            best = Some((pid.as_u32(), started));
+        }
+    }
+    best.map(|(pid, _)| pid)
+}
+
+fn descends_from(system: &System, mut pid: Pid, root: Pid) -> bool {
+    for _ in 0..16 {
+        if pid == root {
+            return true;
+        }
+        let Some(parent) = system.process(pid).and_then(sysinfo::Process::parent) else {
+            return false;
+        };
+        pid = parent;
+    }
+    false
+}
+
 pub fn kill_pid(pid: u32) -> bool {
     let pid = Pid::from_u32(pid);
     let mut system = System::new();

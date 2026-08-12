@@ -1024,6 +1024,8 @@ export interface ServerSoftware {
 export interface Server {
   id: string;
   name: string;
+  launch_script: string | null;
+  skip_launch_script: boolean;
   pack_provider: string | null;
   pack_project_id: string | null;
   pack_version_id: string | null;

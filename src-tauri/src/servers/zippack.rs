@@ -101,6 +101,7 @@ pub async fn install(
     state: &AppState,
     name: &str,
     source: &Source,
+    game_version: Option<&str>,
     task: &TaskHandle,
 ) -> Result<Server> {
     task.stage("server-pack");
@@ -164,11 +165,15 @@ pub async fn install(
 
     let found = import::inspect(&dir);
     let flavor = found.flavor.unwrap_or(software::vanilla());
-    let server = Server {
+    let mut server = Server {
         id,
         name: name.to_string(),
         flavor,
-        version_id: found.version_id.unwrap_or_default(),
+        version_id: found
+            .version_id
+            .clone()
+            .or_else(|| game_version.map(str::to_string))
+            .unwrap_or_default(),
         created_at: chrono::Utc::now(),
         managed: true,
         dir: dir.display().to_string(),
@@ -190,12 +195,19 @@ pub async fn install(
         motd: None,
         max_players: None,
         notes: None,
+        launch_script: None,
+        skip_launch_script: false,
         pack_provider: None,
         pack_project_id: None,
         pack_version_id: None,
     };
     super::provision::write_eula(&state.files, &dir)?;
     state.db.insert_server(&server)?;
+    if super::rescan::run(state, &server)?.changed {
+        if let Some(fresh) = state.db.server(&state.paths, &server.id)? {
+            server = fresh;
+        }
+    }
     tracing::info!(server_id = %server.id, software = %server.flavor, "installed a server pack");
     Ok(server)
 }

@@ -66,6 +66,8 @@ mod tests {
             motd: None,
             max_players: None,
             notes: None,
+            launch_script: None,
+            skip_launch_script: false,
             pack_provider: None,
             pack_project_id: None,
             pack_version_id: None,

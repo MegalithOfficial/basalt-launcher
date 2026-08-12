@@ -289,6 +289,12 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
     for column in ["pack_provider", "pack_project_id", "pack_version_id"] {
         add_column_if_missing(conn, "servers", column, "TEXT")?;
     }
+    add_column_if_missing(
+        conn,
+        "servers",
+        "skip_launch_script",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     add_column_if_missing(conn, "skins", "hash", "TEXT")?;
     add_column_if_missing(conn, "skins", "remote_hash", "TEXT")?;
     add_column_if_missing(

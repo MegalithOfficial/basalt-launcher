@@ -30,7 +30,7 @@ use crate::{
     state::AppState,
 };
 
-use super::{control, properties::Properties, provision, Server};
+use super::{control, properties::Properties, provision, rescan, startup, Server};
 
 const MAX_CONSOLE_LINES: usize = 6000;
 const EVENT_BATCH_LINES: usize = 256;
@@ -273,6 +273,20 @@ fn launch_arguments(
 }
 
 pub async fn launch_preview(state: &AppState, server: &Server) -> Result<String> {
+    if let Some(script) = server
+        .launch_script
+        .as_deref()
+        .filter(|_| !server.skip_launch_script)
+    {
+        let dir = PathBuf::from(&server.dir);
+        let (shell, args) = startup::command(&dir, script);
+        let mut line = quoted(&shell.display().to_string());
+        for argument in args {
+            line.push(' ');
+            line.push_str(&quoted(&argument));
+        }
+        return Ok(line);
+    }
     if server.flavor.native() {
         return Ok(quoted(&native_binary(server)?.display().to_string()));
     }
@@ -434,9 +448,38 @@ pub async fn start(
             "Accept the Minecraft EULA before starting this server.",
         ));
     }
-    if server.launch_jar.is_none() && server.launch_argfiles.is_empty() {
-        return Err(Error::other("Install this server before starting it."));
+    let script = server
+        .launch_script
+        .as_deref()
+        .filter(|_| !server.skip_launch_script);
+    let mut server = server.clone();
+    if script.is_none() && server.launch_jar.is_none() && server.launch_argfiles.is_empty() {
+        let task = state.tasks.start(
+            app,
+            crate::tasks::TaskKind::ServerInstall,
+            crate::tasks::TaskSpec {
+                title: server.name.clone(),
+                subtitle: Some(format!("{} {}", server.flavor.label(), server.version_id)),
+                server_id: Some(server.id.clone()),
+                total: 1,
+                ..Default::default()
+            },
+        )?;
+        let result = provision::install(state, &server, &task).await;
+        task.finish(&result);
+        let provisioned = result?;
+        state.db.set_server_launch(
+            &server.id,
+            provisioned.launch_jar.as_deref(),
+            &provisioned.launch_argfiles,
+            provisioned.flavor_version.as_deref(),
+            chrono::Utc::now().timestamp(),
+        )?;
+        server.launch_jar = provisioned.launch_jar;
+        server.launch_argfiles = provisioned.launch_argfiles;
+        server.flavor_version = provisioned.flavor_version.or(server.flavor_version);
     }
+    let server = &server;
 
     let ports = if server.flavor.native() {
         vec![("the server port", server_port(&state.files, server))]
@@ -453,7 +496,11 @@ pub async fn start(
 
     let settings = state.runtime_settings()?;
     let running_id = uuid::Uuid::new_v4().to_string();
-    let (program, args) = if server.flavor.native() {
+    let (program, args) = if let Some(script) = script {
+        let (shell, shell_args) = startup::command(&dir, script);
+        tracing::info!(script, "starting this server through the script it ships");
+        (shell, shell_args)
+    } else if server.flavor.native() {
         (native_binary(server)?, Vec::new())
     } else {
         let memory = server_memory(&settings, server)?;
@@ -483,8 +530,15 @@ pub async fn start(
     }));
 
     tracing::info!(program = %program.display(), dir = %dir.display(), "starting server");
-    let supervised =
-        control::launch::start(&server.id, &state.paths.servers(), &dir, &program, &args).await?;
+    let supervised = control::launch::start(
+        &server.id,
+        &state.paths.servers(),
+        &dir,
+        &program,
+        &args,
+        script.is_some(),
+    )
+    .await?;
 
     let pid;
     let control = match supervised {
@@ -597,6 +651,17 @@ pub async fn start(
         .unwrap()
         .insert(server.id.clone(), handle);
     emit_state(app, info.clone());
+
+    if script.is_some() {
+        match rescan::run(state, server) {
+            Ok(found) if found.changed => {
+                let _ = app.emit("server:rescanned", json!({ "server_id": server.id }));
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "could not read the server folder again"),
+        }
+    }
+
     Ok(info)
 }
 
@@ -1160,6 +1225,8 @@ mod tests {
             motd: None,
             max_players: None,
             notes: None,
+            launch_script: None,
+            skip_launch_script: false,
             pack_provider: None,
             pack_project_id: None,
             pack_version_id: None,

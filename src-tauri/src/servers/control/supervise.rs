@@ -18,6 +18,7 @@ pub struct Args {
     pub dir: PathBuf,
     pub program: PathBuf,
     pub arguments: Vec<String>,
+    pub through_shell: bool,
 }
 
 pub fn parse_args(raw: &[String]) -> Option<Args> {
@@ -41,7 +42,18 @@ pub fn parse_args(raw: &[String]) -> Option<Args> {
         dir: PathBuf::from(value("--dir")?),
         program: PathBuf::from(program),
         arguments: command[1..].to_vec(),
+        through_shell: flags.iter().any(|entry| entry == "--shell"),
     })
+}
+
+fn wait_for_java(shell: u32) -> Option<u32> {
+    for _ in 0..120 {
+        if let Some(found) = crate::launch::identity::descendant_java(shell) {
+            return Some(found);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    None
 }
 
 fn started_at(pid: u32) -> u64 {
@@ -78,7 +90,12 @@ pub fn run(args: Args) -> ! {
         }
     };
 
-    let child_pid = child.id();
+    let shell_pid = child.id();
+    let child_pid = if args.through_shell {
+        wait_for_java(shell_pid).unwrap_or(shell_pid)
+    } else {
+        shell_pid
+    };
     let path = control_path(&args.root, &args.server_id);
     let control = Control {
         port,
@@ -89,6 +106,15 @@ pub fn run(args: Args) -> ! {
     };
     if let Err(error) = write_control(&path, &control) {
         eprintln!("basalt supervisor could not record its control file: {error}");
+    }
+
+    if args.through_shell && child_pid != shell_pid {
+        std::thread::spawn(move || {
+            while crate::launch::identity::process_start(child_pid).is_some() {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            crate::launch::identity::kill_pid(shell_pid);
+        });
     }
 
     let stdin = Arc::new(Mutex::new(child.stdin.take()));
@@ -120,6 +146,7 @@ pub fn run(args: Args) -> ! {
                     stdin.clone(),
                     clients.clone(),
                     child_pid,
+                    shell_pid,
                 );
             }
         });
@@ -168,6 +195,7 @@ fn serve(
     stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
     clients: Arc<Mutex<Vec<Sender<String>>>>,
     child_pid: u32,
+    shell_pid: u32,
 ) {
     let Ok(reading) = stream.try_clone() else {
         return;
@@ -214,6 +242,9 @@ fn serve(
                 Request::Send { line } => write_line(&stdin, &line),
                 Request::Stop => write_line(&stdin, "stop"),
                 Request::Kill => {
+                    if shell_pid != child_pid {
+                        crate::launch::identity::kill_pid(shell_pid);
+                    }
                     crate::launch::identity::kill_pid(child_pid);
                 }
             }

@@ -9,7 +9,7 @@ use crate::{
         config, content,
         files::{FileKind, ServerEntry, ServerText},
         import::{self, ServerFolder},
-        pack, players, provision, runtime, software, zippack, Server, TextProblem,
+        jvmargs, pack, players, provision, rescan, runtime, software, zippack, Server, TextProblem,
     },
     state::AppState,
     tasks::{TaskKind, TaskSpec},
@@ -133,6 +133,8 @@ pub fn create_server(
         motd: None,
         max_players: None,
         notes: None,
+        launch_script: None,
+        skip_launch_script: false,
         pack_provider: None,
         pack_project_id: None,
         pack_version_id: None,
@@ -206,6 +208,8 @@ pub fn import_server(
         motd: None,
         max_players: None,
         notes: None,
+        launch_script: None,
+        skip_launch_script: false,
         pack_provider: None,
         pack_project_id: None,
         pack_version_id: None,
@@ -652,6 +656,54 @@ pub async fn remove_server_player(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
+pub fn get_server_script_memory(
+    state: State<AppState>,
+    server_id: String,
+) -> Result<Option<(Option<String>, Option<String>)>> {
+    let server = super::find_server(&state, &server_id)?;
+    let dir = reachable(&server)?;
+    Ok(jvmargs::read(&state.files, &dir).map(|text| jvmargs::declared_memory(&text)))
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn apply_server_script_memory(state: State<AppState>, server_id: String) -> Result<()> {
+    let server = super::find_server(&state, &server_id)?;
+    let dir = reachable(&server)?;
+    let settings = state.runtime_settings()?;
+    let memory = crate::config::MemoryLimits::new(
+        server
+            .min_memory_mb
+            .unwrap_or(settings.server_min_memory_mb),
+        server
+            .max_memory_mb
+            .unwrap_or(settings.server_max_memory_mb),
+    )?;
+    jvmargs::apply(&state.files, &dir, memory)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn rescan_server(state: State<AppState>, server_id: String) -> Result<rescan::Rescan> {
+    let server = super::find_server(&state, &server_id)?;
+    rescan::run(&state, &server)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub fn set_server_launch_script(
+    state: State<AppState>,
+    server_id: String,
+    use_script: bool,
+) -> Result<()> {
+    super::find_server(&state, &server_id)?;
+    state
+        .db
+        .set_server_skip_launch_script(&server_id, !use_script)
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
 pub async fn set_server_whitelist(
     state: State<'_, AppState>,
     server_id: String,
@@ -745,6 +797,7 @@ pub async fn install_server_zip(
     file_name: String,
     sha1: Option<String>,
     size: Option<u64>,
+    game_version: Option<String>,
 ) -> Result<Server> {
     let task = state.tasks.start(
         &app,
@@ -767,7 +820,7 @@ pub async fn install_server_zip(
         sha1,
         size,
     };
-    match zippack::install(&state, &name, &source, &task).await {
+    match zippack::install(&state, &name, &source, game_version.as_deref(), &task).await {
         Ok(server) => {
             task.succeed();
             Ok(server)
