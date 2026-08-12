@@ -721,10 +721,9 @@ pub fn start_monitor(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        is_newer, latest_development_release, linux_install_source, parse_version, Release,
-        UpdatePolicy, Version,
-    };
+    use super::{is_newer, latest_development_release, parse_version, Release, Version};
+    #[cfg(target_os = "linux")]
+    use super::{linux_install_source, UpdatePolicy};
 
     fn release(tag_name: &str, prerelease: bool) -> Release {
         Release {
@@ -795,6 +794,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn linux_appimage_is_self_managed() {
         let source = linux_install_source("linux_bundle", true, false, false, false, false, false);
         assert_eq!(source.id, "appimage");
@@ -802,6 +802,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn linux_packages_take_precedence_over_bundle_fallback() {
         let aur = linux_install_source("linux_bundle", false, false, false, false, true, false);
         let nix = linux_install_source("nix", false, false, false, true, false, false);
@@ -814,6 +815,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn linux_bundle_without_appimage_is_a_manual_debian_package() {
         let source = linux_install_source("linux_bundle", false, false, false, false, false, false);
         assert_eq!(source.id, "deb");
