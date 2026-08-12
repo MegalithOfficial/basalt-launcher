@@ -768,6 +768,7 @@ fn resolve_entry(
             file_size: None,
             env: Some(MrEnv {
                 client: Some("required".to_string()),
+                server: None,
             }),
             local_source: None,
             preserve: entry.preserve,

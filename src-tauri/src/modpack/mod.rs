@@ -23,7 +23,7 @@ mod upgrade;
 
 pub use upgrade::{
     check_modpack_upgrade, link_modpack, plan_modpack_upgrade, recover_interrupted_upgrades,
-    upgrade_modpack, ModpackUpgrade, ModpackUpgradePlan,
+    update_between, upgrade_modpack, ModpackUpgrade, ModpackUpgradePlan,
 };
 
 const MODRINTH: &str = "https://api.modrinth.com/v2";
@@ -190,6 +190,8 @@ impl ExpectedHash {
 pub(crate) struct MrEnv {
     #[serde(default)]
     pub client: Option<String>,
+    #[serde(default)]
+    pub server: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -214,6 +216,20 @@ pub struct ManualDownloadSource {
 #[derive(Debug, Serialize)]
 pub struct ModpackInstallPlan {
     pub manual_downloads: Vec<ManualDownload>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Side {
+    Client,
+    Server,
+}
+
+pub(crate) fn wanted_by(file: &MrFile, side: Side) -> bool {
+    let flag = file.env.as_ref().and_then(|env| match side {
+        Side::Client => env.client.as_deref(),
+        Side::Server => env.server.as_deref(),
+    });
+    flag != Some("unsupported")
 }
 
 pub(crate) fn loader_from_dependencies(
@@ -381,16 +397,20 @@ pub(crate) fn validate_manual_download(
     Ok(())
 }
 
+pub(crate) const CLIENT_OVERRIDES: [&str; 2] = ["overrides/", "client-overrides/"];
+pub(crate) const SERVER_OVERRIDES: [&str; 2] = ["overrides/", "server-overrides/"];
+
 pub(crate) fn extract_overrides(
     files: &crate::files::FileManager,
     archive_path: &Path,
     dest: &Path,
+    prefixes: [&str; 2],
 ) -> Result<()> {
     let file = files.open(archive_path)?;
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| Error::other(format!("opening modpack archive: {e}")))?;
 
-    for prefix in ["overrides/", "client-overrides/"] {
+    for prefix in prefixes {
         for i in 0..zip.len() {
             let mut entry = zip
                 .by_index(i)
@@ -412,7 +432,10 @@ pub(crate) fn extract_overrides(
     Ok(())
 }
 
-fn read_index(files: &crate::files::FileManager, archive_path: &Path) -> Result<MrIndex> {
+pub(crate) fn read_index(
+    files: &crate::files::FileManager,
+    archive_path: &Path,
+) -> Result<MrIndex> {
     let file = files.open(archive_path)?;
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| Error::other(format!("opening modpack archive: {e}")))?;
@@ -433,7 +456,7 @@ struct HashVersion {
 #[tracing::instrument(skip_all, fields(files = files.len()))]
 pub(crate) async fn link_pack_files(
     state: &AppState,
-    instance_id: &str,
+    target: crate::search::resolve::Target<'_>,
     files: &[(String, String)],
 ) {
     let hashes: Vec<String> = files.iter().map(|(_, sha1)| sha1.clone()).collect();
@@ -476,9 +499,12 @@ pub(crate) async fn link_pack_files(
         let Some(file_name) = Path::new(path).file_name().and_then(|f| f.to_str()) else {
             continue;
         };
+        let Ok(kind) = crate::search::ContentKind::parse(kind) else {
+            continue;
+        };
         let info = project_info.get(&version.project_id);
-        let _ = state.db.record_content_file(
-            instance_id,
+        target.record(
+            state,
             kind,
             &crate::db::ContentFile {
                 file_name: file_name.to_string(),
@@ -903,7 +929,12 @@ pub async fn install_modpack(
         task.fail(&error);
         return Err(error);
     }
-    link_pack_files(state, &instance.id, &artifacts.linkable).await;
+    link_pack_files(
+        state,
+        crate::search::resolve::Target::Instance(&instance.id),
+        &artifacts.linkable,
+    )
+    .await;
     task.succeed();
     for source in consumed_sources {
         if let Err(error) = std::fs::remove_file(&source) {
@@ -970,12 +1001,7 @@ pub(crate) async fn install_pack_body(
     let mut integrity_checks = Vec::new();
     let mut preserved = HashSet::new();
     for file in &index.files {
-        if file
-            .env
-            .as_ref()
-            .and_then(|e| e.client.as_deref())
-            .is_some_and(|c| c == "unsupported")
-        {
+        if !wanted_by(file, Side::Client) {
             continue;
         }
         let relative = sanitize_relative(&file.path)?;
@@ -1080,9 +1106,11 @@ pub(crate) async fn install_pack_body(
         let archive = archive_path.to_path_buf();
         let dest = instance_dir.to_path_buf();
         let files = state.files.clone();
-        tokio::task::spawn_blocking(move || extract_overrides(&files, &archive, &dest))
-            .await
-            .map_err(|e| Error::other(format!("override extraction task failed: {e}")))??;
+        tokio::task::spawn_blocking(move || {
+            extract_overrides(&files, &archive, &dest, CLIENT_OVERRIDES)
+        })
+        .await
+        .map_err(|e| Error::other(format!("override extraction task failed: {e}")))??;
     }
 
     if let Some((provider, project_id)) = icon_source {

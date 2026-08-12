@@ -166,6 +166,7 @@ mod tests {
 
     fn version(id: &str, channel: &str, date: &str, compatible: bool) -> ProjectVersion {
         ProjectVersion {
+            server_pack_file_id: None,
             id: id.into(),
             project_id: "p".into(),
             name: id.into(),

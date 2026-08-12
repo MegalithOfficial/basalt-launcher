@@ -1,11 +1,10 @@
 use futures::future::BoxFuture;
 
 use crate::{
-    download,
     error::{Error, Result},
     install,
     servers::{
-        import,
+        import, provision,
         provision::{Provisioned, SERVER_JAR},
     },
 };
@@ -40,7 +39,7 @@ impl ServerSoftware for Vanilla {
                         install.game_version()
                     ))
                 })?;
-            download::download_one(install.network(), install.files(), &spec).await?;
+            provision::fetch(install.task, install.state, vec![spec]).await?;
             Ok(Provisioned {
                 launch_jar: Some(SERVER_JAR.to_string()),
                 ..Default::default()

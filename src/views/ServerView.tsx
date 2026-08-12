@@ -37,6 +37,7 @@ import {
 } from "../lib/servers";
 import { useUptime } from "../lib/useUptime";
 import { EmptyState } from "../components/ui";
+import type { ModpackUpgrade } from "../lib/types";
 import { useStore } from "../store";
 
 const EMPTY_USAGE: never[] = [];
@@ -121,6 +122,20 @@ export function ServerView() {
 
   const live = isLive(info);
   const contentLabel = contentTab(software, server.flavor);
+  const [packUpdate, setPackUpdate] = useState<ModpackUpgrade | null>(null);
+
+  useEffect(() => {
+    setPackUpdate(null);
+    if (!server.pack_project_id) return;
+    let alive = true;
+    api
+      .checkServerPackUpdate(server.id)
+      .then((found) => alive && setPackUpdate(found))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [server.id, server.pack_project_id, server.pack_version_id]);
   const run = async (action: Promise<unknown>) => {
     setBusy(true);
     setError(null);
@@ -307,6 +322,14 @@ export function ServerView() {
       )}
 
       {live && info && !info.attached && <DetachedNotice serverId={server.id} />}
+      {packUpdate && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-warn/30 bg-warn/8 px-6 py-2.5">
+          <span className="min-w-0 flex-1 text-[12px] text-warn">
+            {packUpdate.target_name} {packUpdate.version_number} is out. This server is on{" "}
+            {packUpdate.current_version_id}.
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center gap-1 border-b border-border-soft px-6 pt-1">
         {TABS.filter(

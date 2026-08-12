@@ -3,7 +3,7 @@ use std::path::Path;
 use futures::future::BoxFuture;
 
 use crate::{
-    download::{self, DownloadSpec},
+    download::DownloadSpec,
     error::{Error, Result},
     files::FileManager,
     servers::provision::{self, Provisioned},
@@ -71,16 +71,16 @@ impl ServerSoftware for Pumpkin {
             install.task.stage("server-binary");
             let (asset, name) = asset()?;
             let dest = install.dir().join(name);
-            download::download_one(
-                install.network(),
-                install.files(),
-                &DownloadSpec {
+            provision::fetch(
+                install.task,
+                install.state,
+                vec![DownloadSpec {
                     url: format!("{RELEASE}/{asset}"),
                     dest: dest.clone(),
                     sha1: None,
                     sha256: None,
                     size: None,
-                },
+                }],
             )
             .await?;
             provision::make_executable(&dest)?;

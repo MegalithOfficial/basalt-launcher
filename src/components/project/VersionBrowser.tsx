@@ -5,12 +5,14 @@ import {
   Check,
   ChevronDown,
   Download,
+  Server as ServerIcon,
   ExternalLink,
   Loader2,
   Package,
 } from "lucide-react";
 
 import { cn } from "../../lib/cn";
+import { serverPackFile } from "../../lib/servers";
 import { formatDateTime, relativeTime } from "../../lib/time";
 import type {
   Changelog,
@@ -98,6 +100,7 @@ export interface VersionBrowserProps {
   onExpand: (version: ProjectVersion) => void;
   expandedId: string | null;
   onInstall: (versionId: string) => void;
+  onGetServer?: (version: ProjectVersion) => void;
   onInstallDependency: (project: ProjectSummary) => void;
   onOpenProject: (projectId: string) => void;
   onChooseInstance: () => void;
@@ -120,6 +123,7 @@ export function VersionBrowser({
   onExpand,
   expandedId,
   onInstall,
+  onGetServer,
   onInstallDependency,
   onOpenProject,
   onChooseInstance,
@@ -343,6 +347,7 @@ export function VersionBrowser({
                     </div>
                   </div>
 
+                  <div className="flex shrink-0 items-center gap-1.5">
                   {isInstalledRow ? (
                     <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-ok/15 px-3 text-xs font-semibold text-ok">
                       <Check className="size-3.5" />
@@ -383,6 +388,21 @@ export function VersionBrowser({
                     </button>
                   )}
 
+                  {onGetServer && (v.server_pack_file_id || serverPackFile(v.files)) && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onGetServer(v);
+                      }}
+                      aria-label="Get the server pack"
+                      title="Install the server pack this version ships"
+                      className="grid size-8 shrink-0 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                    >
+                      <ServerIcon className="size-4" />
+                    </button>
+                  )}
+                  </div>
+
                   <ChevronDown
                     className={cn(
                       "size-4 shrink-0 text-content-faint transition-transform",
@@ -421,6 +441,48 @@ export function VersionBrowser({
                         ))}
                       </div>
                     </div>
+
+                    {v.files.filter((file) => !file.primary).length > 0 && (
+                      <div className="mb-3">
+                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-faint">
+                          Additional files
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          {v.files
+                            .filter((file) => !file.primary)
+                            .map((file) => {
+                              const isServer = serverPackFile([file]) !== undefined;
+                              return (
+                                <div
+                                  key={file.file_name}
+                                  className="flex items-center gap-2 rounded-lg border border-border-soft bg-surface-2/60 px-2.5 py-1.5"
+                                >
+                                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-content-muted">
+                                    {file.file_name}
+                                  </span>
+                                  {isServer && (
+                                    <span className="shrink-0 rounded bg-(--accent-glow) px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-content-muted">
+                                      server pack
+                                    </span>
+                                  )}
+                                  <span className="shrink-0 text-[10px] tabular-nums text-content-faint">
+                                    {formatBytes(file.size ?? 0)}
+                                  </span>
+                                  {file.url && (
+                                    <button
+                                      onClick={() => void openUrl(file.url!)}
+                                      title="Download in your browser"
+                                      className="grid size-6 shrink-0 place-items-center rounded text-content-faint transition-colors hover:bg-surface-3 hover:text-content"
+                                    >
+                                      <Download className="size-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
 
                     {v.dependencies.length > 0 && (
                       <div className="mb-3">

@@ -285,6 +285,7 @@ export interface ProjectVersion {
   changelog: string | null;
   dependencies: VersionDependency[];
   files: VersionFile[];
+  server_pack_file_id: string | null;
 }
 
 export interface VersionDependency {
@@ -1023,6 +1024,9 @@ export interface ServerSoftware {
 export interface Server {
   id: string;
   name: string;
+  pack_provider: string | null;
+  pack_project_id: string | null;
+  pack_version_id: string | null;
   flavor: ServerFlavor;
   version_id: string;
   created_at: string;

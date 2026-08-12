@@ -83,7 +83,7 @@ impl<'a> Target<'a> {
         .unwrap_or_default()
     }
 
-    fn record(self, state: &AppState, kind: ContentKind, file: &ContentFile) {
+    pub fn record(self, state: &AppState, kind: ContentKind, file: &ContentFile) {
         let _ = match self {
             Target::Instance(id) => state.db.record_content_file(id, kind.as_str(), file),
             Target::Server(server) => {

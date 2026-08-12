@@ -9,7 +9,7 @@ use crate::{
         config, content,
         files::{FileKind, ServerEntry, ServerText},
         import::{self, ServerFolder},
-        players, provision, runtime, software, Server, TextProblem,
+        pack, players, provision, runtime, software, zippack, Server, TextProblem,
     },
     state::AppState,
     tasks::{TaskKind, TaskSpec},
@@ -133,6 +133,9 @@ pub fn create_server(
         motd: None,
         max_players: None,
         notes: None,
+        pack_provider: None,
+        pack_project_id: None,
+        pack_version_id: None,
     };
     state.db.insert_server(&server)?;
     tracing::info!(server_id = %server.id, flavor = flavor.id(), version = %server.version_id, "server created");
@@ -203,6 +206,9 @@ pub fn import_server(
         motd: None,
         max_players: None,
         notes: None,
+        pack_provider: None,
+        pack_project_id: None,
+        pack_version_id: None,
     };
     state.db.insert_server(&server)?;
     crate::servers::adopt_imported_dirs(&state)?;
@@ -676,6 +682,125 @@ pub async fn set_server_whitelist(
     };
     config::write(&state.files, &server, &[entry], &[])?;
     Ok(())
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+pub async fn install_server_pack(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    provider: String,
+    project_id: String,
+    version_id: String,
+    manual_sources: Option<Vec<crate::modpack::ManualDownloadSource>>,
+) -> Result<Server> {
+    let manual_sources = manual_sources.unwrap_or_default();
+    let provider = crate::search::Provider::parse(&provider)?;
+    let task = state.tasks.start(
+        &app,
+        TaskKind::ServerInstall,
+        TaskSpec {
+            title: "Modpack server".to_string(),
+            subtitle: None,
+            icon_url: None,
+            instance_id: None,
+            server_id: None,
+            project_id: Some(project_id.clone()),
+            total: 0,
+            total_bytes: 0,
+        },
+    )?;
+
+    match pack::install(
+        &app,
+        &state,
+        provider,
+        &project_id,
+        &version_id,
+        &manual_sources,
+        &task,
+    )
+    .await
+    {
+        Ok(server) => {
+            task.succeed();
+            Ok(server)
+        }
+        Err(error) => {
+            task.fail(error.to_string());
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(app, state), err)]
+#[allow(clippy::too_many_arguments)]
+pub async fn install_server_zip(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    url: Option<String>,
+    local_path: Option<String>,
+    file_name: String,
+    sha1: Option<String>,
+    size: Option<u64>,
+) -> Result<Server> {
+    let task = state.tasks.start(
+        &app,
+        TaskKind::ServerInstall,
+        TaskSpec {
+            title: name.clone(),
+            subtitle: Some("server pack".to_string()),
+            icon_url: None,
+            instance_id: None,
+            server_id: None,
+            project_id: None,
+            total: 0,
+            total_bytes: 0,
+        },
+    )?;
+    let source = zippack::Source {
+        url,
+        local_path,
+        file_name,
+        sha1,
+        size,
+    };
+    match zippack::install(&state, &name, &source, &task).await {
+        Ok(server) => {
+            task.succeed();
+            Ok(server)
+        }
+        Err(error) => {
+            task.fail(error.to_string());
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
+#[tracing::instrument(skip(state), err)]
+pub async fn check_server_pack_update(
+    state: State<'_, AppState>,
+    server_id: String,
+) -> Result<Option<crate::modpack::ModpackUpgrade>> {
+    let server = super::find_server(&state, &server_id)?;
+    let (Some(provider), Some(project_id), Some(current)) = (
+        server.pack_provider.as_deref(),
+        server.pack_project_id.as_deref(),
+        server.pack_version_id.as_deref(),
+    ) else {
+        return Ok(None);
+    };
+    crate::modpack::update_between(
+        &state,
+        crate::search::Provider::parse(provider)?,
+        project_id,
+        current,
+        None,
+    )
+    .await
 }
 
 #[tauri::command]

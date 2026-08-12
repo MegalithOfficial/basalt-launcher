@@ -1,4 +1,12 @@
-import { Check, Clock, Download, Heart, Loader2, Package } from "lucide-react";
+import {
+  Check,
+  Clock,
+  Download,
+  Heart,
+  Loader2,
+  Package,
+  Server as ServerIcon,
+} from "lucide-react";
 
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
@@ -37,6 +45,7 @@ export function ProjectHero({
   onSelectServer,
   showTargetPicker,
   onInstall,
+  onGetServer,
   onOpenInstalled,
 }: {
   details: ProjectDetails | null;
@@ -54,6 +63,7 @@ export function ProjectHero({
   onSelectServer?: (serverId: string) => void;
   showTargetPicker: boolean;
   onInstall: () => void;
+  onGetServer?: () => void;
   onOpenInstalled: () => void;
 }) {
   const backdrop =
@@ -150,6 +160,16 @@ export function ProjectHero({
                 <Download className="size-4" />
               )}
               {isPack ? (installedNote ? "Install again" : "Install pack") : "Install"}
+            </button>
+          )}
+
+          {onGetServer && (
+            <button
+              onClick={onGetServer}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-medium text-white transition-colors hover:bg-white/20"
+            >
+              <ServerIcon className="size-4" />
+              Get server
             </button>
           )}
 

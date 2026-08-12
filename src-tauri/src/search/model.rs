@@ -222,6 +222,8 @@ pub struct ProjectVersion {
     pub changelog: Option<String>,
     pub dependencies: Vec<VersionDependency>,
     pub files: Vec<VersionFile>,
+    #[serde(default)]
+    pub server_pack_file_id: Option<String>,
 }
 
 impl ProjectVersion {
@@ -343,6 +345,7 @@ mod tests {
 
     fn version(game_versions: &[&str], loaders: &[&str]) -> ProjectVersion {
         ProjectVersion {
+            server_pack_file_id: None,
             id: "v".into(),
             project_id: "p".into(),
             name: "v".into(),

@@ -5,6 +5,7 @@ import type {
   InstalledItem,
   Instance,
   SearchProvider,
+  Server,
 } from "./types";
 
 export interface ContentInstallOptions {
@@ -35,6 +36,11 @@ export interface ContentInstaller {
     title?: string,
     iconUrl?: string | null,
   ) => Promise<Instance | null>;
+  installServerPack: (
+    provider: SearchProvider,
+    projectId: string,
+    versionId: string,
+  ) => Promise<Server | null>;
   installingVersionId: string | null;
 }
 
@@ -46,5 +52,6 @@ export const ContentInstallerContext = createContext<ContentInstaller>({
   installContent: unavailable,
   installPack: unavailable,
   installLatestPack: unavailable,
+  installServerPack: unavailable,
   installingVersionId: null,
 });

@@ -220,6 +220,10 @@ pub struct File {
     pub hashes: Vec<Hash>,
     #[serde(rename = "fileLength", default)]
     pub file_length: Option<u64>,
+    #[serde(rename = "alternateFileId", default)]
+    pub alternate_file_id: u64,
+    #[serde(rename = "parentProjectFileId", default)]
+    pub parent_project_file_id: Option<u64>,
     #[serde(rename = "gameVersions", default)]
     pub game_versions: Vec<String>,
     #[serde(rename = "sortableGameVersions", default)]
@@ -526,6 +530,8 @@ pub fn to_version(
             size: file.file_length,
             primary: true,
         }],
+        server_pack_file_id: (file.alternate_file_id != 0)
+            .then(|| file.alternate_file_id.to_string()),
     };
     version.compatible = version.matches(game_version, loader, kind);
     version
@@ -569,6 +575,33 @@ pub async fn project_versions(
         .into_iter()
         .map(|f| to_version(f, project_id, game_version, loader, kind))
         .collect())
+}
+
+pub async fn server_pack(
+    state: &AppState,
+    project_id: &str,
+    file_id: &str,
+    parent_id: &str,
+) -> Result<VersionFile> {
+    let file = version(state, project_id, file_id).await?;
+    let parent = parent_id.parse::<u64>().ok();
+    if file.parent_project_file_id.is_some() && file.parent_project_file_id != parent {
+        return Err(Error::other(
+            "That file is not the server pack for this version.",
+        ));
+    }
+    Ok(VersionFile {
+        url: file.download_url.clone(),
+        file_name: file.file_name.clone(),
+        sha1: file
+            .hashes
+            .iter()
+            .find(|hash| hash.algo == 1)
+            .map(|hash| hash.value.clone()),
+        sha512: None,
+        size: file.file_length,
+        primary: false,
+    })
 }
 
 pub async fn version(state: &AppState, project_id: &str, version_id: &str) -> Result<File> {
@@ -772,6 +805,8 @@ mod tests {
 
     fn file_with(game_versions: &[&str]) -> File {
         File {
+            alternate_file_id: 0,
+            parent_project_file_id: None,
             id: 1,
             mod_id: 1,
             display_name: String::new(),

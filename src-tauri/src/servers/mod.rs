@@ -7,12 +7,14 @@ pub mod content;
 pub mod control;
 pub mod files;
 pub mod import;
+pub mod pack;
 pub mod players;
 pub mod properties;
 pub mod provision;
 pub mod runtime;
 pub mod software;
 pub mod usage;
+pub mod zippack;
 
 pub use software::Software;
 
@@ -69,6 +71,12 @@ pub struct Server {
     pub max_players: Option<u32>,
     #[serde(default)]
     pub notes: Option<String>,
+    #[serde(default)]
+    pub pack_provider: Option<String>,
+    #[serde(default)]
+    pub pack_project_id: Option<String>,
+    #[serde(default)]
+    pub pack_version_id: Option<String>,
 }
 
 pub fn adopt_imported_dirs(state: &AppState) -> Result<()> {

@@ -54,6 +54,9 @@ impl Db {
             max_players: row.get(21)?,
             uptime_secs: row.get(22)?,
             notes: row.get(23)?,
+            pack_provider: row.get(24)?,
+            pack_project_id: row.get(25)?,
+            pack_version_id: row.get(26)?,
         })
     }
 
@@ -64,7 +67,8 @@ impl Db {
                     launch_jar, launch_argfiles, flavor_version, min_memory_mb, max_memory_mb,
                     java_path, jvm_args, jvm_args_mode, stop_timeout_secs, eula_accepted_at,
                     installed_at, last_started_at, cached_port, cached_motd,
-                    cached_max_players, uptime_secs, notes
+                    cached_max_players, uptime_secs, notes,
+                    pack_provider, pack_project_id, pack_version_id
              FROM servers ORDER BY sort_order, created_at",
         )?;
         let rows = stmt.query_map([], |row| Self::read_server(row, paths))?;
@@ -79,7 +83,8 @@ impl Db {
                         launch_jar, launch_argfiles, flavor_version, min_memory_mb, max_memory_mb,
                         java_path, jvm_args, jvm_args_mode, stop_timeout_secs, eula_accepted_at,
                         installed_at, last_started_at, cached_port, cached_motd,
-                        cached_max_players, uptime_secs, notes
+                        cached_max_players, uptime_secs, notes,
+                        pack_provider, pack_project_id, pack_version_id
                  FROM servers WHERE id = ?1",
                 params![server_id],
                 |row| Self::read_server(row, paths),
@@ -100,6 +105,22 @@ impl Db {
             .into_iter()
             .map(PathBuf::from)
             .collect())
+    }
+
+    pub fn link_server_pack(
+        &self,
+        server_id: &str,
+        provider: &str,
+        project_id: &str,
+        version_id: &str,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE servers SET pack_provider = ?2, pack_project_id = ?3, pack_version_id = ?4
+             WHERE id = ?1",
+            params![server_id, provider, project_id, version_id],
+        )?;
+        Ok(())
     }
 
     pub fn insert_server(&self, server: &Server) -> Result<()> {
@@ -359,6 +380,9 @@ mod tests {
             motd: Some("A Basalt server".into()),
             max_players: Some(20),
             notes: None,
+            pack_provider: None,
+            pack_project_id: None,
+            pack_version_id: None,
         }
     }
 

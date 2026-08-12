@@ -711,7 +711,12 @@ pub async fn finish_import(app: &AppHandle, state: &AppState, prepared: Prepared
         task.fail(&error);
         return;
     }
-    modpack::link_pack_files(state, &instance.id, &artifacts.linkable).await;
+    modpack::link_pack_files(
+        state,
+        crate::search::resolve::Target::Instance(&instance.id),
+        &artifacts.linkable,
+    )
+    .await;
     if !skipped.is_empty() {
         tracing::warn!(count = skipped.len(), "pack files without a download url");
     }

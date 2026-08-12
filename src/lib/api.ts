@@ -62,6 +62,7 @@ import type {
   ServerEntry,
   ServerFlavor,
   ServerSoftware,
+  VersionFile,
   PlayerEntry,
   PlayerList,
   ServerFolder,
@@ -516,6 +517,24 @@ export const api = {
     call<void>("add_server_player", { serverId, list, name, reason }),
   removeServerPlayer: (serverId: string, list: PlayerList, name: string) =>
     call<void>("remove_server_player", { serverId, list, name }),
+  getServerPackFile: (projectId: string, fileId: string, parentId: string) =>
+    call<VersionFile>("get_server_pack_file", { projectId, fileId, parentId }),
+  installServerZip: (
+    name: string,
+    url: string | null,
+    localPath: string | null,
+    fileName: string,
+    sha1: string | null,
+    size: number | null,
+  ) => call<Server>("install_server_zip", { name, url, localPath, fileName, sha1, size }),
+  checkServerPackUpdate: (serverId: string) =>
+    call<ModpackUpgrade | null>("check_server_pack_update", { serverId }),
+  installServerPack: (
+    provider: string,
+    projectId: string,
+    versionId: string,
+    manualSources: ManualDownloadSource[] = [],
+  ) => call<Server>("install_server_pack", { provider, projectId, versionId, manualSources }),
   setServerWhitelist: (serverId: string, enabled: boolean) =>
     call<void>("set_server_whitelist", { serverId, enabled }),
   checkServerContentUpdates: (serverId: string, force?: boolean) =>

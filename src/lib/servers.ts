@@ -123,3 +123,11 @@ export function onlinePlayers(lines: ConsoleLine[]): string[] {
   }
   return online;
 }
+
+const SERVER_PACK = /(^|[-_. ])server([-_. ]?pack)?([-_. ]|\.|$)/i;
+
+export function serverPackFile<T extends { file_name: string; primary: boolean }>(
+  files: T[],
+): T | undefined {
+  return files.find((file) => !file.primary && SERVER_PACK.test(file.file_name));
+}

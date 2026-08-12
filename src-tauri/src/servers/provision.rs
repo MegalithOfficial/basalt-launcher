@@ -42,19 +42,43 @@ pub async fn download_jar(
     sha256: Option<String>,
     size: Option<u64>,
 ) -> Result<()> {
-    download::download_one(
-        install.network(),
-        install.files(),
-        &DownloadSpec {
+    fetch(
+        install.task,
+        install.state,
+        vec![DownloadSpec {
             url,
             dest: install.dir().join(SERVER_JAR),
             sha1: None,
             sha256,
             size,
-        },
+        }],
     )
-    .await?;
-    Ok(())
+    .await
+}
+
+pub async fn fetch(task: &TaskHandle, state: &AppState, specs: Vec<DownloadSpec>) -> Result<()> {
+    task.set_total(
+        specs.len() as u64,
+        specs.iter().filter_map(|spec| spec.size).sum(),
+    );
+    download::download_many_cancellable(
+        &state.network,
+        &state.files,
+        specs,
+        4,
+        |progress| {
+            task.progress(
+                progress.completed as u64,
+                progress.total as u64,
+                progress.downloaded_bytes,
+                progress.total_bytes,
+            );
+        },
+        Some(task.token()),
+        None,
+        Some(&|attempt, max, reason| task.note_retry(attempt, max, reason)),
+    )
+    .await
 }
 
 pub fn write_eula(files: &FileManager, dir: &Path) -> Result<()> {
@@ -133,16 +157,16 @@ pub async fn run_installer(
 
     install.task.stage("server-installer");
     let installer_path = state.paths.cache().join("installers").join(&name);
-    download::download_one(
-        &state.network,
-        &state.files,
-        &DownloadSpec {
+    fetch(
+        install.task,
+        state,
+        vec![DownloadSpec {
             url,
             dest: installer_path.clone(),
             sha1: None,
             sha256: None,
             size: None,
-        },
+        }],
     )
     .await?;
 

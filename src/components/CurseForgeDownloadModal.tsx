@@ -383,12 +383,12 @@ export function ContentInstallerProvider({ children }: { children: React.ReactNo
   const [contentRequest, setContentRequest] = useState<ContentPlanRequest | null>(null);
   const [installingVersionId, setInstallingVersionId] = useState<string | null>(null);
 
-  const runInstall = useCallback(
+  const collectSources = useCallback(
     async (
       provider: SearchProvider,
       projectId: string,
       versionId: string,
-    ) => {
+    ): Promise<ManualDownloadSource[] | null> => {
       let sources: ManualDownloadSource[] = [];
       if (provider === "curseforge") {
         const plan = await api.planModpackInstall(provider, projectId, versionId);
@@ -412,9 +412,27 @@ export function ContentInstallerProvider({ children }: { children: React.ReactNo
           });
         }
       }
+      return sources;
+    },
+    [],
+  );
+
+  const runInstall = useCallback(
+    async (provider: SearchProvider, projectId: string, versionId: string) => {
+      const sources = await collectSources(provider, projectId, versionId);
+      if (!sources) return null;
       return await installModpack(provider, projectId, versionId, sources);
     },
-    [installModpack],
+    [collectSources, installModpack],
+  );
+
+  const installServerPack = useCallback(
+    async (provider: SearchProvider, projectId: string, versionId: string) => {
+      const sources = await collectSources(provider, projectId, versionId);
+      if (!sources) return null;
+      return await api.installServerPack(provider, projectId, versionId, sources);
+    },
+    [collectSources],
   );
 
   const installPack = useCallback(
@@ -574,8 +592,14 @@ export function ContentInstallerProvider({ children }: { children: React.ReactNo
   );
 
   const value = useMemo(
-    () => ({ installContent, installPack, installLatestPack, installingVersionId }),
-    [installContent, installPack, installLatestPack, installingVersionId],
+    () => ({
+      installContent,
+      installPack,
+      installLatestPack,
+      installServerPack,
+      installingVersionId,
+    }),
+    [installContent, installPack, installLatestPack, installServerPack, installingVersionId],
   );
 
   return (

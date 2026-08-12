@@ -370,6 +370,16 @@ pub async fn install_content(
 }
 
 #[tauri::command]
+pub async fn get_server_pack_file(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_id: String,
+    parent_id: String,
+) -> Result<search::VersionFile> {
+    search::curseforge::server_pack(&state, &project_id, &file_id, &parent_id).await
+}
+
+#[tauri::command]
 pub async fn check_content_updates(
     state: State<'_, AppState>,
     instance_id: String,

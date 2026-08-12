@@ -9,8 +9,10 @@ import type {
   ProjectDetails,
   ProjectSummary,
   ProjectVersion,
+  VersionFile,
 } from "../lib/types";
 import { useContentInstaller } from "../components/CurseForgeDownloadModal";
+import { GetServerModal } from "../components/GetServerModal";
 import { InstanceTargetPicker } from "../components/InstanceTargetPicker";
 import { Markdown } from "../components/project/Markdown";
 import { ProjectGallery } from "../components/project/ProjectGallery";
@@ -18,6 +20,7 @@ import { ProjectHero } from "../components/project/ProjectHero";
 import { ProjectSidebar } from "../components/project/ProjectSidebar";
 import { VersionBrowser } from "../components/project/VersionBrowser";
 import { useActiveProjectIds } from "../lib/useTasks";
+import { serverPackFile } from "../lib/servers";
 import type { InstallTarget } from "../lib/target";
 import { useStore } from "../store";
 
@@ -97,6 +100,11 @@ export function ProjectView() {
     Record<string, ProjectSummary | null>
   >({});
   const [needsTarget, setNeedsTarget] = useState<PendingInstall | null>(null);
+  const [serverPack, setServerPack] = useState<{
+    version: ProjectVersion;
+    file: VersionFile;
+    fileId: string | null;
+  } | null>(null);
   const [pickingTarget, setPickingTarget] = useState(false);
 
   const isPack = kind === "modpacks";
@@ -239,6 +247,33 @@ export function ProjectView() {
     }
   };
 
+  const heroServerVersion = useMemo(
+    () =>
+      (versions ?? []).find(
+        (version) => version.server_pack_file_id || serverPackFile(version.files),
+      ) ?? null,
+    [versions],
+  );
+
+  const openServerPack = async (version: ProjectVersion) => {
+    setError(null);
+    try {
+      const local = serverPackFile(version.files);
+      const file = local
+        ? local
+        : version.server_pack_file_id
+          ? await api.getServerPackFile(projectRef.id, version.server_pack_file_id, version.id)
+          : null;
+      if (!file) {
+        setError("This version does not publish a server pack.");
+        return;
+      }
+      setServerPack({ version, file, fileId: version.server_pack_file_id });
+    } catch (cause) {
+      setError(String(cause));
+    }
+  };
+
   const beginInstall = async (
     target: PendingInstall,
     into: InstallTarget | null = destination,
@@ -326,6 +361,9 @@ export function ProjectView() {
         onSelectServer={setDiscoverServer}
         showTargetPicker={!isPack}
         onInstall={() => install(null)}
+        onGetServer={
+          heroServerVersion ? () => void openServerPack(heroServerVersion) : undefined
+        }
         onOpenInstalled={() =>
           isPack && packInstance ? openInstance(packInstance.id) : setTab("versions")
         }
@@ -400,6 +438,7 @@ export function ProjectView() {
                 instanceLoader={loader}
                 hasInstance={!!destination}
                 installedVersionId={installedEntry?.version_id ?? null}
+                onGetServer={(version) => void openServerPack(version)}
                 installingKey={installing ?? contentInstaller.installingVersionId}
                 installedKeys={installed}
                 resolvedProjects={resolvedProjects}
@@ -423,6 +462,16 @@ export function ProjectView() {
           <ProjectGallery images={gallery} />
         ) : null}
       </div>
+
+      <GetServerModal
+        open={serverPack !== null}
+        title={details?.title ?? projectRef.title ?? "Modpack"}
+        version={serverPack?.version ?? null}
+        file={serverPack?.file ?? null}
+        fileId={serverPack?.fileId ?? null}
+        projectId={projectRef.id}
+        onClose={() => setServerPack(null)}
+      />
 
       {(needsTarget || pickingTarget) && (
         <InstanceTargetPicker

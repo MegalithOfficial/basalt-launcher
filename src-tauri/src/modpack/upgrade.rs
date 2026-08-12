@@ -197,6 +197,16 @@ async fn target_update(
     requested: Option<&str>,
 ) -> Result<Option<ModpackUpgrade>> {
     let (provider, project_id, current) = identity(instance)?;
+    update_between(state, provider, project_id, current, requested).await
+}
+
+pub async fn update_between(
+    state: &AppState,
+    provider: Provider,
+    project_id: &str,
+    current: &str,
+    requested: Option<&str>,
+) -> Result<Option<ModpackUpgrade>> {
     let versions =
         search::project_versions(state, provider, project_id, ContentKind::Modpack, "", None)
             .await?;
@@ -872,7 +882,7 @@ pub async fn upgrade_modpack(
             for (kind, _, file) in &prepared.curseforge_links {
                 state.db.record_content_file(&instance.id, kind, file)?;
             }
-            super::link_pack_files(state, &instance.id, &artifacts.linkable).await;
+            super::link_pack_files(state, crate::search::resolve::Target::Instance(&instance.id), &artifacts.linkable).await;
             Result::<()>::Ok(())
         }
         .await;

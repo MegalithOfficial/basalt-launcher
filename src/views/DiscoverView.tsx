@@ -120,6 +120,7 @@ export function DiscoverView() {
   const openProject = useStore((s) => s.openProject);
   const openInstance = useStore((s) => s.openInstance);
   const openServer = useStore((s) => s.openServer);
+  const refreshServers = useStore((s) => s.refreshServers);
   const activeProjects = useActiveProjectIds();
   const activeTasks = useActiveTasksByProject();
   const allSources = useStore((s) => s.contentSources);
@@ -320,6 +321,25 @@ export function DiscoverView() {
   );
 
   const beginInstall = async (project: ProjectSummary, into?: Instance) => {
+    if (isPack && target?.isServer) {
+      setInstallingPack(project.id);
+      setError(null);
+      setNotice(null);
+      try {
+        const versions = await api.listProjectVersions(provider, project.id, "modpacks", "", null);
+        const newest = versions[0];
+        if (!newest) throw new Error("This pack has no versions to install.");
+        const created = await contentInstaller.installServerPack(provider, project.id, newest.id);
+        if (!created) return;
+        await refreshServers();
+        setNotice(`Created server ${created.name}`);
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setInstallingPack(null);
+      }
+      return;
+    }
     if (isPack) {
       setInstallingPack(project.id);
       setError(null);

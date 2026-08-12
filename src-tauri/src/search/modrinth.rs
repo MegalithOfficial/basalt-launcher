@@ -457,6 +457,7 @@ pub fn to_version(
             })
             .collect(),
         files,
+        server_pack_file_id: None,
     };
     version.compatible = version.matches(game_version, loader, kind);
     version
