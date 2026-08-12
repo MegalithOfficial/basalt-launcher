@@ -44,8 +44,9 @@ let
         "target"
       ]);
   };
-  manifest = builtins.fromTOML (builtins.readFile ../src-tauri/Cargo.toml);
+  manifest = fromTOML (builtins.readFile ../src-tauri/Cargo.toml);
 
+  # similar to https://github.com/NixOS/nixpkgs/blob/2fcb964de67fcf60b43471c55d5d99e61a9ccb5a/pkgs/by-name/mo/modrinth-app/package.nix#L54
   runtimeDependencies = lib.optionalString stdenv.hostPlatform.isLinux (
     lib.makeLibraryPath [
       addDriverRunpath.driverLink
@@ -81,7 +82,6 @@ rustPlatform.buildRustPackage {
   src = source;
 
   postPatch = ''
-    # replace bun run build:frontend with npm run build:frontend in src-tauri/tauri.conf.json
     substituteInPlace src-tauri/tauri.conf.json \
       --replace 'bun run build:frontend' 'npm run build:frontend'
   '';
