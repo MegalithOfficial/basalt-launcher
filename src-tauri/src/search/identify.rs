@@ -282,6 +282,33 @@ pub fn identify_file(files: &crate::files::FileManager, path: &Path) -> Result<F
     })
 }
 
+fn provider_of(file: &ContentFile) -> Option<Provider> {
+    file.provider
+        .as_deref()
+        .and_then(|provider| Provider::parse(provider).ok())
+}
+
+fn expected_provider(
+    file: Option<&ContentFile>,
+    pack_provider: Option<Provider>,
+) -> Option<Provider> {
+    let file_provider = file.and_then(provider_of);
+    if file.is_some_and(|entry| entry.origin == "pack") {
+        pack_provider.or(file_provider)
+    } else {
+        file_provider.or(pack_provider)
+    }
+}
+
+fn needs_provider_identity(file: Option<&ContentFile>, pack_provider: Option<Provider>) -> bool {
+    file.is_none_or(|entry| {
+        entry.project_id.is_none()
+            || (entry.origin == "pack"
+                && pack_provider.is_some()
+                && expected_provider(Some(entry), pack_provider) != provider_of(entry))
+    })
+}
+
 pub async fn reconcile(
     state: &AppState,
     target: crate::search::resolve::Target<'_>,
@@ -299,11 +326,12 @@ pub async fn reconcile(
         .into_iter()
         .map(|f| (f.file_name.clone(), f))
         .collect();
+    let pack_provider = target.pack_provider(state);
     let mut hashed: Vec<(String, String, u32)> = Vec::new();
 
     for item in &items {
         let existing = known.get(&item.file_name);
-        if existing.is_some_and(|f| f.sha1.is_some()) {
+        if existing.is_some_and(|file| file.sha1.is_some() && file.murmur2.is_some()) {
             let file = existing.expect("checked above");
             hashed.push((
                 item.file_name.clone(),
@@ -388,7 +416,7 @@ pub async fn reconcile(
 
     let mut unlinked: Vec<(String, String, u32)> = hashed
         .iter()
-        .filter(|(name, _, _)| known.get(name).is_none_or(|f| f.project_id.is_none()))
+        .filter(|(name, _, _)| needs_provider_identity(known.get(name), pack_provider))
         .cloned()
         .collect();
 
@@ -396,14 +424,21 @@ pub async fn reconcile(
         return Ok(());
     }
 
-    let curseforge_first = matches!(
-        target,
-        crate::search::resolve::Target::Server(server)
-            if server.pack_provider.as_deref() == Some("curseforge")
-    );
-    if curseforge_first {
-        let matched = link_curseforge_matches(state, target, content_kind, &unlinked).await?;
-        unlinked.retain(|(_, _, fingerprint)| !matched.contains(fingerprint));
+    let curseforge_first: Vec<(String, String, u32)> = unlinked
+        .iter()
+        .filter(|(name, _, _)| {
+            expected_provider(known.get(name), pack_provider) == Some(Provider::Curseforge)
+        })
+        .cloned()
+        .collect();
+    let tried_curseforge: HashSet<String> = curseforge_first
+        .iter()
+        .map(|(name, _, _)| name.clone())
+        .collect();
+    if !curseforge_first.is_empty() {
+        let matched =
+            link_curseforge_matches(state, target, content_kind, &curseforge_first).await?;
+        unlinked.retain(|(name, _, _)| !matched.contains(name));
         if unlinked.is_empty() {
             return Ok(());
         }
@@ -446,11 +481,15 @@ pub async fn reconcile(
         }
     }
 
-    if still_unknown.is_empty() || curseforge_first {
+    let curseforge_fallback: Vec<(String, String, u32)> = still_unknown
+        .into_iter()
+        .filter(|(name, _, _)| !tried_curseforge.contains(name))
+        .collect();
+    if curseforge_fallback.is_empty() {
         return Ok(());
     }
 
-    link_curseforge_matches(state, target, content_kind, &still_unknown).await?;
+    link_curseforge_matches(state, target, content_kind, &curseforge_fallback).await?;
 
     Ok(())
 }
@@ -460,7 +499,7 @@ async fn link_curseforge_matches(
     target: crate::search::resolve::Target<'_>,
     content_kind: ContentKind,
     candidates: &[(String, String, u32)],
-) -> Result<HashSet<u32>> {
+) -> Result<HashSet<String>> {
     if candidates.is_empty() || curseforge::key(state).is_err() {
         return Ok(HashSet::new());
     }
@@ -498,7 +537,7 @@ async fn link_curseforge_matches(
             project.map(|p| p.title.as_str()),
             project.and_then(|p| p.icon_url.as_deref()),
         )?;
-        linked.insert(*fingerprint);
+        linked.insert(file_name.clone());
     }
     Ok(linked)
 }
@@ -507,7 +546,46 @@ async fn link_curseforge_matches(
 mod tests {
     use std::io::Cursor;
 
-    use super::{curseforge_fingerprint, curseforge_fingerprint_reader, is_ignored_byte, murmur2};
+    use super::{
+        curseforge_fingerprint, curseforge_fingerprint_reader, expected_provider, is_ignored_byte,
+        murmur2, needs_provider_identity,
+    };
+    use crate::{db::ContentFile, search::Provider};
+
+    fn linked(provider: Provider, origin: &str) -> ContentFile {
+        ContentFile {
+            provider: Some(provider.as_str().to_string()),
+            project_id: Some("project".to_string()),
+            origin: origin.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_pack_file_prefers_the_platform_its_pack_came_from() {
+        let stale = linked(Provider::Modrinth, "pack");
+        assert_eq!(
+            expected_provider(Some(&stale), Some(Provider::Curseforge)),
+            Some(Provider::Curseforge)
+        );
+        assert!(needs_provider_identity(
+            Some(&stale),
+            Some(Provider::Curseforge)
+        ));
+    }
+
+    #[test]
+    fn a_user_installed_mod_keeps_its_own_platform() {
+        let installed = linked(Provider::Modrinth, "user");
+        assert_eq!(
+            expected_provider(Some(&installed), Some(Provider::Curseforge)),
+            Some(Provider::Modrinth)
+        );
+        assert!(!needs_provider_identity(
+            Some(&installed),
+            Some(Provider::Curseforge)
+        ));
+    }
 
     #[test]
     fn murmur_is_deterministic_and_content_sensitive() {

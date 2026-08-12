@@ -711,7 +711,7 @@ pub async fn finish_import(app: &AppHandle, state: &AppState, prepared: Prepared
         task.fail(&error);
         return;
     }
-    modpack::link_pack_files(
+    modpack::link_modrinth_pack_files(
         state,
         crate::search::resolve::Target::Instance(&instance.id),
         &artifacts.linkable,

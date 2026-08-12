@@ -454,7 +454,7 @@ struct HashVersion {
 }
 
 #[tracing::instrument(skip_all, fields(files = files.len()))]
-pub(crate) async fn link_pack_files(
+pub(crate) async fn link_modrinth_pack_files(
     state: &AppState,
     target: crate::search::resolve::Target<'_>,
     files: &[(String, String)],
@@ -515,36 +515,26 @@ pub(crate) async fn link_pack_files(
         let Ok(kind) = crate::search::ContentKind::parse(kind) else {
             continue;
         };
+        if installed.contains(&(kind, file_name.to_string())) {
+            continue;
+        }
         let info = project_info.get(&version.project_id);
-        let result = if installed.contains(&(kind, file_name.to_string())) {
-            target.merge_provider_identity(
-                state,
-                kind,
-                file_name,
-                "modrinth",
-                &version.project_id,
-                Some(&version.id),
-                info.map(|value| value.title.as_str()),
-                info.and_then(|value| value.icon_url.as_deref()),
-            )
-        } else {
-            target.record(
-                state,
-                kind,
-                &crate::db::ContentFile {
-                    file_name: file_name.to_string(),
-                    sha1: Some(sha1.clone()),
-                    provider: Some("modrinth".to_string()),
-                    project_id: Some(version.project_id.clone()),
-                    version_id: Some(version.id.clone()),
-                    title: info.map(|i| i.title.clone()),
-                    icon_url: info.and_then(|i| i.icon_url.clone()),
-                    origin: "pack".to_string(),
-                    installed_at: now,
-                    ..Default::default()
-                },
-            )
-        };
+        let result = target.record(
+            state,
+            kind,
+            &crate::db::ContentFile {
+                file_name: file_name.to_string(),
+                sha1: Some(sha1.clone()),
+                provider: Some("modrinth".to_string()),
+                project_id: Some(version.project_id.clone()),
+                version_id: Some(version.id.clone()),
+                title: info.map(|i| i.title.clone()),
+                icon_url: info.and_then(|i| i.icon_url.clone()),
+                origin: "pack".to_string(),
+                installed_at: now,
+                ..Default::default()
+            },
+        );
         if let Err(error) = result {
             tracing::warn!(%error, file_name, "could not record a modpack file");
         }
@@ -958,12 +948,14 @@ pub async fn install_modpack(
         task.fail(&error);
         return Err(error);
     }
-    link_pack_files(
-        state,
-        crate::search::resolve::Target::Instance(&instance.id),
-        &artifacts.linkable,
-    )
-    .await;
+    if provider == Provider::Modrinth {
+        link_modrinth_pack_files(
+            state,
+            crate::search::resolve::Target::Instance(&instance.id),
+            &artifacts.linkable,
+        )
+        .await;
+    }
     task.succeed();
     for source in consumed_sources {
         if let Err(error) = std::fs::remove_file(&source) {

@@ -98,7 +98,7 @@ pub async fn link_curseforge_content(state: &AppState, server: &Server) -> Resul
     if server.pack_provider.as_deref() != Some("curseforge")
         || state
             .db
-            .has_linked_server_pack_content(&server.id, pack_version_id)?
+            .has_server_pack_content(&server.id, pack_version_id)?
     {
         return Ok(0);
     }
@@ -139,7 +139,6 @@ pub async fn link_curseforge_content(state: &AppState, server: &Server) -> Resul
 
     let (_, links, _, _) = crate::packs::plan_curseforge_archive(state, &archive).await?;
     let mut recorded = 0;
-    let mut linkable = Vec::new();
     for (kind, _, mut content) in links {
         if kind != "mods"
             || !state.files.is_file(
@@ -154,17 +153,8 @@ pub async fn link_curseforge_content(state: &AppState, server: &Server) -> Resul
         state
             .db
             .record_server_content_file(&server.id, &kind, &content)?;
-        if let Some(sha1) = content.sha1 {
-            linkable.push((format!("mods/{}", content.file_name), sha1));
-        }
         recorded += 1;
     }
-    crate::modpack::link_pack_files(
-        state,
-        crate::search::resolve::Target::Server(server),
-        &linkable,
-    )
-    .await;
     tracing::info!(server_id = %server.id, recorded, "linked server mods from the CurseForge pack manifest");
     Ok(recorded)
 }

@@ -882,7 +882,14 @@ pub async fn upgrade_modpack(
             for (kind, _, file) in &prepared.curseforge_links {
                 state.db.record_content_file(&instance.id, kind, file)?;
             }
-            super::link_pack_files(state, crate::search::resolve::Target::Instance(&instance.id), &artifacts.linkable).await;
+            if provider == Provider::Modrinth {
+                super::link_modrinth_pack_files(
+                    state,
+                    crate::search::resolve::Target::Instance(&instance.id),
+                    &artifacts.linkable,
+                )
+                .await;
+            }
             Result::<()>::Ok(())
         }
         .await;

@@ -31,6 +31,14 @@ pub enum Target<'a> {
 }
 
 impl<'a> Target<'a> {
+    pub fn pack_provider(self, state: &AppState) -> Option<Provider> {
+        let provider = match self {
+            Target::Instance(id) => state.db.instance_pack_provider(id).ok()?,
+            Target::Server(server) => server.pack_provider.clone(),
+        }?;
+        Provider::parse(&provider).ok()
+    }
+
     pub fn instance_id(self) -> Option<&'a str> {
         match self {
             Target::Instance(id) => Some(id),

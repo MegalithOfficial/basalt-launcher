@@ -9,16 +9,12 @@ const COLUMNS: &str = "file_name, sha1, sha512, murmur2, provider, project_id, v
                        pack_version_id, installed_at";
 
 impl Db {
-    pub fn has_linked_server_pack_content(
-        &self,
-        server_id: &str,
-        pack_version_id: &str,
-    ) -> Result<bool> {
+    pub fn has_server_pack_content(&self, server_id: &str, pack_version_id: &str) -> Result<bool> {
         let conn = self.0.lock().unwrap();
         let count: i64 = conn.query_row(
             "SELECT count(*) FROM server_content_files
              WHERE server_id = ?1 AND origin = 'pack' AND pack_version_id = ?2
-               AND provider = 'modrinth'",
+               AND provider = 'curseforge'",
             params![server_id, pack_version_id],
             |row| row.get(0),
         )?;
@@ -292,14 +288,14 @@ mod tests {
         let mut file = record("PackMod.jar", "p1");
         file.origin = "pack".to_string();
         file.pack_version_id = Some("pack-v1".to_string());
+        db.record_server_content_file("s1", "mods", &file).unwrap();
+        assert!(!db.has_server_pack_content("s1", "pack-v1").unwrap());
+
         file.provider = Some("curseforge".to_string());
         db.record_server_content_file("s1", "mods", &file).unwrap();
 
-        assert!(!db.has_linked_server_pack_content("s1", "pack-v1").unwrap());
-        file.provider = Some("modrinth".to_string());
-        db.record_server_content_file("s1", "mods", &file).unwrap();
-        assert!(db.has_linked_server_pack_content("s1", "pack-v1").unwrap());
-        assert!(!db.has_linked_server_pack_content("s1", "pack-v2").unwrap());
+        assert!(db.has_server_pack_content("s1", "pack-v1").unwrap());
+        assert!(!db.has_server_pack_content("s1", "pack-v2").unwrap());
     }
 
     #[test]

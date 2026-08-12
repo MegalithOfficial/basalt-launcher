@@ -176,7 +176,9 @@ pub async fn install(
             owner.record(state, kind, file)?;
         }
     }
-    crate::modpack::link_pack_files(state, owner, &linkable).await;
+    if provider == Provider::Modrinth {
+        crate::modpack::link_modrinth_pack_files(state, owner, &linkable).await;
+    }
 
     let dropped = dropped_client_files(&index).len();
     tracing::info!(

@@ -56,6 +56,18 @@ fn record_playtime_tx(
 }
 
 impl Db {
+    pub fn instance_pack_provider(&self, instance_id: &str) -> Result<Option<String>> {
+        let conn = self.0.lock().unwrap();
+        Ok(conn
+            .query_row(
+                "SELECT pack_provider FROM instances WHERE id = ?1",
+                params![instance_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten())
+    }
+
     pub fn list_instances(&self, files: &FileManager) -> Result<Vec<Instance>> {
         let paths = files.paths();
         let conn = self.0.lock().unwrap();
