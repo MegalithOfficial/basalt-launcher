@@ -144,7 +144,7 @@ export function ProjectView() {
   }, [destination?.id, destination?.version_id, loader]);
 
   useEffect(() => {
-    if (tab !== "versions" || versions !== null || !projectRef) return;
+    if (versions !== null || !projectRef) return;
     let live = true;
     api
       .listProjectVersions(
@@ -165,7 +165,6 @@ export function ProjectView() {
       live = false;
     };
   }, [
-    tab,
     versions,
     projectRef?.provider,
     projectRef?.id,
