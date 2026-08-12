@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 16;
+pub(super) const SCHEMA_VERSION: i64 = 17;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -297,6 +297,25 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
     )?;
     add_column_if_missing(conn, "servers", "import_source", "TEXT")?;
     add_column_if_missing(conn, "servers", "import_source_id", "TEXT")?;
+    let had_script_memory_state = column_exists(conn, "servers", "script_memory_state")?;
+    let had_script_memory_prompted = column_exists(conn, "servers", "script_memory_prompted")?;
+    let had_script_memory_managed = column_exists(conn, "servers", "script_memory_managed")?;
+    add_column_if_missing(
+        conn,
+        "servers",
+        "script_memory_state",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    if !had_script_memory_state && had_script_memory_prompted && had_script_memory_managed {
+        conn.execute(
+            "UPDATE servers SET script_memory_state = CASE
+                WHEN script_memory_managed = 1 THEN 2
+                WHEN script_memory_prompted = 1 THEN 1
+                ELSE 0
+             END",
+            [],
+        )?;
+    }
     conn.execute(
         "UPDATE servers SET import_source = 'folder', import_source_id = external_dir
          WHERE managed = 0 AND import_source IS NULL",
@@ -350,10 +369,46 @@ mod tests {
         assert!(column_exists(&conn, "active_runs", "checkpointed_at").unwrap());
         assert!(super::table_exists(&conn, "instance_groups").unwrap());
         assert!(super::table_exists(&conn, "servers").unwrap());
+        assert!(column_exists(&conn, "servers", "script_memory_state").unwrap());
         assert!(super::table_exists(&conn, "active_server_runs").unwrap());
         assert!(super::table_exists(&conn, "play_sessions").unwrap());
         assert!(column_exists(&conn, "instances", "group_id").unwrap());
         assert!(!column_exists(&conn, "accounts", "mc_access_token").unwrap());
+    }
+
+    #[test]
+    fn migrate_consolidates_the_old_script_memory_flags() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE servers ADD COLUMN script_memory_prompted INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE servers ADD COLUMN script_memory_managed INTEGER NOT NULL DEFAULT 0;
+             INSERT INTO servers (id, name, flavor, version_id, created_at,
+                                  script_memory_prompted, script_memory_managed)
+             VALUES ('prompted', 'Prompted', 'vanilla', '1.21', '2026-01-01T00:00:00Z', 1, 0),
+                    ('managed', 'Managed', 'vanilla', '1.21', '2026-01-01T00:00:00Z', 1, 1);
+             ALTER TABLE servers DROP COLUMN script_memory_state;",
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let prompted: i64 = conn
+            .query_row(
+                "SELECT script_memory_state FROM servers WHERE id = 'prompted'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let managed: i64 = conn
+            .query_row(
+                "SELECT script_memory_state FROM servers WHERE id = 'managed'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(prompted, 1);
+        assert_eq!(managed, 2);
     }
 
     #[test]

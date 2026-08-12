@@ -189,6 +189,7 @@ and do not arrive ready to run.
 | `b45808d` | supervisor process, and player management |
 | `b2532d8` | build a server from a modpack, from either side of it |
 | `e5eeb5f` | run the start script a pack brings |
+| `8568519` | keep modpack server identity, imports and script lifecycle linked |
 
 Also shipped earlier: the servers list and detail page, console with command
 input and three layouts, file manager with a validating config editor, the
@@ -200,18 +201,32 @@ through console commands while the server runs and straight to the files while i
 is stopped, with names resolved to uuids, plus a switch for whether the whitelist
 is enforced at all.
 
-## Uncommitted right now
+## Current behavior
 
 A server installed through Get server is linked to its parent modpack version:
 `install_server_zip` records `pack_provider`, `pack_project_id` and
 `pack_version_id`, the same three fields instances use. Folder and raw zip
 imports record their provenance separately. The returned Modrinth server is
 linked immediately too, without needing a refresh before its update check works.
+CurseForge server packs also reuse the instance manifest planner: files present
+in the server ZIP inherit the parent pack's CurseForge project/file records and
+`origin = pack`; fingerprint discovery is only a fallback and prefers the
+server's linked provider.
 
 Minecraft and loader selectors are locked for every linked modpack server, and
 the Rust command rejects stale frontend attempts to change them. Start scripts
-are only looked for on linked CurseForge packs. Turning one off is unavailable
-until it has installed the real loader and a rescan has found its launch files.
+are only looked for on linked CurseForge packs. Basalt treats one as an opaque
+bootstrap: installer JVMs are ignored, there is no fixed install timeout, and
+future launches switch to Basalt's Java command only after a real server JVM
+appears and a rescan proves the pack produced complete launch files. Scripts
+that detach or produce an unknown shape remain script-managed.
+
+If an existing `user_jvm_args.txt` does not declare both `-Xms` and `-Xmx`,
+Rust emits one consent prompt for that server and remembers that it was shown.
+Only accepting that prompt, or using the persistent Settings button, writes the
+server's saved memory limits into the file. That opt-in is remembered too, so
+later memory saves keep the file in step. An open, unedited Files tab reloads
+after the Rust writer changes it; unsaved editor text is never overwritten.
 
 That link is what fixes the misdetection: the NeoForge installer leaves its own
 `run.sh` in the server folder, so every hand installed Forge or NeoForge server
@@ -225,27 +240,20 @@ both its current directory and an open file.
 
 ## Left to do
 
-1. **Ask once about memory.** A script driven server takes its memory from
-   `user_jvm_args.txt`, which Basalt can write. The button exists in Settings but
-   nothing offers it. Remembering that the question was asked needs a column and
-   a migration.
-
-2. **Finish the CurseForge script fallback.** The platform split is now enforced:
+1. **Broaden the conservative CurseForge handoff.** The platform split is now enforced:
    - Modrinth `.mrpack` states the loader version in `dependencies`. Basalt
      installs it and runs its own command. This already works.
-   - A CurseForge server zip does not carry it. The script stays the default,
-     and its switch stays locked until the script has produced launch files.
-     Installing the loader without ever running the script still needs a chain
-     for the loader version: the variable in the script, then `manifest.json`,
-     then the newest build for that Minecraft version. Whichever link answered
-     has to be shown in Settings rather than picked silently, since the last one
-     may not be the version the pack was tested against.
+   - A CurseForge server zip does not carry it. Its script bootstraps the first
+     launch under the supervisor; after verified launch artifacts appear, Basalt
+     owns later Java commands. Unknown script/process shapes deliberately stay
+     on the compatibility path. More real packs and detached launchers need
+     fixtures before expanding the server-process classifier.
 
-3. **No end to end test for the supervisor.** The wire framing, argument parsing
+2. **No end to end test for the supervisor.** The wire framing, argument parsing
    and control file are covered. Starting a real child, disconnecting,
    reconnecting and sending a command is not, and that round trip is the feature.
 
-4. **A known flaky test**, `download::tests::cancelling_an_active_download_
+3. **A known flaky test**, `download::tests::cancelling_an_active_download_
    preserves_its_partial_file`, fails roughly one run in five. It binds a real
    socket and cancels on the first progress tick, before the partial file is
    necessarily on disk. Pre existing, not caused by the server work, but it will

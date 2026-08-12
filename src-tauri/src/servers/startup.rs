@@ -4,7 +4,7 @@ pub const CANDIDATES: [&str; 5] = ["startserver", "LaunchServer", "start", "run"
 
 pub fn extensions() -> &'static [&'static str] {
     if cfg!(windows) {
-        &["bat", "cmd"]
+        &["bat", "cmd", "ps1"]
     } else {
         &["sh", "command"]
     }
@@ -39,12 +39,27 @@ pub fn find(dir: &Path) -> Option<String> {
 pub fn command(dir: &Path, script: &str) -> (PathBuf, Vec<String>) {
     let path = dir.join(script);
     if cfg!(windows) {
+        if path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("ps1"))
+        {
+            return (
+                PathBuf::from("powershell.exe"),
+                vec![
+                    "-NoProfile".to_string(),
+                    "-ExecutionPolicy".to_string(),
+                    "Bypass".to_string(),
+                    "-File".to_string(),
+                    path.display().to_string(),
+                ],
+            );
+        }
         (
             PathBuf::from("cmd"),
             vec!["/c".to_string(), path.display().to_string()],
         )
     } else {
-        (PathBuf::from("sh"), vec![path.display().to_string()])
+        (path, Vec::new())
     }
 }
 
@@ -109,15 +124,18 @@ mod tests {
 
     #[test]
     fn the_script_is_handed_to_the_shell_the_platform_uses() {
-        let dir = Path::new("/srv/smp");
-        let (program, args) = command(dir, "startserver.sh");
+        let dir = sandbox(&["startserver.sh"]);
+        let (program, args) = command(&dir, "startserver.sh");
         if cfg!(windows) {
             assert_eq!(program, PathBuf::from("cmd"));
             assert_eq!(args[0], "/c");
         } else {
-            assert_eq!(program, PathBuf::from("sh"));
-            assert_eq!(args.len(), 1);
+            assert_eq!(program, dir.join("startserver.sh"));
+            assert!(args.is_empty());
         }
-        assert!(args.last().unwrap().ends_with("startserver.sh"));
+        assert!(
+            program.ends_with("startserver.sh") || args.last().unwrap().ends_with("startserver.sh")
+        );
+        std::fs::remove_dir_all(dir).ok();
     }
 }

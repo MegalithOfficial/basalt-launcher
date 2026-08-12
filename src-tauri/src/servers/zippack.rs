@@ -88,6 +88,87 @@ pub struct Source {
     pub version_id: String,
 }
 
+pub async fn link_curseforge_content(state: &AppState, server: &Server) -> Result<usize> {
+    let (Some(project_id), Some(pack_version_id)) = (
+        server.pack_project_id.as_deref(),
+        server.pack_version_id.as_deref(),
+    ) else {
+        return Ok(0);
+    };
+    if server.pack_provider.as_deref() != Some("curseforge")
+        || state
+            .db
+            .has_linked_server_pack_content(&server.id, pack_version_id)?
+    {
+        return Ok(0);
+    }
+
+    let version = crate::search::fetch_version(
+        state,
+        crate::search::Provider::Curseforge,
+        project_id,
+        crate::search::ContentKind::Modpack,
+        "",
+        None,
+        Some(pack_version_id),
+    )
+    .await?;
+    let file = version
+        .primary_file()
+        .ok_or_else(|| Error::other("This CurseForge pack version has no archive."))?;
+    let archive = state.paths.cache().join("modpacks").join(&file.file_name);
+    if !state.files.exists(&archive)? {
+        let url = file.url.clone().ok_or_else(|| {
+            Error::other(
+                "CurseForge does not allow the parent pack manifest to be downloaded automatically.",
+            )
+        })?;
+        crate::download::download_one(
+            &state.network,
+            &state.files,
+            &DownloadSpec {
+                url,
+                dest: archive.clone(),
+                sha1: file.sha1.clone(),
+                sha256: None,
+                size: file.size,
+            },
+        )
+        .await?;
+    }
+
+    let (_, links, _, _) = crate::packs::plan_curseforge_archive(state, &archive).await?;
+    let mut recorded = 0;
+    let mut linkable = Vec::new();
+    for (kind, _, mut content) in links {
+        if kind != "mods"
+            || !state.files.is_file(
+                PathBuf::from(&server.dir)
+                    .join("mods")
+                    .join(&content.file_name),
+            )?
+        {
+            continue;
+        }
+        content.pack_version_id = Some(pack_version_id.to_string());
+        state
+            .db
+            .record_server_content_file(&server.id, &kind, &content)?;
+        if let Some(sha1) = content.sha1 {
+            linkable.push((format!("mods/{}", content.file_name), sha1));
+        }
+        recorded += 1;
+    }
+    crate::modpack::link_pack_files(
+        state,
+        crate::search::resolve::Target::Server(server),
+        &linkable,
+    )
+    .await;
+    tracing::info!(server_id = %server.id, recorded, "linked server mods from the CurseForge pack manifest");
+    Ok(recorded)
+}
+
 pub async fn install(
     state: &AppState,
     name: &str,
@@ -199,10 +280,20 @@ pub async fn install(
     };
     super::provision::write_eula(&state.files, &dir)?;
     state.db.insert_server(&server)?;
-    if super::rescan::run(state, &server)?.changed {
+    if let Err(error) = link_curseforge_content(state, &server).await {
+        tracing::warn!(%error, server_id = %server.id, "could not link the server pack's CurseForge mods");
+    }
+    if super::rescan::run(&state.db, &server)?.changed {
         if let Some(fresh) = state.db.server(&state.paths, &server.id)? {
             server = fresh;
         }
+    }
+    if source.provider == "curseforge"
+        && linked
+        && (!server.launch_argfiles.is_empty() || server.launch_jar.is_some())
+    {
+        state.db.set_server_skip_launch_script(&server.id, true)?;
+        server.skip_launch_script = true;
     }
     tracing::info!(server_id = %server.id, software = %server.flavor, "installed a server pack");
     Ok(server)

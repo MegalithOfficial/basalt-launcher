@@ -23,6 +23,7 @@ pub enum Request {
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum Event {
     Ready { pid: u32, started_at: u64 },
+    Process { pid: u32, started_at: u64 },
     Log { stream: String, line: String },
     Exit { code: Option<i32> },
     Refused { reason: String },
@@ -123,6 +124,23 @@ mod tests {
             Event::Log { line, .. } => assert_eq!(line, "first\nsecond"),
             other => panic!("expected a log line, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_supervisor_can_promote_the_shell_to_the_server_process() {
+        let line = encode(&Event::Process {
+            pid: 42,
+            started_at: 1234,
+        })
+        .unwrap();
+        let back: Event = decode(&line).unwrap();
+        assert!(matches!(
+            back,
+            Event::Process {
+                pid: 42,
+                started_at: 1234
+            }
+        ));
     }
 
     #[test]

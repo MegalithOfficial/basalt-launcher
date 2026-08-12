@@ -124,7 +124,7 @@ export function DiscoverView() {
   const activeProjects = useActiveProjectIds();
   const activeTasks = useActiveTasksByProject();
   const allSources = useStore((s) => s.contentSources);
-  const sources = allSources[`${targetId}:${kind}`];
+  const sources = allSources[`${serverId ?? targetId}:${kind}`];
   const refreshContentSources = useStore((s) => s.refreshContentSources);
   const refreshServerContentSources = useStore((s) => s.refreshServerContentSources);
   const hasCfKey = useStore((s) => !!s.settings?.curseforge_api_key || s.bundledCurseforgeKey);

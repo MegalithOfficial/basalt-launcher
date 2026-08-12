@@ -69,12 +69,37 @@ pub fn process_start(pid: u32) -> Option<u64> {
     system.process(pid).map(sysinfo::Process::start_time)
 }
 
-pub fn descendant_java(root: u32) -> Option<u32> {
+fn looks_like_server_java(command: &[std::ffi::OsString]) -> bool {
+    let arguments = command
+        .iter()
+        .map(|value| value.to_string_lossy().to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    if arguments.iter().any(|argument| {
+        argument == "--installserver"
+            || argument == "-installserver"
+            || argument.contains("installer.jar")
+    }) {
+        return false;
+    }
+    arguments.iter().any(|argument| {
+        argument == "nogui"
+            || argument == "--nogui"
+            || (argument.starts_with('@') && argument.ends_with("_args.txt"))
+            || argument.ends_with("server.jar")
+            || argument.contains("fabricserverlauncher")
+            || argument.contains("quiltserverlauncher")
+            || argument == "net.minecraft.server.main"
+    })
+}
+
+pub fn descendant_server_java(root: u32) -> Option<u32> {
     let mut system = System::new();
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+        ProcessRefreshKind::nothing()
+            .with_cmd(UpdateKind::Always)
+            .with_exe(UpdateKind::Always),
     );
 
     let mut best: Option<(u32, u64)> = None;
@@ -84,7 +109,7 @@ pub fn descendant_java(root: u32) -> Option<u32> {
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
-        if !name.starts_with("java") {
+        if !name.starts_with("java") || !looks_like_server_java(process.cmd()) {
             continue;
         }
         if !descends_from(&system, *pid, Pid::from_u32(root)) {
@@ -152,7 +177,7 @@ pub fn kill_recovered_process(pid: u32, process_started_at: u64, identity: &Iden
 mod tests {
     use std::ffi::OsString;
 
-    use super::{command_has_marker, run_marker};
+    use super::{command_has_marker, looks_like_server_java, run_marker};
 
     #[test]
     fn marker_matches_only_the_expected_run() {
@@ -163,5 +188,33 @@ mod tests {
         ];
         assert!(command_has_marker(&args, "run-1"));
         assert!(!command_has_marker(&args, "run-2"));
+    }
+
+    #[test]
+    fn server_java_is_distinct_from_an_installer() {
+        let command = |arguments: &[&str]| {
+            arguments
+                .iter()
+                .map(std::ffi::OsString::from)
+                .collect::<Vec<_>>()
+        };
+        assert!(!looks_like_server_java(&command(&[
+            "java",
+            "-jar",
+            "neoforge-21.1.221-installer.jar",
+            "-installServer",
+        ])));
+        assert!(looks_like_server_java(&command(&[
+            "java",
+            "@user_jvm_args.txt",
+            "@libraries/net/neoforged/neoforge/21.1.221/unix_args.txt",
+            "--nogui",
+        ])));
+        assert!(looks_like_server_java(&command(&[
+            "java",
+            "-jar",
+            "fabric-server-launch.jar",
+            "nogui",
+        ])));
     }
 }

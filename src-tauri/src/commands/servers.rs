@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     error::{Error, Result},
@@ -19,6 +19,30 @@ use crate::{
 pub struct ServerProperty {
     pub key: String,
     pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ServerScriptMemoryPrompt {
+    server_id: String,
+    server_name: String,
+    min_memory_mb: u32,
+    max_memory_mb: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ServerFileChanged {
+    server_id: String,
+    path: String,
+}
+
+fn emit_server_file_changed(app: &AppHandle, server_id: &str, path: &str) {
+    let changed = ServerFileChanged {
+        server_id: server_id.to_string(),
+        path: path.to_string(),
+    };
+    if let Err(error) = app.emit("server:file-changed", changed) {
+        tracing::warn!(%error, server_id, path, "could not refresh the changed server file");
+    }
 }
 
 fn reachable(server: &Server) -> Result<PathBuf> {
@@ -52,10 +76,55 @@ fn properties_of(config: config::Config) -> Vec<ServerProperty> {
         .collect()
 }
 
+fn offer_script_memory_prompt(
+    app: &AppHandle,
+    state: &AppState,
+    server: &Server,
+    default_min_memory_mb: u32,
+    default_max_memory_mb: u32,
+) -> Result<()> {
+    if server.launch_script.is_none() {
+        return Ok(());
+    }
+    let Some(text) = jvmargs::read(&state.files, &PathBuf::from(&server.dir)) else {
+        return Ok(());
+    };
+    let (min, max) = jvmargs::declared_memory(&text);
+    if min.is_some() && max.is_some() {
+        return Ok(());
+    }
+    if !state.db.claim_server_script_memory_prompt(&server.id)? {
+        return Ok(());
+    }
+
+    let prompt = ServerScriptMemoryPrompt {
+        server_id: server.id.clone(),
+        server_name: server.name.clone(),
+        min_memory_mb: server.min_memory_mb.unwrap_or(default_min_memory_mb),
+        max_memory_mb: server.max_memory_mb.unwrap_or(default_max_memory_mb),
+    };
+    if let Err(error) = app.emit("server:script-memory-missing", prompt) {
+        state.db.release_server_script_memory_prompt(&server.id)?;
+        tracing::warn!(%error, server_id = %server.id, "could not show the script memory prompt");
+    }
+    Ok(())
+}
+
 #[tauri::command]
 #[tracing::instrument(skip_all, err)]
-pub fn list_servers(state: State<AppState>) -> Result<Vec<Server>> {
-    state.db.list_servers(&state.paths)
+pub fn list_servers(app: AppHandle, state: State<AppState>) -> Result<Vec<Server>> {
+    let servers = state.db.list_servers(&state.paths)?;
+    let settings = state.runtime_settings()?;
+    for server in &servers {
+        offer_script_memory_prompt(
+            &app,
+            &state,
+            server,
+            settings.server_min_memory_mb,
+            settings.server_max_memory_mb,
+        )?;
+    }
+    Ok(servers)
 }
 
 #[tauri::command]
@@ -265,6 +334,7 @@ pub async fn install_server(
 #[tracing::instrument(skip(state), err)]
 #[allow(clippy::too_many_arguments)]
 pub fn update_server_settings(
+    app: AppHandle,
     state: State<AppState>,
     server_id: String,
     name: String,
@@ -307,6 +377,15 @@ pub fn update_server_settings(
     {
         return Err(Error::other("Stop the server before changing its version."));
     }
+    let manages_script_memory = state.db.server_manages_script_memory(&server_id)?;
+    if manages_script_memory {
+        let settings = state.runtime_settings()?;
+        let memory = crate::config::MemoryLimits::new(
+            min_memory_mb.unwrap_or(settings.server_min_memory_mb),
+            max_memory_mb.unwrap_or(settings.server_max_memory_mb),
+        )?;
+        jvmargs::apply(&state.files, &reachable(&current)?, memory)?;
+    }
     state.db.update_server_settings(
         &server_id,
         name,
@@ -322,6 +401,9 @@ pub fn update_server_settings(
     )?;
     if reinstall {
         state.db.clear_server_launch(&server_id)?;
+    }
+    if manages_script_memory {
+        emit_server_file_changed(&app, &server_id, jvmargs::FILE);
     }
     super::find_server(&state, &server_id)
 }
@@ -504,6 +586,9 @@ pub async fn list_server_content(
 ) -> Result<Vec<crate::content::ContentItem>> {
     let server = super::find_server(&state, &server_id)?;
     reachable(&server)?;
+    if let Err(error) = zippack::link_curseforge_content(&state, &server).await {
+        tracing::warn!(%error, server_id = %server.id, "could not restore the server pack's CurseForge mod links");
+    }
     if reconcile.unwrap_or(false) {
         crate::search::identify::reconcile(
             &state,
@@ -676,8 +761,17 @@ pub fn get_server_script_memory(
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
-pub fn apply_server_script_memory(state: State<AppState>, server_id: String) -> Result<()> {
+pub fn apply_server_script_memory(
+    app: AppHandle,
+    state: State<AppState>,
+    server_id: String,
+) -> Result<()> {
     let server = super::find_server(&state, &server_id)?;
+    if server.launch_script.is_none() {
+        return Err(Error::other(
+            "This server does not have a modpack compatibility script.",
+        ));
+    }
     let dir = reachable(&server)?;
     let settings = state.runtime_settings()?;
     let memory = crate::config::MemoryLimits::new(
@@ -688,14 +782,17 @@ pub fn apply_server_script_memory(state: State<AppState>, server_id: String) -> 
             .max_memory_mb
             .unwrap_or(settings.server_max_memory_mb),
     )?;
-    jvmargs::apply(&state.files, &dir, memory)
+    jvmargs::apply(&state.files, &dir, memory)?;
+    state.db.manage_server_script_memory(&server_id)?;
+    emit_server_file_changed(&app, &server_id, jvmargs::FILE);
+    Ok(())
 }
 
 #[tauri::command]
 #[tracing::instrument(skip(state), err)]
 pub fn rescan_server(state: State<AppState>, server_id: String) -> Result<rescan::Rescan> {
     let server = super::find_server(&state, &server_id)?;
-    rescan::run(&state, &server)
+    rescan::run(&state.db, &server)
 }
 
 #[tauri::command]

@@ -19,6 +19,7 @@ pub struct Args {
     pub program: PathBuf,
     pub arguments: Vec<String>,
     pub through_shell: bool,
+    pub java_path: Option<PathBuf>,
 }
 
 pub fn parse_args(raw: &[String]) -> Option<Args> {
@@ -43,12 +44,13 @@ pub fn parse_args(raw: &[String]) -> Option<Args> {
         program: PathBuf::from(program),
         arguments: command[1..].to_vec(),
         through_shell: flags.iter().any(|entry| entry == "--shell"),
+        java_path: value("--java").map(PathBuf::from),
     })
 }
 
 fn wait_for_java(shell: u32) -> Option<u32> {
-    for _ in 0..120 {
-        if let Some(found) = crate::launch::identity::descendant_java(shell) {
+    while crate::launch::identity::process_start(shell).is_some() {
+        if let Some(found) = crate::launch::identity::descendant_server_java(shell) {
             return Some(found);
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -74,9 +76,23 @@ pub fn run(args: Args) -> ! {
         .unwrap_or(0);
     let token = uuid::Uuid::new_v4().to_string();
 
-    let child = Command::new(&args.program)
-        .args(&args.arguments)
-        .current_dir(&args.dir)
+    let mut command = Command::new(&args.program);
+    command.args(&args.arguments).current_dir(&args.dir);
+    if let Some(java_path) = &args.java_path {
+        if let Some(bin) = java_path.parent() {
+            let mut paths = vec![bin.to_path_buf()];
+            if let Some(existing) = std::env::var_os("PATH") {
+                paths.extend(std::env::split_paths(&existing));
+            }
+            if let Ok(path) = std::env::join_paths(paths) {
+                command.env("PATH", path);
+            }
+            if let Some(home) = bin.parent() {
+                command.env("JAVA_HOME", home);
+            }
+        }
+    }
+    let child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -91,18 +107,13 @@ pub fn run(args: Args) -> ! {
     };
 
     let shell_pid = child.id();
-    let child_pid = if args.through_shell {
-        wait_for_java(shell_pid).unwrap_or(shell_pid)
-    } else {
-        shell_pid
-    };
     let path = control_path(&args.root, &args.server_id);
     let control = Control {
         port,
         token: token.clone(),
         supervisor_pid: std::process::id(),
-        child_pid,
-        child_started_at: started_at(child_pid),
+        child_pid: shell_pid,
+        child_started_at: started_at(shell_pid),
     };
     if let Err(error) = write_control(&path, &control) {
         eprintln!("basalt supervisor could not record its control file: {error}");
@@ -111,32 +122,19 @@ pub fn run(args: Args) -> ! {
         std::process::exit(1);
     }
 
-    if args.through_shell && child_pid != shell_pid {
-        std::thread::spawn(move || {
-            while crate::launch::identity::process_start(child_pid).is_some() {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-            crate::launch::identity::kill_tree(shell_pid);
-        });
-    }
-
     let stdin = Arc::new(Mutex::new(child.stdin.take()));
     let clients: Arc<Mutex<Vec<Sender<String>>>> = Arc::new(Mutex::new(Vec::new()));
     let done = Arc::new(AtomicBool::new(false));
+    let process = Arc::new(Mutex::new((control.child_pid, control.child_started_at)));
 
     pump(child.stdout.take(), "stdout", clients.clone());
     pump(child.stderr.take(), "stderr", clients.clone());
-
-    let ready = encode(&Event::Ready {
-        pid: child_pid,
-        started_at: control.child_started_at,
-    })
-    .unwrap_or_default();
 
     {
         let clients = clients.clone();
         let done = done.clone();
         let stdin = stdin.clone();
+        let process = process.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 if done.load(Ordering::SeqCst) {
@@ -145,12 +143,43 @@ pub fn run(args: Args) -> ! {
                 serve(
                     stream,
                     token.clone(),
-                    ready.clone(),
+                    process.clone(),
                     stdin.clone(),
                     clients.clone(),
                     shell_pid,
                 );
             }
+        });
+    }
+
+    if args.through_shell {
+        let path = path.clone();
+        let clients = clients.clone();
+        let process = process.clone();
+        std::thread::spawn(move || {
+            let Some(java_pid) = wait_for_java(shell_pid) else {
+                return;
+            };
+            let java_started_at = started_at(java_pid);
+            *process.lock().unwrap() = (java_pid, java_started_at);
+            let mut updated = control;
+            updated.child_pid = java_pid;
+            updated.child_started_at = java_started_at;
+            if let Err(error) = write_control(&path, &updated) {
+                eprintln!("basalt supervisor could not update its control file: {error}");
+            }
+            broadcast(
+                &clients,
+                &encode(&Event::Process {
+                    pid: java_pid,
+                    started_at: java_started_at,
+                })
+                .unwrap_or_default(),
+            );
+            while crate::launch::identity::process_start(java_pid).is_some() {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            crate::launch::identity::kill_tree(shell_pid);
         });
     }
 
@@ -193,7 +222,7 @@ fn broadcast(clients: &Arc<Mutex<Vec<Sender<String>>>>, frame: &str) {
 fn serve(
     stream: TcpStream,
     token: String,
-    ready: String,
+    process: Arc<Mutex<(u32, u64)>>,
     stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
     clients: Arc<Mutex<Vec<Sender<String>>>>,
     shell_pid: u32,
@@ -231,7 +260,8 @@ fn serve(
             return;
         }
 
-        let _ = sender.send(ready);
+        let (pid, started_at) = *process.lock().unwrap();
+        let _ = sender.send(encode(&Event::Ready { pid, started_at }).unwrap_or_default());
         clients.lock().unwrap().push(sender);
 
         for line in lines.map_while(std::result::Result::ok) {
@@ -279,6 +309,8 @@ mod tests {
             "/data/servers",
             "--dir",
             "/srv/smp",
+            "--java",
+            "/opt/java/bin/java",
             "--",
             "/usr/bin/java",
             "-Xmx4G",
@@ -292,6 +324,7 @@ mod tests {
         assert_eq!(parsed.dir, PathBuf::from("/srv/smp"));
         assert_eq!(parsed.program, PathBuf::from("/usr/bin/java"));
         assert_eq!(parsed.arguments, ["-Xmx4G", "-jar", "server.jar", "nogui"]);
+        assert_eq!(parsed.java_path, Some(PathBuf::from("/opt/java/bin/java")));
     }
 
     #[test]

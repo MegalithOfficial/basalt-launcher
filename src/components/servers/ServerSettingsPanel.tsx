@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, ClipboardCopy, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
@@ -17,7 +18,7 @@ const REPLACE = "Replace defaults";
 const MODES = [APPEND, REPLACE];
 
 const CEILING_FALLBACK = 16384;
-const jvmargs = "user_jvm_args.txt";
+const JVM_ARGS_FILE = "user_jvm_args.txt";
 
 const inputCls =
   "rounded-lg border border-border bg-void px-3 py-2 text-sm text-content outline-none transition-colors focus:border-(--accent)";
@@ -142,8 +143,10 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
     try {
       await api.applyServerScriptMemory(server.id);
       setScriptMemory(await api.getServerScriptMemory(server.id));
+      toast.success(`Added memory limits to ${JVM_ARGS_FILE}`);
     } catch (cause) {
       setError(String(cause));
+      toast.error(`Could not update ${JVM_ARGS_FILE}`, { description: String(cause) });
     } finally {
       setApplying(false);
     }
@@ -186,6 +189,9 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
         notes.trim() || null,
       );
       await refreshServers();
+      if (server.launch_script) {
+        setScriptMemory(await api.getServerScriptMemory(server.id));
+      }
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -358,12 +364,12 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
               .
             </p>
 
-            {scripted && (
+            {server.launch_script && (
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border-soft/50 pt-3">
                 <span className="text-[11px] text-content-muted">
-                  {scriptMemory
-                    ? `${jvmargs} asks for ${scriptMemory[0] ?? "no minimum"} to ${scriptMemory[1] ?? "no maximum"}`
-                    : `${server.launch_script} decides this until you write it into ${jvmargs}`}
+                  {scriptMemory?.[0] || scriptMemory?.[1]
+                    ? `${JVM_ARGS_FILE} asks for ${scriptMemory[0] ?? "no minimum"} to ${scriptMemory[1] ?? "no maximum"}`
+                    : `${JVM_ARGS_FILE} does not declare memory limits`}
                 </span>
                 <button
                   onClick={() => void applyScriptMemory()}
@@ -371,7 +377,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-content transition-colors hover:bg-surface-3 disabled:opacity-50"
                 >
                   {applying && <Loader2 className="size-3 animate-spin" />}
-                  Put these values in it
+                  Put saved values in it
                 </button>
               </div>
             )}
@@ -468,18 +474,17 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                 />
                 <span className="text-[12px] text-content-muted">
                   {server.skip_launch_script
-                    ? "Off, Basalt runs its own command"
+                    ? "Bootstrap complete, Basalt runs its own command"
                     : canRunWithoutScript
                       ? "On, Basalt runs this instead of its own command"
                       : "Required until the script installs the loader"}
                 </span>
               </Row>
               <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-content-faint">
-                The script installs the loader on its first run and decides the version, the memory
-                and the Java it uses. Basalt runs it through the supervisor and still tracks the
-                Java process it starts, so the console, the meters and stopping keep working. Turn
-                Once it has installed the loader, rescan the server to make the switch available.
-                Turning it off then makes Basalt use the detected launch files directly.
+                Basalt uses this script only while the downloaded pack still needs to install its
+                loader. It ignores installer Java processes and switches future launches to
+                Basalt's own Java command only after it finds complete launch files. Packs whose
+                script cannot be understood safely stay script-managed.
               </p>
             </div>
           </>

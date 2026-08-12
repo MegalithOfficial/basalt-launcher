@@ -10,6 +10,9 @@ use crate::{
 
 use super::{ActiveServerRun, Db};
 
+const SCRIPT_MEMORY_PROMPTED: i64 = 1;
+const SCRIPT_MEMORY_MANAGED: i64 = 2;
+
 impl Db {
     fn read_server(row: &rusqlite::Row, paths: &Paths) -> rusqlite::Result<Server> {
         let id: String = row.get(0)?;
@@ -125,6 +128,45 @@ impl Db {
         conn.execute(
             "UPDATE servers SET skip_launch_script = ?2 WHERE id = ?1",
             params![server_id, i64::from(skip)],
+        )?;
+        Ok(())
+    }
+
+    pub fn claim_server_script_memory_prompt(&self, server_id: &str) -> Result<bool> {
+        let conn = self.0.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE servers SET script_memory_state = ?2
+             WHERE id = ?1 AND script_memory_state = 0",
+            params![server_id, SCRIPT_MEMORY_PROMPTED],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn release_server_script_memory_prompt(&self, server_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE servers SET script_memory_state = 0
+             WHERE id = ?1 AND script_memory_state = ?2",
+            params![server_id, SCRIPT_MEMORY_PROMPTED],
+        )?;
+        Ok(())
+    }
+
+    pub fn server_manages_script_memory(&self, server_id: &str) -> Result<bool> {
+        let conn = self.0.lock().unwrap();
+        let managed = conn.query_row(
+            "SELECT script_memory_state = ?2 FROM servers WHERE id = ?1",
+            params![server_id, SCRIPT_MEMORY_MANAGED],
+            |row| row.get::<_, bool>(0),
+        )?;
+        Ok(managed)
+    }
+
+    pub fn manage_server_script_memory(&self, server_id: &str) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE servers SET script_memory_state = ?2 WHERE id = ?1",
+            params![server_id, SCRIPT_MEMORY_MANAGED],
         )?;
         Ok(())
     }
@@ -367,6 +409,21 @@ impl Db {
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
+    pub fn update_active_server_process(
+        &self,
+        running_id: &str,
+        pid: u32,
+        process_started_at: u64,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE active_server_runs SET pid = ?2, process_started_at = ?3
+             WHERE running_id = ?1",
+            params![running_id, i64::from(pid), process_started_at as i64],
+        )?;
+        Ok(())
+    }
+
     pub fn clear_active_server_run(&self, running_id: &str) -> Result<bool> {
         let conn = self.0.lock().unwrap();
         let removed = conn.execute(
@@ -478,6 +535,43 @@ mod tests {
     }
 
     #[test]
+    fn a_start_script_only_belongs_to_a_linked_curseforge_pack() {
+        let db = Db::open_in_memory().unwrap();
+        let paths = paths();
+        let blank_id = format!("blank-{}", uuid::Uuid::new_v4());
+        let pack_id = format!("pack-{}", uuid::Uuid::new_v4());
+        for id in [&blank_id, &pack_id] {
+            let dir = paths.server_dir(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            let extension = crate::servers::startup::extensions()[0];
+            std::fs::write(dir.join(format!("startserver.{extension}")), b"").unwrap();
+        }
+
+        db.insert_server(&server(&blank_id, true, "")).unwrap();
+        let mut linked = server(&pack_id, true, "");
+        linked.pack_provider = Some("curseforge".into());
+        linked.pack_project_id = Some("project".into());
+        linked.pack_version_id = Some("version".into());
+        db.insert_server(&linked).unwrap();
+
+        assert!(db
+            .server(&paths, &blank_id)
+            .unwrap()
+            .unwrap()
+            .launch_script
+            .is_none());
+        assert!(db
+            .server(&paths, &pack_id)
+            .unwrap()
+            .unwrap()
+            .launch_script
+            .is_some());
+
+        std::fs::remove_dir_all(paths.server_dir(&blank_id)).ok();
+        std::fs::remove_dir_all(paths.server_dir(&pack_id)).ok();
+    }
+
+    #[test]
     fn the_launch_shape_and_the_eula_survive_a_round_trip() {
         let db = Db::open_in_memory().unwrap();
         let paths = paths();
@@ -524,5 +618,53 @@ mod tests {
         assert!(db.delete_server("s4").unwrap());
         assert!(db.active_server_runs().unwrap().is_empty());
         assert!(!db.delete_server("s4").unwrap());
+    }
+
+    #[test]
+    fn a_supervisor_can_replace_its_script_pid_with_the_server_pid() {
+        let db = Db::open_in_memory().unwrap();
+        db.insert_server(&server("process", true, "")).unwrap();
+        db.save_active_server_run(&ActiveServerRun {
+            running_id: "run-process".into(),
+            server_id: "process".into(),
+            pid: 10,
+            process_started_at: 20,
+            started_at: 30,
+        })
+        .unwrap();
+
+        db.update_active_server_process("run-process", 40, 50)
+            .unwrap();
+
+        let run = db.active_server_runs().unwrap().remove(0);
+        assert_eq!(run.pid, 40);
+        assert_eq!(run.process_started_at, 50);
+    }
+
+    #[test]
+    fn the_script_memory_prompt_can_only_be_claimed_once() {
+        let db = Db::open_in_memory().unwrap();
+        db.insert_server(&server("memory-prompt", true, ""))
+            .unwrap();
+
+        assert!(db
+            .claim_server_script_memory_prompt("memory-prompt")
+            .unwrap());
+        assert!(!db
+            .claim_server_script_memory_prompt("memory-prompt")
+            .unwrap());
+
+        db.release_server_script_memory_prompt("memory-prompt")
+            .unwrap();
+        assert!(db
+            .claim_server_script_memory_prompt("memory-prompt")
+            .unwrap());
+
+        assert!(!db.server_manages_script_memory("memory-prompt").unwrap());
+        db.manage_server_script_memory("memory-prompt").unwrap();
+        assert!(db.server_manages_script_memory("memory-prompt").unwrap());
+        assert!(!db
+            .claim_server_script_memory_prompt("memory-prompt")
+            .unwrap());
     }
 }

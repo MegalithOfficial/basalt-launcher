@@ -19,12 +19,15 @@ pub fn command(
     dir: &Path,
     program: &Path,
     arguments: &[String],
-    through_shell: bool,
+    bootstrap_java: Option<&Path>,
 ) -> Command {
     let mut command = Command::new(exe);
     command.arg(FLAG);
-    if through_shell {
+    if bootstrap_java.is_some() {
         command.arg("--shell");
+    }
+    if let Some(java_path) = bootstrap_java {
+        command.arg("--java").arg(java_path);
     }
     command
         .arg("--id")
@@ -50,7 +53,7 @@ pub async fn start(
     dir: &Path,
     program: &Path,
     arguments: &[String],
-    through_shell: bool,
+    bootstrap_java: Option<&Path>,
 ) -> Result<Outcome> {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
@@ -74,7 +77,7 @@ pub async fn start(
         dir,
         program,
         arguments,
-        through_shell,
+        bootstrap_java,
     )
     .spawn()
     {

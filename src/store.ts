@@ -108,6 +108,13 @@ interface ConsolePayload {
   lines: string[];
 }
 
+interface ServerScriptMemoryPrompt {
+  server_id: string;
+  server_name: string;
+  min_memory_mb: number;
+  max_memory_mb: number;
+}
+
 interface OfflineLaunchPayload {
   instance_id: string;
   account_name: string;
@@ -924,12 +931,36 @@ export const useStore = create<AppStore>((set) => ({
       track(await listen<ConsolePayload>("server:log", (e) => {
         enqueueConsole(e.payload);
       }));
+      track(await listen<ServerScriptMemoryPrompt>("server:script-memory-missing", (e) => {
+        const prompt = e.payload;
+        toast.warning(`${prompt.server_name} has no script memory limits`, {
+          id: `server-script-memory:${prompt.server_id}`,
+          description: `Add -Xms${prompt.min_memory_mb}M and -Xmx${prompt.max_memory_mb}M to user_jvm_args.txt?`,
+          duration: 12_000,
+          action: {
+            label: "Add them",
+            onClick: () => {
+              void api
+                .applyServerScriptMemory(prompt.server_id)
+                .then(() => toast.success("Memory limits added to user_jvm_args.txt"))
+                .catch((cause) =>
+                  toast.error("Could not add the memory limits", {
+                    description: String(cause),
+                  }),
+                );
+            },
+          },
+        });
+      }));
       track(await listen<ServerRunningInfo>("server:state", (e) => {
         const info = e.payload;
         set((s) => ({ serverRunning: { ...s.serverRunning, [info.server_id]: info } }));
         if (info.state !== "running" && info.state !== "stopping") {
           void useStore.getState().refreshServers();
         }
+      }));
+      track(await listen("server:rescanned", () => {
+        void useStore.getState().refreshServers();
       }));
       track(await listen<ServerUsage[]>("server:usage", (e) => {
         set((s) => {

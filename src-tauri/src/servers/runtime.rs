@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 
@@ -86,7 +89,7 @@ enum Control {
 pub struct ServerHandle {
     server_id: String,
     running_id: String,
-    pid: u32,
+    pid: Arc<AtomicU32>,
     started_at: i64,
     status: Arc<Mutex<RunStatus>>,
     console: Arc<Mutex<Vec<ConsoleLine>>>,
@@ -99,7 +102,7 @@ impl ServerHandle {
         ServerRunningInfo {
             server_id: self.server_id.clone(),
             running_id: self.running_id.clone(),
-            pid: self.pid,
+            pid: self.pid.load(Ordering::Relaxed),
             started_at: self.started_at,
             state: status.state,
             exit_code: status.exit_code,
@@ -496,12 +499,26 @@ pub async fn start(
 
     let settings = state.runtime_settings()?;
     let running_id = uuid::Uuid::new_v4().to_string();
-    let (program, args) = if let Some(script) = script {
+    let (program, args, script_java) = if let Some(script) = script {
+        let version = install::load_merged_version(state, &server.version_id).await?;
+        let java = java::find_for_major(
+            &state.files,
+            version.required_java_major(),
+            server.java_path.as_deref(),
+        )
+        .await
+        .ok_or_else(|| {
+            Error::other(format!(
+                "No Java {} found to bootstrap this server pack.",
+                version.required_java_major()
+            ))
+        })?;
+        provision::make_executable(&dir.join(script))?;
         let (shell, shell_args) = startup::command(&dir, script);
-        tracing::info!(script, "starting this server through the script it ships");
-        (shell, shell_args)
+        tracing::info!(script, java = %java.path, "bootstrapping this server through the script it ships");
+        (shell, shell_args, Some(PathBuf::from(java.path)))
     } else if server.flavor.native() {
-        (native_binary(server)?, Vec::new())
+        (native_binary(server)?, Vec::new(), None)
     } else {
         let memory = server_memory(&settings, server)?;
         let version = install::load_merged_version(state, &server.version_id).await?;
@@ -520,6 +537,7 @@ pub async fn start(
         (
             PathBuf::from(&java.path),
             launch_arguments(&settings, server, memory, &running_id)?,
+            None,
         )
     };
     let started_at = now();
@@ -536,14 +554,15 @@ pub async fn start(
         &dir,
         &program,
         &args,
-        script.is_some(),
+        script_java.as_deref(),
     )
     .await?;
 
-    let pid;
+    let pid: Arc<AtomicU32>;
     let control = match supervised {
         control::launch::Outcome::Supervised(session) => {
-            pid = session.pid;
+            let session_pid = session.pid;
+            pid = Arc::new(AtomicU32::new(session_pid));
             let process_started_at = session.started_at;
             let (writer, reader) = session.split();
 
@@ -551,7 +570,7 @@ pub async fn start(
                 state,
                 server,
                 &running_id,
-                pid,
+                session_pid,
                 process_started_at,
                 started_at,
             )?;
@@ -562,10 +581,10 @@ pub async fn start(
                 app: app.clone(),
                 db: state.db.clone(),
                 registry: state.servers.clone(),
-                server_id: server.id.clone(),
+                server: server.clone(),
                 running_id: running_id.clone(),
                 started_at,
-                pid,
+                pid: pid.clone(),
                 status: status.clone(),
                 console: console.clone(),
             };
@@ -576,6 +595,11 @@ pub async fn start(
             }
         }
         control::launch::Outcome::Unavailable(reason) => {
+            if script.is_some() {
+                return Err(Error::other(format!(
+                    "Basalt could not supervise this pack's bootstrap script: {reason}"
+                )));
+            }
             tracing::warn!(%reason, "running this server without a supervisor");
             let mut child = Command::new(&program)
                 .args(&args)
@@ -588,9 +612,10 @@ pub async fn start(
                     |error| tracing::error!(%error, "could not spawn the server process"),
                 )?;
 
-            pid = child.id().unwrap_or(0);
+            let child_pid = child.id().unwrap_or(0);
+            pid = Arc::new(AtomicU32::new(child_pid));
             let identity = identity_of(server, &running_id)?;
-            let Some(process_started_at) = spawned_process_start(pid, &identity) else {
+            let Some(process_started_at) = spawned_process_start(child_pid, &identity) else {
                 let _ = child.start_kill();
                 return Err(Error::other("Basalt could not verify the server process."));
             };
@@ -599,7 +624,7 @@ pub async fn start(
                 state,
                 server,
                 &running_id,
-                pid,
+                child_pid,
                 process_started_at,
                 started_at,
             )?;
@@ -619,10 +644,10 @@ pub async fn start(
                 app: app.clone(),
                 db: state.db.clone(),
                 registry: state.servers.clone(),
-                server_id: server.id.clone(),
+                server: server.clone(),
                 running_id: running_id.clone(),
                 started_at,
-                pid,
+                pid: pid.clone(),
                 status: status.clone(),
                 console: console.clone(),
             };
@@ -638,7 +663,7 @@ pub async fn start(
     let handle = ServerHandle {
         server_id: server.id.clone(),
         running_id,
-        pid,
+        pid: pid.clone(),
         started_at,
         status,
         console,
@@ -651,18 +676,29 @@ pub async fn start(
         .unwrap()
         .insert(server.id.clone(), handle);
     emit_state(app, info.clone());
-
-    if script.is_some() {
-        match rescan::run(state, server) {
-            Ok(found) if found.changed => {
-                let _ = app.emit("server:rescanned", json!({ "server_id": server.id }));
-            }
-            Ok(_) => {}
-            Err(error) => tracing::warn!(%error, "could not read the server folder again"),
-        }
-    }
-
     Ok(info)
+}
+
+fn finish_script_bootstrap(app: &AppHandle, db: &crate::db::Db, server: &Server) {
+    if server.pack_provider.as_deref() != Some("curseforge")
+        || server.pack_project_id.is_none()
+        || server.skip_launch_script
+        || server.launch_jar.is_some()
+        || !server.launch_argfiles.is_empty()
+    {
+        return;
+    }
+    match rescan::run(db, server) {
+        Ok(found) if found.launch_ready => {
+            if let Err(error) = db.set_server_skip_launch_script(&server.id, true) {
+                tracing::warn!(%error, "could not finish the script bootstrap");
+                return;
+            }
+            let _ = app.emit("server:rescanned", json!({ "server_id": server.id }));
+        }
+        Ok(_) => {}
+        Err(error) => tracing::warn!(%error, "could not read the bootstrapped server folder"),
+    }
 }
 
 fn record_run(
@@ -687,10 +723,10 @@ struct Supervisor {
     app: AppHandle,
     db: crate::db::Db,
     registry: Registry,
-    server_id: String,
+    server: Server,
     running_id: String,
     started_at: i64,
-    pid: u32,
+    pid: Arc<AtomicU32>,
     status: Arc<Mutex<RunStatus>>,
     console: Arc<Mutex<Vec<ConsoleLine>>>,
 }
@@ -732,6 +768,25 @@ impl Supervisor {
                         code = reported;
                         break;
                     }
+                    control::Event::Process { pid, started_at } => {
+                        self.pid.store(pid, Ordering::Relaxed);
+                        if let Err(error) =
+                            self.db
+                                .update_active_server_process(&self.running_id, pid, started_at)
+                        {
+                            tracing::warn!(%error, "could not update the supervised server process");
+                        }
+                        finish_script_bootstrap(&self.app, &self.db, &self.server);
+                        if let Some(info) = self
+                            .registry
+                            .lock()
+                            .unwrap()
+                            .get(&self.server.id)
+                            .map(ServerHandle::info)
+                        {
+                            emit_state(&self.app, info);
+                        }
+                    }
                     control::Event::Ready { .. } | control::Event::Refused { .. } => {}
                 }
             }
@@ -740,6 +795,11 @@ impl Supervisor {
     }
 
     fn finish(self, code: Option<i32>) {
+        let pid = self.pid.load(Ordering::Relaxed);
+        if code == Some(0) && self.server.launch_script.is_some() && !self.server.skip_launch_script
+        {
+            finish_script_bootstrap(&self.app, &self.db, &self.server);
+        }
         let state = if matches!(code, Some(0) | None) {
             "exited"
         } else {
@@ -767,18 +827,18 @@ impl Supervisor {
                     .join("\n")
             };
             tracing::error!(
-                server_id = %self.server_id,
-                pid = self.pid,
+                server_id = %self.server.id,
+                pid,
                 exit_code = ?code,
                 "server exited abnormally:\n{tail}"
             );
         } else {
-            tracing::info!(server_id = %self.server_id, pid = self.pid, exit_code = ?code, "server stopped");
+            tracing::info!(server_id = %self.server.id, pid, exit_code = ?code, "server stopped");
         }
 
         if let Err(error) = self
             .db
-            .add_server_uptime(&self.server_id, ended_at - self.started_at)
+            .add_server_uptime(&self.server.id, ended_at - self.started_at)
         {
             tracing::warn!(%error, "could not record the server uptime");
         }
@@ -790,7 +850,7 @@ impl Supervisor {
             .registry
             .lock()
             .unwrap()
-            .get(&self.server_id)
+            .get(&self.server.id)
             .map(ServerHandle::info);
         if let Some(info) = info {
             emit_state(&self.app, info);
@@ -928,7 +988,11 @@ pub fn force_stop(state: &AppState, server_id: &str) -> Result<()> {
             process_started_at,
             identity,
         } => {
-            kill_recovered_process(handle.pid, *process_started_at, identity);
+            kill_recovered_process(
+                handle.pid.load(Ordering::Relaxed),
+                *process_started_at,
+                identity,
+            );
         }
     }
     Ok(())
@@ -967,11 +1031,9 @@ pub fn recover(app: &AppHandle, state: &AppState) -> Result<usize> {
             continue;
         };
         if let Some(control) = control::client::read_for(&state.paths.servers(), &server.id) {
-            if control.child_pid == run.pid {
-                reconnect(app, state, &server, &run, control);
-                recovered += 1;
-                continue;
-            }
+            reconnect(app, state, &server, &run, control);
+            recovered += 1;
+            continue;
         }
 
         let Ok(identity) = identity_of(&server, &run.running_id) else {
@@ -991,7 +1053,7 @@ pub fn recover(app: &AppHandle, state: &AppState) -> Result<usize> {
         let handle = ServerHandle {
             server_id: server.id.clone(),
             running_id: run.running_id.clone(),
-            pid: run.pid,
+            pid: Arc::new(AtomicU32::new(run.pid)),
             started_at: run.started_at,
             status: status.clone(),
             console: console.clone(),
@@ -1044,9 +1106,9 @@ fn reconnect(
     let server_id = server.id.clone();
     let running_id = run.running_id.clone();
     let started_at = run.started_at;
-    let pid = run.pid;
     let dir = PathBuf::from(&server.dir);
     let files = state.files.clone();
+    let server = server.clone();
 
     tauri::async_runtime::spawn(async move {
         let session = match control::client::Session::connect(&control).await {
@@ -1056,6 +1118,12 @@ fn reconnect(
                 return;
             }
         };
+        let pid = Arc::new(AtomicU32::new(session.pid));
+        if let Err(error) =
+            db.update_active_server_process(&running_id, session.pid, session.started_at)
+        {
+            tracing::warn!(%error, "could not refresh the reattached server process");
+        }
         let (writer, reader) = session.split();
 
         let console = Arc::new(Mutex::new(Vec::new()));
@@ -1066,7 +1134,7 @@ fn reconnect(
         let handle = ServerHandle {
             server_id: server_id.clone(),
             running_id: running_id.clone(),
-            pid,
+            pid: pid.clone(),
             started_at,
             status: status.clone(),
             console: console.clone(),
@@ -1085,10 +1153,10 @@ fn reconnect(
             app: app.clone(),
             db,
             registry,
-            server_id,
+            server,
             running_id,
             started_at,
-            pid,
+            pid: pid.clone(),
             status,
             console,
         };

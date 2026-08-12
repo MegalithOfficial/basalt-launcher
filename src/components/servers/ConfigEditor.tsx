@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Loader2, RefreshCw, Save, TriangleAlert, X } from "lucide-react";
 
 import { api } from "../../lib/api";
@@ -27,6 +28,8 @@ export function ConfigEditor({
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
+  const dirtyRef = useRef(false);
+  const reloadRef = useRef(onReload);
 
   useEffect(() => {
     setText(file.text);
@@ -37,6 +40,29 @@ export function ConfigEditor({
   const lines = useMemo(() => text.split("\n"), [text]);
   const painted = highlights(file.kind) && lines.length <= MAX_HIGHLIGHTED_LINES;
   const dirty = text !== file.text;
+  dirtyRef.current = dirty;
+  reloadRef.current = onReload;
+
+  useEffect(() => {
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void listen<{ server_id: string; path: string }>("server:file-changed", (event) => {
+      if (
+        event.payload.server_id === serverId &&
+        event.payload.path === file.path &&
+        !dirtyRef.current
+      ) {
+        void reloadRef.current();
+      }
+    }).then((unlisten) => {
+      if (disposed) unlisten();
+      else stop = unlisten;
+    });
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, [file.path, serverId]);
 
   const save = async () => {
     setSaving(true);

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Read, Seek, SeekFrom},
     path::Path,
 };
@@ -386,13 +386,27 @@ pub async fn reconcile(
         }
     }
 
-    let unlinked: Vec<&(String, String, u32)> = hashed
+    let mut unlinked: Vec<(String, String, u32)> = hashed
         .iter()
         .filter(|(name, _, _)| known.get(name).is_none_or(|f| f.project_id.is_none()))
+        .cloned()
         .collect();
 
     if unlinked.is_empty() {
         return Ok(());
+    }
+
+    let curseforge_first = matches!(
+        target,
+        crate::search::resolve::Target::Server(server)
+            if server.pack_provider.as_deref() == Some("curseforge")
+    );
+    if curseforge_first {
+        let matched = link_curseforge_matches(state, target, content_kind, &unlinked).await?;
+        unlinked.retain(|(_, _, fingerprint)| !matched.contains(fingerprint));
+        if unlinked.is_empty() {
+            return Ok(());
+        }
     }
 
     let sha1s: Vec<String> = unlinked.iter().map(|(_, sha1, _)| sha1.clone()).collect();
@@ -428,17 +442,34 @@ pub async fn reconcile(
                     project.and_then(|p| p.icon_url.as_deref()),
                 )?;
             }
-            None => still_unknown.push((file_name.clone(), *fingerprint)),
+            None => still_unknown.push((file_name.clone(), sha1.clone(), *fingerprint)),
         }
     }
 
-    if still_unknown.is_empty() || curseforge::key(state).is_err() {
+    if still_unknown.is_empty() || curseforge_first {
         return Ok(());
     }
 
-    let fingerprints: Vec<u32> = still_unknown.iter().map(|(_, f)| *f).collect();
+    link_curseforge_matches(state, target, content_kind, &still_unknown).await?;
+
+    Ok(())
+}
+
+async fn link_curseforge_matches(
+    state: &AppState,
+    target: crate::search::resolve::Target<'_>,
+    content_kind: ContentKind,
+    candidates: &[(String, String, u32)],
+) -> Result<HashSet<u32>> {
+    if candidates.is_empty() || curseforge::key(state).is_err() {
+        return Ok(HashSet::new());
+    }
+    let fingerprints: Vec<u32> = candidates
+        .iter()
+        .map(|(_, _, fingerprint)| *fingerprint)
+        .collect();
     let Ok(matches) = curseforge::match_fingerprints(state, &fingerprints).await else {
-        return Ok(());
+        return Ok(HashSet::new());
     };
     let by_fingerprint: HashMap<u32, &curseforge::FingerprintMatch> =
         matches.iter().map(|m| (m.id as u32, m)).collect();
@@ -450,7 +481,8 @@ pub async fn reconcile(
     let cf_info: HashMap<&str, &super::ProjectSummary> =
         cf_projects.iter().map(|p| (p.id.as_str(), p)).collect();
 
-    for (file_name, fingerprint) in &still_unknown {
+    let mut linked = HashSet::new();
+    for (file_name, _, fingerprint) in candidates {
         let Some(entry) = by_fingerprint.get(fingerprint) else {
             continue;
         };
@@ -466,9 +498,9 @@ pub async fn reconcile(
             project.map(|p| p.title.as_str()),
             project.and_then(|p| p.icon_url.as_deref()),
         )?;
+        linked.insert(*fingerprint);
     }
-
-    Ok(())
+    Ok(linked)
 }
 
 #[cfg(test)]

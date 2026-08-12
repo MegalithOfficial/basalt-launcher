@@ -141,7 +141,7 @@ export function ProjectView() {
 
   useEffect(() => {
     setVersions(null);
-  }, [instance?.id]);
+  }, [destination?.id, destination?.version_id, loader]);
 
   useEffect(() => {
     if (tab !== "versions" || versions !== null || !projectRef) return;
@@ -164,7 +164,16 @@ export function ProjectView() {
     return () => {
       live = false;
     };
-  }, [tab, versions, projectRef?.id, instance?.id, kind, loader]);
+  }, [
+    tab,
+    versions,
+    projectRef?.provider,
+    projectRef?.id,
+    destination?.id,
+    destination?.version_id,
+    kind,
+    loader,
+  ]);
 
   if (!projectRef) {
     return (

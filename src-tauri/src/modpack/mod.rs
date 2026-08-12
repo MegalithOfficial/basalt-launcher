@@ -487,6 +487,19 @@ pub(crate) async fn link_pack_files(
         .unwrap_or_default();
     let project_info: HashMap<String, &search::ProjectSummary> =
         projects.iter().map(|p| (p.id.clone(), p)).collect();
+    let installed: HashSet<(search::ContentKind, String)> = [
+        search::ContentKind::Mod,
+        search::ContentKind::ResourcePack,
+        search::ContentKind::Shader,
+    ]
+    .into_iter()
+    .flat_map(|kind| {
+        target
+            .installed(state, kind)
+            .into_iter()
+            .map(move |file| (kind, file.file_name))
+    })
+    .collect();
 
     let now = chrono::Utc::now().timestamp();
     for (path, sha1) in files {
@@ -503,22 +516,36 @@ pub(crate) async fn link_pack_files(
             continue;
         };
         let info = project_info.get(&version.project_id);
-        if let Err(error) = target.record(
-            state,
-            kind,
-            &crate::db::ContentFile {
-                file_name: file_name.to_string(),
-                sha1: Some(sha1.clone()),
-                provider: Some("modrinth".to_string()),
-                project_id: Some(version.project_id.clone()),
-                version_id: Some(version.id.clone()),
-                title: info.map(|i| i.title.clone()),
-                icon_url: info.and_then(|i| i.icon_url.clone()),
-                origin: "pack".to_string(),
-                installed_at: now,
-                ..Default::default()
-            },
-        ) {
+        let result = if installed.contains(&(kind, file_name.to_string())) {
+            target.merge_provider_identity(
+                state,
+                kind,
+                file_name,
+                "modrinth",
+                &version.project_id,
+                Some(&version.id),
+                info.map(|value| value.title.as_str()),
+                info.and_then(|value| value.icon_url.as_deref()),
+            )
+        } else {
+            target.record(
+                state,
+                kind,
+                &crate::db::ContentFile {
+                    file_name: file_name.to_string(),
+                    sha1: Some(sha1.clone()),
+                    provider: Some("modrinth".to_string()),
+                    project_id: Some(version.project_id.clone()),
+                    version_id: Some(version.id.clone()),
+                    title: info.map(|i| i.title.clone()),
+                    icon_url: info.and_then(|i| i.icon_url.clone()),
+                    origin: "pack".to_string(),
+                    installed_at: now,
+                    ..Default::default()
+                },
+            )
+        };
+        if let Err(error) = result {
             tracing::warn!(%error, file_name, "could not record a modpack file");
         }
     }

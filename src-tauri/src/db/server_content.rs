@@ -9,6 +9,22 @@ const COLUMNS: &str = "file_name, sha1, sha512, murmur2, provider, project_id, v
                        pack_version_id, installed_at";
 
 impl Db {
+    pub fn has_linked_server_pack_content(
+        &self,
+        server_id: &str,
+        pack_version_id: &str,
+    ) -> Result<bool> {
+        let conn = self.0.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT count(*) FROM server_content_files
+             WHERE server_id = ?1 AND origin = 'pack' AND pack_version_id = ?2
+               AND provider = 'modrinth'",
+            params![server_id, pack_version_id],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     pub fn record_server_content_file(
         &self,
         server_id: &str,
@@ -268,5 +284,49 @@ mod tests {
 
         assert!(db.server_content_files("s1", "mods").unwrap().is_empty());
         assert_eq!(db.content_files("s1", "mods").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_server_knows_when_its_pack_content_graph_was_recorded() {
+        let db = Db::open_in_memory().unwrap();
+        let mut file = record("PackMod.jar", "p1");
+        file.origin = "pack".to_string();
+        file.pack_version_id = Some("pack-v1".to_string());
+        file.provider = Some("curseforge".to_string());
+        db.record_server_content_file("s1", "mods", &file).unwrap();
+
+        assert!(!db.has_linked_server_pack_content("s1", "pack-v1").unwrap());
+        file.provider = Some("modrinth".to_string());
+        db.record_server_content_file("s1", "mods", &file).unwrap();
+        assert!(db.has_linked_server_pack_content("s1", "pack-v1").unwrap());
+        assert!(!db.has_linked_server_pack_content("s1", "pack-v2").unwrap());
+    }
+
+    #[test]
+    fn matching_a_pack_file_keeps_its_pack_ownership() {
+        let db = Db::open_in_memory().unwrap();
+        let mut file = record("PackMod.jar", "curseforge-project");
+        file.provider = Some("curseforge".to_string());
+        file.origin = "pack".to_string();
+        file.pack_version_id = Some("pack-v1".to_string());
+        db.record_server_content_file("s1", "mods", &file).unwrap();
+
+        db.merge_server_provider_identity(
+            "s1",
+            "mods",
+            "PackMod.jar",
+            "modrinth",
+            "modrinth-project",
+            Some("modrinth-version"),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let linked = db.server_content_files("s1", "mods").unwrap().remove(0);
+        assert_eq!(linked.provider.as_deref(), Some("modrinth"));
+        assert_eq!(linked.project_id.as_deref(), Some("modrinth-project"));
+        assert_eq!(linked.origin, "pack");
+        assert_eq!(linked.pack_version_id.as_deref(), Some("pack-v1"));
     }
 }

@@ -1,18 +1,19 @@
 use std::path::PathBuf;
 
-use crate::{error::Result, state::AppState};
+use crate::{db::Db, error::Result};
 
 use super::{import, Server};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct Rescan {
     pub changed: bool,
+    pub launch_ready: bool,
     pub software: Option<String>,
     pub version_id: Option<String>,
     pub flavor_version: Option<String>,
 }
 
-pub fn run(state: &AppState, server: &Server) -> Result<Rescan> {
+pub fn run(db: &Db, server: &Server) -> Result<Rescan> {
     let dir = PathBuf::from(&server.dir);
     if !dir.is_dir() {
         return Ok(Rescan::default());
@@ -35,17 +36,20 @@ pub fn run(state: &AppState, server: &Server) -> Result<Rescan> {
         found.launch_jar != server.launch_jar || found.launch_argfiles != server.launch_argfiles;
 
     if software.is_none() && version_id.is_none() && flavor_version.is_none() && !launch_changed {
-        return Ok(Rescan::default());
+        return Ok(Rescan {
+            launch_ready: true,
+            ..Rescan::default()
+        });
     }
 
     if let Some(software) = software {
-        state.db.set_server_software(&server.id, software.id())?;
+        db.set_server_software(&server.id, software.id())?;
     }
     if let Some(version) = &version_id {
-        state.db.set_server_version(&server.id, version)?;
+        db.set_server_version(&server.id, version)?;
     }
     if launch_changed || flavor_version.is_some() {
-        state.db.set_server_launch(
+        db.set_server_launch(
             &server.id,
             found.launch_jar.as_deref(),
             &found.launch_argfiles,
@@ -68,6 +72,7 @@ pub fn run(state: &AppState, server: &Server) -> Result<Rescan> {
 
     Ok(Rescan {
         changed: true,
+        launch_ready: true,
         software: software.map(|found| found.id().to_string()),
         version_id,
         flavor_version,
