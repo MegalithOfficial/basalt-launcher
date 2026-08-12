@@ -4,6 +4,44 @@ import { Loader2, TriangleAlert } from "lucide-react";
 import { cn } from "../lib/cn";
 import { Modal } from "./Modal";
 
+function normalizeConfirmationText(value: string) {
+  return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/gu, "");
+}
+
+function editDistance(leftText: string, rightText: string) {
+  const left = Array.from(leftText);
+  const right = Array.from(rightText);
+  const distances = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    let diagonal = distances[0];
+    distances[0] = leftIndex;
+
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const above = distances[rightIndex];
+      distances[rightIndex] = Math.min(
+        above + 1,
+        distances[rightIndex - 1] + 1,
+        diagonal + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+
+  return distances[right.length];
+}
+
+export function matchesConfirmation(typed: string, required: string) {
+  const candidate = normalizeConfirmationText(typed);
+  const expected = normalizeConfirmationText(required);
+  if (candidate.length === 0 || expected.length === 0) return false;
+  if (candidate === expected) return true;
+
+  const longest = Math.max(Array.from(candidate).length, Array.from(expected).length);
+  const similarity = 1 - editDistance(candidate, expected) / longest;
+  return similarity >= 0.9;
+}
+
 export function ConfirmDialog({
   open,
   title,
@@ -31,7 +69,6 @@ export function ConfirmDialog({
   confirmLabel?: string;
   cancelLabel?: string;
   confirmIcon?: React.ReactNode;
-  /** When set, this exact text has to be typed before the action unlocks. */
   requireText?: string;
   onConfirm: () => Promise<void> | void;
   onCancel: () => void;
@@ -47,7 +84,7 @@ export function ConfirmDialog({
     }
   }, [open]);
 
-  const locked = !!requireText && typed.trim() !== requireText;
+  const locked = !!requireText && !matchesConfirmation(typed, requireText);
 
   const close = () => {
     if (!busy) onCancel();
