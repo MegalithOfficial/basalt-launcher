@@ -527,6 +527,9 @@ export const api = {
     sha1: string | null,
     size: number | null,
     gameVersion: string | null,
+    provider: string,
+    projectId: string,
+    packVersionId: string,
   ) =>
     call<Server>("install_server_zip", {
       name,
@@ -536,6 +539,9 @@ export const api = {
       sha1,
       size,
       gameVersion,
+      provider,
+      projectId,
+      packVersionId,
     }),
   checkServerPackUpdate: (serverId: string) =>
     call<ModpackUpgrade | null>("check_server_pack_update", { serverId }),

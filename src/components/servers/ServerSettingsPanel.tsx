@@ -94,7 +94,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
 
   useEffect(() => {
     setBuilds([]);
-    if (!needsFlavorVersion(software, server.flavor)) return;
+    if (server.pack_project_id || !needsFlavorVersion(software, server.flavor)) return;
     let alive = true;
     setBuildsLoading(true);
     api
@@ -105,7 +105,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
     return () => {
       alive = false;
     };
-  }, [server.flavor, versionId]);
+  }, [server.flavor, server.pack_project_id, versionId]);
 
   const loadCommand = () => {
     setCommandError(null);
@@ -150,12 +150,23 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
   };
 
   const native = isNative(software, server.flavor);
+  const packLocked = !!server.pack_project_id;
   const scripted = !!server.launch_script && !server.skip_launch_script;
+  const canRunWithoutScript = !!server.launch_jar || server.launch_argfiles.length > 0;
   const sliderMin = Number(minMem) || settings?.server_min_memory_mb || 1024;
   const sliderMax = Number(maxMem) || settings?.server_max_memory_mb || 4096;
   const ceiling = stats?.total_memory_mb ?? CEILING_FALLBACK;
   const reinstall =
-    versionId !== server.version_id || (flavorVersion ?? null) !== (server.flavor_version ?? null);
+    !packLocked &&
+    (versionId !== server.version_id ||
+      (flavorVersion ?? null) !== (server.flavor_version ?? null));
+  const origin = packLocked
+    ? `${server.pack_provider === "modrinth" ? "Modrinth" : "CurseForge"} modpack`
+    : server.import_source === "folder"
+      ? "Imported folder"
+      : server.import_source === "zip"
+        ? "Imported zip"
+        : "Manual setup";
 
   const save = async () => {
     setSaving(true);
@@ -230,10 +241,13 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
             />
           </Row>
           <Row label="Version">
-            {scripted ? (
+            {packLocked ? (
               <span className="text-[12px] text-content-muted">
                 {server.version_id || "unknown"}
-                {server.flavor_version && ` · ${server.flavor_version}`}, taken from the script
+                {server.flavor_version && ` · ${server.flavor_version}`}
+                {scripted
+                  ? ", taken from the pack's script"
+                  : ", managed by the modpack"}
               </span>
             ) : native ? (
               <span className="text-[12px] text-content-muted">
@@ -256,7 +270,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                 />
               </div>
             )}
-            {needsFlavorVersion(software, server.flavor) && (
+            {!packLocked && needsFlavorVersion(software, server.flavor) && (
               <div className="w-56">
                 <Select
                   compact
@@ -273,6 +287,9 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                 />
               </div>
             )}
+          </Row>
+          <Row label="Origin">
+            <span className="text-[12px] text-content-muted">{origin}</span>
           </Row>
           <Row label="Folder">
             <span className="wrap-break-word font-mono text-[11px] text-content-faint">
@@ -441,6 +458,7 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                 <Toggle
                   label="Use the script this server ships"
                   checked={!server.skip_launch_script}
+                  disabled={!server.skip_launch_script && !canRunWithoutScript}
                   onChange={(next) =>
                     void api
                       .setServerLaunchScript(server.id, next)
@@ -451,15 +469,17 @@ export function ServerSettingsPanel({ server, live }: { server: Server; live: bo
                 <span className="text-[12px] text-content-muted">
                   {server.skip_launch_script
                     ? "Off, Basalt runs its own command"
-                    : "On, Basalt runs this instead of its own command"}
+                    : canRunWithoutScript
+                      ? "On, Basalt runs this instead of its own command"
+                      : "Required until the script installs the loader"}
                 </span>
               </Row>
               <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-content-faint">
                 The script installs the loader on its first run and decides the version, the memory
                 and the Java it uses. Basalt runs it through the supervisor and still tracks the
                 Java process it starts, so the console, the meters and stopping keep working. Turn
-                this off to have Basalt build the command itself, and everything above applies
-                again.
+                Once it has installed the loader, rescan the server to make the switch available.
+                Turning it off then makes Basalt use the detected launch files directly.
               </p>
             </div>
           </>

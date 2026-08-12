@@ -71,6 +71,8 @@ mod tests {
             pack_provider: None,
             pack_project_id: None,
             pack_version_id: None,
+            import_source: None,
+            import_source_id: None,
         }
     }
 

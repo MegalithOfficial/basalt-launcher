@@ -111,11 +111,22 @@ fn descends_from(system: &System, mut pid: Pid, root: Pid) -> bool {
     false
 }
 
-pub fn kill_pid(pid: u32) -> bool {
-    let pid = Pid::from_u32(pid);
+pub fn kill_tree(root: u32) -> bool {
+    let root = Pid::from_u32(root);
     let mut system = System::new();
-    refresh_process(&mut system, pid);
-    system.process(pid).is_some_and(sysinfo::Process::kill)
+    system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    let descendants = system
+        .processes()
+        .keys()
+        .copied()
+        .filter(|pid| *pid != root && descends_from(&system, *pid, root))
+        .collect::<Vec<_>>();
+
+    let mut killed = system.process(root).is_some_and(sysinfo::Process::kill);
+    for pid in descendants {
+        killed |= system.process(pid).is_some_and(sysinfo::Process::kill);
+    }
+    killed
 }
 
 pub fn spawned_process_start(pid: u32, identity: &Identity) -> Option<u64> {

@@ -503,7 +503,7 @@ pub(crate) async fn link_pack_files(
             continue;
         };
         let info = project_info.get(&version.project_id);
-        target.record(
+        if let Err(error) = target.record(
             state,
             kind,
             &crate::db::ContentFile {
@@ -518,7 +518,9 @@ pub(crate) async fn link_pack_files(
                 installed_at: now,
                 ..Default::default()
             },
-        );
+        ) {
+            tracing::warn!(%error, file_name, "could not record a modpack file");
+        }
     }
 }
 

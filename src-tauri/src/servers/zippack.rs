@@ -30,19 +30,7 @@ pub fn root_prefix(names: &[String]) -> Option<String> {
 }
 
 pub fn safe_join(dir: &Path, name: &str) -> Result<PathBuf> {
-    let mut path = dir.to_path_buf();
-    for part in name.split(['/', '\\']) {
-        if part.is_empty() || part == "." {
-            continue;
-        }
-        if part == ".." {
-            return Err(Error::other(format!(
-                "This server pack has an unsafe path: {name}"
-            )));
-        }
-        path.push(part);
-    }
-    Ok(path)
+    Ok(dir.join(crate::modpack::sanitize_relative(name)?))
 }
 
 pub fn unpack(files: &FileManager, archive: &Path, dir: &Path) -> Result<()> {
@@ -95,6 +83,9 @@ pub struct Source {
     pub file_name: String,
     pub sha1: Option<String>,
     pub size: Option<u64>,
+    pub provider: String,
+    pub project_id: String,
+    pub version_id: String,
 }
 
 pub async fn install(
@@ -157,14 +148,17 @@ pub async fn install(
 
     task.stage("server-unpack");
     let files = state.files.clone();
-    let source = archive.clone();
+    let from = archive.clone();
     let destination = dir.clone();
-    tokio::task::spawn_blocking(move || unpack(&files, &source, &destination))
+    tokio::task::spawn_blocking(move || unpack(&files, &from, &destination))
         .await
         .map_err(|error| Error::other(format!("unpacking the server pack: {error}")))??;
 
     let found = import::inspect(&dir);
     let flavor = found.flavor.unwrap_or(software::vanilla());
+    let linked = !source.provider.is_empty()
+        && !source.project_id.is_empty()
+        && !source.version_id.is_empty();
     let mut server = Server {
         id,
         name: name.to_string(),
@@ -197,9 +191,11 @@ pub async fn install(
         notes: None,
         launch_script: None,
         skip_launch_script: false,
-        pack_provider: None,
-        pack_project_id: None,
-        pack_version_id: None,
+        pack_provider: linked.then(|| source.provider.clone()),
+        pack_project_id: linked.then(|| source.project_id.clone()),
+        pack_version_id: linked.then(|| source.version_id.clone()),
+        import_source: (!linked).then(|| "zip".to_string()),
+        import_source_id: (!linked).then(|| source.file_name.clone()),
     };
     super::provision::write_eula(&state.files, &dir)?;
     state.db.insert_server(&server)?;

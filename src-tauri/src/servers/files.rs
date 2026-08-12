@@ -161,20 +161,6 @@ pub fn entries(files: &FileManager, dir: &Path, relative: &str) -> Result<Vec<Se
     Ok(entries)
 }
 
-pub fn disk_usage(files: &FileManager, dir: &Path) -> u64 {
-    let Ok(entries) = files.read_dir(dir) else {
-        return 0;
-    };
-    entries
-        .into_iter()
-        .map(|path| match files.symlink_metadata(&path) {
-            Ok(meta) if meta.is_dir() => disk_usage(files, &path),
-            Ok(meta) if meta.is_file() => meta.len(),
-            _ => 0,
-        })
-        .sum()
-}
-
 pub fn read_text(files: &FileManager, dir: &Path, relative: &str) -> Result<ServerText> {
     let path = child(dir, relative)?;
     let kind = FileKind::of(relative);

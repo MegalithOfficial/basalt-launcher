@@ -138,6 +138,8 @@ pub fn create_server(
         pack_provider: None,
         pack_project_id: None,
         pack_version_id: None,
+        import_source: None,
+        import_source_id: None,
     };
     state.db.insert_server(&server)?;
     tracing::info!(server_id = %server.id, flavor = flavor.id(), version = %server.version_id, "server created");
@@ -213,6 +215,8 @@ pub fn import_server(
         pack_provider: None,
         pack_project_id: None,
         pack_version_id: None,
+        import_source: Some("folder".to_string()),
+        import_source_id: Some(dir.display().to_string()),
     };
     state.db.insert_server(&server)?;
     crate::servers::adopt_imported_dirs(&state)?;
@@ -288,6 +292,11 @@ pub fn update_server_settings(
     let current = super::find_server(&state, &server_id)?;
     let reinstall = current.version_id != version_id
         || current.flavor_version.as_deref() != flavor_version.as_deref();
+    if reinstall && current.pack_project_id.is_some() {
+        return Err(Error::other(
+            "This server's Minecraft and loader versions come from its modpack. Update the pack instead.",
+        ));
+    }
     if reinstall
         && state
             .servers
@@ -423,7 +432,7 @@ pub fn force_stop_server(state: State<AppState>, server_id: String) -> Result<()
 pub fn get_server_disk_usage(state: State<AppState>, server_id: String) -> Result<u64> {
     let server = super::find_server(&state, &server_id)?;
     let dir = reachable(&server)?;
-    Ok(crate::servers::files::disk_usage(&state.files, &dir))
+    Ok(crate::storage::directory_size(&state.files, &dir))
 }
 
 #[tauri::command]
@@ -696,7 +705,17 @@ pub fn set_server_launch_script(
     server_id: String,
     use_script: bool,
 ) -> Result<()> {
-    super::find_server(&state, &server_id)?;
+    let server = super::find_server(&state, &server_id)?;
+    if server.pack_provider.as_deref() != Some("curseforge") || server.launch_script.is_none() {
+        return Err(Error::other(
+            "Only a CurseForge server pack with a start script can change this setting.",
+        ));
+    }
+    if !use_script && server.launch_jar.is_none() && server.launch_argfiles.is_empty() {
+        return Err(Error::other(
+            "Run the pack's script once, then rescan the server before turning it off. The pack has not installed its loader yet.",
+        ));
+    }
     state
         .db
         .set_server_skip_launch_script(&server_id, !use_script)
@@ -798,6 +817,9 @@ pub async fn install_server_zip(
     sha1: Option<String>,
     size: Option<u64>,
     game_version: Option<String>,
+    provider: String,
+    project_id: String,
+    pack_version_id: String,
 ) -> Result<Server> {
     let task = state.tasks.start(
         &app,
@@ -819,6 +841,9 @@ pub async fn install_server_zip(
         file_name,
         sha1,
         size,
+        provider,
+        project_id,
+        version_id: pack_version_id,
     };
     match zippack::install(&state, &name, &source, game_version.as_deref(), &task).await {
         Ok(server) => {

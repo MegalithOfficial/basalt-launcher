@@ -86,6 +86,8 @@ export interface Instance {
   pack_provider: string | null;
   pack_project_id: string | null;
   pack_version_id: string | null;
+  import_source: string | null;
+  import_source_id: string | null;
   jvm_args: string | null;
   jvm_args_mode: string | null;
   env_vars: string | null;
@@ -1029,6 +1031,8 @@ export interface Server {
   pack_provider: string | null;
   pack_project_id: string | null;
   pack_version_id: string | null;
+  import_source: string | null;
+  import_source_id: string | null;
   flavor: ServerFlavor;
   version_id: string;
   created_at: string;

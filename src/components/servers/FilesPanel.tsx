@@ -16,6 +16,7 @@ import {
   Loader2,
   Package,
   Pencil,
+  RefreshCw,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -89,6 +90,11 @@ export function FilesPanel({ server }: { server: Server }) {
     }
   };
 
+  const reloadFile = async () => {
+    if (!file) return;
+    setFile(await api.readServerFile(server.id, file.path));
+  };
+
   const upload = async () => {
     const picked = await openFileDialog({ multiple: true });
     const sources = Array.isArray(picked) ? picked : picked ? [picked] : [];
@@ -126,6 +132,7 @@ export function FilesPanel({ server }: { server: Server }) {
         file={file}
         onClose={() => setFile(null)}
         onSaved={() => void load()}
+        onReload={reloadFile}
       />
     );
   }
@@ -190,6 +197,13 @@ export function FilesPanel({ server }: { server: Server }) {
         >
           <Upload className="size-3.5" />
           Upload
+        </button>
+        <button
+          onClick={() => void load()}
+          title="Reload this folder"
+          className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-surface-2 text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+        >
+          <RefreshCw className="size-3.5" />
         </button>
         <button
           onClick={() => openFolder(server.dir)}

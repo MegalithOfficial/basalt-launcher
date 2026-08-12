@@ -4,7 +4,7 @@ use crate::error::{Error, Result};
 
 use super::{client::Session, control_path, forget_control, read_control, FLAG};
 
-const READY_TIMEOUT: Duration = Duration::from_secs(15);
+const READY_TIMEOUT: Duration = Duration::from_secs(70);
 const POLL: Duration = Duration::from_millis(50);
 
 pub enum Outcome {
@@ -58,6 +58,13 @@ pub async fn start(
     };
 
     let path = control_path(root, server_id);
+    if let Some(control) = read_control(&path) {
+        if super::client::still_running(&control) {
+            return Err(Error::other(
+                "This server already has a live supervisor. Reconnect to it instead of starting another copy.",
+            ));
+        }
+    }
     forget_control(&path);
 
     let mut child = match command(
@@ -94,7 +101,7 @@ pub async fn start(
         }
 
         if tokio::time::Instant::now() >= deadline {
-            let _ = child.kill();
+            crate::launch::identity::kill_tree(child.id());
             reap(child);
             return Err(Error::other(
                 "Basalt could not reach the server it just started. Force stop it and try again.",

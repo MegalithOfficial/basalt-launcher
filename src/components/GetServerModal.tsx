@@ -34,7 +34,8 @@ export function GetServerModal({
   const [error, setError] = useState<string | null>(null);
 
   const install = async () => {
-    if (!file) return;
+    const selectedVersion = version;
+    if (!file || !selectedVersion) return;
     setBusy(true);
     setError(null);
     try {
@@ -63,7 +64,10 @@ export function GetServerModal({
         file.file_name,
         file.sha1,
         file.size,
-        version?.game_versions[0] ?? null,
+        selectedVersion.game_versions[0] ?? null,
+        "curseforge",
+        projectId,
+        selectedVersion.id,
       );
       await refreshServers();
       toast.success(`${created.name} is ready`, {

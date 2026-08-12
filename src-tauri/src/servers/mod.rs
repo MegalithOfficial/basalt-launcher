@@ -84,6 +84,10 @@ pub struct Server {
     pub pack_project_id: Option<String>,
     #[serde(default)]
     pub pack_version_id: Option<String>,
+    #[serde(default)]
+    pub import_source: Option<String>,
+    #[serde(default)]
+    pub import_source_id: Option<String>,
 }
 
 pub fn adopt_imported_dirs(state: &AppState) -> Result<()> {

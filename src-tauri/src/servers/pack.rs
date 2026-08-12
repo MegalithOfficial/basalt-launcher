@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use tauri::AppHandle;
 
@@ -135,9 +135,11 @@ pub async fn install(
         notes: None,
         launch_script: None,
         skip_launch_script: false,
-        pack_provider: None,
-        pack_project_id: None,
-        pack_version_id: None,
+        pack_provider: Some(provider.as_str().to_string()),
+        pack_project_id: Some(project_id.to_string()),
+        pack_version_id: Some(version.id.clone()),
+        import_source: None,
+        import_source_id: None,
     };
     state.db.insert_server(&server)?;
 
@@ -171,14 +173,10 @@ pub async fn install(
     let owner = crate::search::resolve::Target::Server(&server);
     for (kind, _, file) in &curseforge_links {
         if let Ok(kind) = crate::search::ContentKind::parse(kind) {
-            owner.record(state, kind, file);
+            owner.record(state, kind, file)?;
         }
     }
     crate::modpack::link_pack_files(state, owner, &linkable).await;
-
-    state
-        .db
-        .link_server_pack(&server.id, provider.as_str(), project_id, &version.id)?;
 
     let dropped = dropped_client_files(&index).len();
     tracing::info!(
@@ -201,7 +199,7 @@ fn file_specs(index: &MrIndex, dir: &Path) -> Result<Specs> {
         };
         specs.push(DownloadSpec {
             url: url.clone(),
-            dest: dir.join(safe_relative(&file.path)?),
+            dest: dir.join(crate::modpack::sanitize_relative(&file.path)?),
             sha1: file.hashes.sha1.clone(),
             sha256: None,
             size: file.file_size,
@@ -213,30 +211,12 @@ fn file_specs(index: &MrIndex, dir: &Path) -> Result<Specs> {
     Ok((specs, linkable))
 }
 
-fn safe_relative(path: &str) -> Result<PathBuf> {
-    let mut clean = PathBuf::new();
-    for part in path.split(['/', '\\']) {
-        if part.is_empty() || part == "." {
-            continue;
-        }
-        if part == ".." {
-            return Err(Error::other(format!(
-                "This pack has an unsafe path: {path}"
-            )));
-        }
-        clean.push(part);
-    }
-    if clean.as_os_str().is_empty() {
-        return Err(Error::other(format!("This pack has an empty path: {path}")));
-    }
-    Ok(clean)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modpack::{MrEnv, MrHashes};
     use std::collections::HashMap;
+    use std::path::PathBuf;
 
     fn file(path: &str, client: Option<&str>, server: Option<&str>) -> MrFile {
         MrFile {
@@ -266,10 +246,10 @@ mod tests {
 
     #[test]
     fn a_path_that_climbs_out_of_the_server_folder_is_refused() {
-        assert!(safe_relative("../../etc/passwd").is_err());
-        assert!(safe_relative("mods/../../escape.jar").is_err());
+        assert!(crate::modpack::sanitize_relative("../../etc/passwd").is_err());
+        assert!(crate::modpack::sanitize_relative("mods/../../escape.jar").is_err());
         assert_eq!(
-            safe_relative("mods/lithium.jar").unwrap(),
+            crate::modpack::sanitize_relative("mods/lithium.jar").unwrap(),
             PathBuf::from("mods").join("lithium.jar")
         );
     }

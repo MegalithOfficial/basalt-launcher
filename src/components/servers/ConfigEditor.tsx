@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Save, TriangleAlert, X } from "lucide-react";
+import { Loader2, RefreshCw, Save, TriangleAlert, X } from "lucide-react";
 
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
@@ -11,11 +11,13 @@ export function ConfigEditor({
   file,
   onClose,
   onSaved,
+  onReload,
 }: {
   serverId: string;
   file: ServerText;
   onClose: () => void;
   onSaved: () => void;
+  onReload: () => Promise<void>;
 }) {
   const [text, setText] = useState(file.text);
   const [problem, setProblem] = useState<TextProblem | null>(null);
@@ -58,6 +60,15 @@ export function ConfigEditor({
     }
   };
 
+  const reload = async () => {
+    setError(null);
+    try {
+      await onReload();
+    } catch (cause) {
+      setError(String(cause));
+    }
+  };
+
   const jumpTo = (line: number) => {
     const area = areaRef.current;
     if (!area) return;
@@ -77,6 +88,14 @@ export function ConfigEditor({
             Unsaved
           </span>
         )}
+        <button
+          onClick={() => void reload()}
+          disabled={dirty || saving}
+          title={dirty ? "Save or discard your changes before reloading" : "Reload from disk"}
+          className="grid size-7 shrink-0 place-items-center rounded-lg text-content-faint transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RefreshCw className="size-3.5" />
+        </button>
         <button
           onClick={() => void check()}
           className="shrink-0 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:bg-surface-3 hover:text-content"

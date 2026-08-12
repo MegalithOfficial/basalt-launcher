@@ -156,6 +156,10 @@ fn size_of(files: &FileManager, path: &Path, counted: &mut Counted) -> u64 {
     walk(files, path, counted).bytes
 }
 
+pub fn directory_size(files: &FileManager, path: &Path) -> u64 {
+    size_of(files, path, &mut Counted::default())
+}
+
 fn file_size(files: &FileManager, path: &Path) -> u64 {
     files
         .external_symlink_metadata(path)

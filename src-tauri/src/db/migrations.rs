@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 15;
+pub(super) const SCHEMA_VERSION: i64 = 16;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -295,6 +295,13 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         "skip_launch_script",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    add_column_if_missing(conn, "servers", "import_source", "TEXT")?;
+    add_column_if_missing(conn, "servers", "import_source_id", "TEXT")?;
+    conn.execute(
+        "UPDATE servers SET import_source = 'folder', import_source_id = external_dir
+         WHERE managed = 0 AND import_source IS NULL",
+        [],
+    )?;
     add_column_if_missing(conn, "skins", "hash", "TEXT")?;
     add_column_if_missing(conn, "skins", "remote_hash", "TEXT")?;
     add_column_if_missing(
@@ -439,5 +446,7 @@ mod tests {
             .unwrap();
         assert_eq!(version, super::SCHEMA_VERSION);
         assert!(column_exists(&conn, "instances", "pack_version_id").unwrap());
+        assert!(column_exists(&conn, "servers", "import_source").unwrap());
+        assert!(column_exists(&conn, "servers", "import_source_id").unwrap());
     }
 }

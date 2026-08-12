@@ -61,11 +61,12 @@ pub async fn fetch(task: &TaskHandle, state: &AppState, specs: Vec<DownloadSpec>
         specs.len() as u64,
         specs.iter().filter_map(|spec| spec.size).sum(),
     );
+    let concurrency = state.db.load_settings()?.concurrent_downloads;
     download::download_many_cancellable(
         &state.network,
         &state.files,
         specs,
-        4,
+        concurrency,
         |progress| {
             task.progress(
                 progress.completed as u64,

@@ -24,15 +24,12 @@ impl Db {
         };
         let launch_jar: Option<String> = row.get(7)?;
         let launch_argfiles: Option<String> = row.get(8)?;
-        let nothing_to_launch = launch_jar.is_none()
-            && launch_argfiles
-                .as_deref()
-                .is_none_or(|raw| raw.trim().is_empty() || raw.trim() == "[]");
-        let launch_script = if nothing_to_launch {
-            super::super::servers::startup::find(&dir)
-        } else {
-            None
-        };
+        let pack_provider: Option<String> = row.get(24)?;
+        let pack_project_id: Option<String> = row.get(25)?;
+        let launch_script = (pack_provider.as_deref() == Some("curseforge")
+            && pack_project_id.is_some())
+        .then(|| super::super::servers::startup::find(&dir))
+        .flatten();
         let port: Option<u32> = row.get(19)?;
         Ok(Server {
             available: dir.is_dir(),
@@ -66,9 +63,11 @@ impl Db {
             notes: row.get(23)?,
             launch_script,
             skip_launch_script: row.get::<_, i64>(27).unwrap_or(0) != 0,
-            pack_provider: row.get(24)?,
-            pack_project_id: row.get(25)?,
+            pack_provider,
+            pack_project_id,
             pack_version_id: row.get(26)?,
+            import_source: row.get(28)?,
+            import_source_id: row.get(29)?,
         })
     }
 
@@ -80,7 +79,8 @@ impl Db {
                     java_path, jvm_args, jvm_args_mode, stop_timeout_secs, eula_accepted_at,
                     installed_at, last_started_at, cached_port, cached_motd,
                     cached_max_players, uptime_secs, notes,
-                    pack_provider, pack_project_id, pack_version_id, skip_launch_script
+                    pack_provider, pack_project_id, pack_version_id, skip_launch_script,
+                    import_source, import_source_id
              FROM servers ORDER BY sort_order, created_at",
         )?;
         let rows = stmt.query_map([], |row| Self::read_server(row, paths))?;
@@ -96,7 +96,8 @@ impl Db {
                         java_path, jvm_args, jvm_args_mode, stop_timeout_secs, eula_accepted_at,
                         installed_at, last_started_at, cached_port, cached_motd,
                         cached_max_players, uptime_secs, notes,
-                        pack_provider, pack_project_id, pack_version_id, skip_launch_script
+                        pack_provider, pack_project_id, pack_version_id, skip_launch_script,
+                        import_source, import_source_id
                  FROM servers WHERE id = ?1",
                 params![server_id],
                 |row| Self::read_server(row, paths),
@@ -128,33 +129,19 @@ impl Db {
         Ok(())
     }
 
-    pub fn link_server_pack(
-        &self,
-        server_id: &str,
-        provider: &str,
-        project_id: &str,
-        version_id: &str,
-    ) -> Result<()> {
-        let conn = self.0.lock().unwrap();
-        conn.execute(
-            "UPDATE servers SET pack_provider = ?2, pack_project_id = ?3, pack_version_id = ?4
-             WHERE id = ?1",
-            params![server_id, provider, project_id, version_id],
-        )?;
-        Ok(())
-    }
-
     pub fn insert_server(&self, server: &Server) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO servers
+            "INSERT INTO servers
                 (id, name, flavor, version_id, flavor_version, created_at, managed,
                  external_dir, launch_jar, launch_argfiles, min_memory_mb, max_memory_mb,
                  java_path, jvm_args, jvm_args_mode, stop_timeout_secs, eula_accepted_at,
                  installed_at, last_started_at, uptime_secs, cached_port, cached_motd,
-                 cached_max_players, notes)
+                 cached_max_players, notes, pack_provider, pack_project_id, pack_version_id,
+                 skip_launch_script, import_source, import_source_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                     ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                     ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28,
+                     ?29, ?30)",
             params![
                 server.id,
                 server.name,
@@ -180,6 +167,12 @@ impl Db {
                 server.motd,
                 server.max_players,
                 server.notes,
+                server.pack_provider,
+                server.pack_project_id,
+                server.pack_version_id,
+                i64::from(server.skip_launch_script),
+                server.import_source,
+                server.import_source_id,
             ],
         )?;
         Ok(())
@@ -424,6 +417,8 @@ mod tests {
             pack_provider: None,
             pack_project_id: None,
             pack_version_id: None,
+            import_source: None,
+            import_source_id: None,
         }
     }
 
@@ -446,17 +441,40 @@ mod tests {
     fn an_imported_server_keeps_the_folder_it_came_from() {
         let db = Db::open_in_memory().unwrap();
         let paths = paths();
-        db.insert_server(&server("s2", false, "/mnt/disk/smp"))
-            .unwrap();
+        let mut imported = server("s2", false, "/mnt/disk/smp");
+        imported.import_source = Some("folder".into());
+        imported.import_source_id = Some("/mnt/disk/smp".into());
+        db.insert_server(&imported).unwrap();
 
         let stored = db.server(&paths, "s2").unwrap().unwrap();
 
         assert_eq!(stored.dir, "/mnt/disk/smp");
         assert!(!stored.managed);
+        assert_eq!(stored.import_source.as_deref(), Some("folder"));
+        assert_eq!(stored.import_source_id.as_deref(), Some("/mnt/disk/smp"));
         assert_eq!(
             db.imported_server_dirs().unwrap(),
             vec![PathBuf::from("/mnt/disk/smp")]
         );
+    }
+
+    #[test]
+    fn a_modpack_server_keeps_the_same_pack_link_as_an_instance() {
+        let db = Db::open_in_memory().unwrap();
+        let paths = paths();
+        let mut linked = server("pack", true, "");
+        linked.pack_provider = Some("curseforge".into());
+        linked.pack_project_id = Some("1298402".into());
+        linked.pack_version_id = Some("7854204".into());
+        db.insert_server(&linked).unwrap();
+
+        let stored = db.server(&paths, "pack").unwrap().unwrap();
+
+        assert_eq!(stored.pack_provider.as_deref(), Some("curseforge"));
+        assert_eq!(stored.pack_project_id.as_deref(), Some("1298402"));
+        assert_eq!(stored.pack_version_id.as_deref(), Some("7854204"));
+        assert!(stored.import_source.is_none());
+        assert!(stored.import_source_id.is_none());
     }
 
     #[test]

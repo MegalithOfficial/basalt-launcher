@@ -83,26 +83,26 @@ impl<'a> Target<'a> {
         .unwrap_or_default()
     }
 
-    pub fn record(self, state: &AppState, kind: ContentKind, file: &ContentFile) {
-        let _ = match self {
+    pub fn record(self, state: &AppState, kind: ContentKind, file: &ContentFile) -> Result<()> {
+        match self {
             Target::Instance(id) => state.db.record_content_file(id, kind.as_str(), file),
             Target::Server(server) => {
                 state
                     .db
                     .record_server_content_file(&server.id, kind.as_str(), file)
             }
-        };
+        }
     }
 
-    fn forget(self, state: &AppState, kind: ContentKind, file_name: &str) {
-        let _ = match self {
+    fn forget(self, state: &AppState, kind: ContentKind, file_name: &str) -> Result<()> {
+        match self {
             Target::Instance(id) => state.db.delete_content_file(id, kind.as_str(), file_name),
             Target::Server(server) => {
                 state
                     .db
                     .delete_server_content_file(&server.id, kind.as_str(), file_name)
             }
-        };
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -670,7 +670,7 @@ pub async fn apply(
     for file in files {
         if let Some(old) = &file.replaces {
             let _ = content::delete_in(&state.files, &dir, old);
-            target.forget(state, kind, old);
+            target.forget(state, kind, old)?;
         }
 
         let record = ContentFile {
@@ -696,7 +696,7 @@ pub async fn apply(
             pack_version_id: pack_version_id.map(str::to_owned),
             installed_at: now,
         };
-        target.record(state, kind, &record);
+        target.record(state, kind, &record)?;
         written.push(InstalledItem {
             file_name: file.file_name.clone(),
             title: file.title.clone(),

@@ -106,6 +106,9 @@ pub fn run(args: Args) -> ! {
     };
     if let Err(error) = write_control(&path, &control) {
         eprintln!("basalt supervisor could not record its control file: {error}");
+        crate::launch::identity::kill_tree(shell_pid);
+        let _ = child.wait();
+        std::process::exit(1);
     }
 
     if args.through_shell && child_pid != shell_pid {
@@ -113,7 +116,7 @@ pub fn run(args: Args) -> ! {
             while crate::launch::identity::process_start(child_pid).is_some() {
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
-            crate::launch::identity::kill_pid(shell_pid);
+            crate::launch::identity::kill_tree(shell_pid);
         });
     }
 
@@ -145,7 +148,6 @@ pub fn run(args: Args) -> ! {
                     ready.clone(),
                     stdin.clone(),
                     clients.clone(),
-                    child_pid,
                     shell_pid,
                 );
             }
@@ -194,7 +196,6 @@ fn serve(
     ready: String,
     stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
     clients: Arc<Mutex<Vec<Sender<String>>>>,
-    child_pid: u32,
     shell_pid: u32,
 ) {
     let Ok(reading) = stream.try_clone() else {
@@ -242,10 +243,7 @@ fn serve(
                 Request::Send { line } => write_line(&stdin, &line),
                 Request::Stop => write_line(&stdin, "stop"),
                 Request::Kill => {
-                    if shell_pid != child_pid {
-                        crate::launch::identity::kill_pid(shell_pid);
-                    }
-                    crate::launch::identity::kill_pid(child_pid);
+                    crate::launch::identity::kill_tree(shell_pid);
                 }
             }
         }
