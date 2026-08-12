@@ -162,66 +162,70 @@ export function ServerView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border-soft px-8 py-2.5">
-        <h1 className="wrap-break-word font-display text-lg font-semibold tracking-tight text-content">
-          {server.name}
-        </h1>
-        <ServerStatusPill server={server} info={info} />
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-content-muted">
-          <span>{flavorLabel(software, server.flavor)}</span>
-          {server.flavor_version && (
-            <>
-              <span className="text-content-faint">·</span>
-              <span>build {server.flavor_version}</span>
-            </>
-          )}
-          <span className="text-content-faint">·</span>
-          <span>{server.version_id}</span>
-          {layout !== "sidebar" && (
-            <>
-              <span className="text-content-faint">·</span>
-              <button
-                onClick={(event) =>
-                  openMenu(
-                    event,
-                    [
-                      {
-                        label: serverAddress(server),
-                        icon: ClipboardCopy,
-                        onSelect: () =>
-                          void navigator.clipboard.writeText(serverAddress(server)),
-                      },
-                      ...(lanAddress(server, lan)
-                        ? [
-                            {
-                              label: lanAddress(server, lan)!,
-                              icon: ClipboardCopy,
-                              onSelect: () =>
-                                void navigator.clipboard.writeText(lanAddress(server, lan)!),
-                            },
-                          ]
-                        : []),
-                    ],
-                    "Copy an address",
-                    { below: true },
-                  )
-                }
-                title="Show the addresses"
-                className="font-mono text-content-muted underline decoration-dotted underline-offset-2 hover:text-content"
-              >
-                {serverAddress(server)}
-              </button>
-              {live && (
-                <>
-                  <span className="text-content-faint">·</span>
-                  <span>up {uptime}</span>
-                </>
-              )}
-            </>
-          )}
-        </span>
+      <div className="flex items-center gap-4 border-b border-border-soft px-8 py-2.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="min-w-0 wrap-break-word font-display text-lg font-semibold tracking-tight text-content">
+              {server.name}
+            </h1>
+            <ServerStatusPill server={server} info={info} />
+          </div>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-content-muted">
+            <span>{flavorLabel(software, server.flavor)}</span>
+            {server.flavor_version && (
+              <>
+                <span className="text-content-faint">·</span>
+                <span>build {server.flavor_version}</span>
+              </>
+            )}
+            <span className="text-content-faint">·</span>
+            <span>{server.version_id}</span>
+            {layout !== "sidebar" && (
+              <>
+                <span className="text-content-faint">·</span>
+                <button
+                  onClick={(event) =>
+                    openMenu(
+                      event,
+                      [
+                        {
+                          label: serverAddress(server),
+                          icon: ClipboardCopy,
+                          onSelect: () =>
+                            void navigator.clipboard.writeText(serverAddress(server)),
+                        },
+                        ...(lanAddress(server, lan)
+                          ? [
+                              {
+                                label: lanAddress(server, lan)!,
+                                icon: ClipboardCopy,
+                                onSelect: () =>
+                                  void navigator.clipboard.writeText(lanAddress(server, lan)!),
+                              },
+                            ]
+                          : []),
+                      ],
+                      "Copy an address",
+                      { below: true },
+                    )
+                  }
+                  title="Show the addresses"
+                  className="font-mono text-content-muted underline decoration-dotted underline-offset-2 hover:text-content"
+                >
+                  {serverAddress(server)}
+                </button>
+                {live && (
+                  <>
+                    <span className="text-content-faint">·</span>
+                    <span>up {uptime}</span>
+                  </>
+                )}
+              </>
+            )}
+          </span>
+        </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-5">
+        <div className="flex shrink-0 items-center gap-5">
           {layout === "header" && (
             <UsageMeter
               samples={usage ?? EMPTY_USAGE}
@@ -231,65 +235,65 @@ export function ServerView() {
             />
           )}
           <div className="flex items-center gap-2">
-          <button
-            onClick={() => openFolder(server.dir)}
-            disabled={!server.available}
-            title="Open the folder"
-            className="grid size-8 place-items-center rounded-lg border border-border bg-surface-2 text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FolderOpen className="size-3.5" />
-          </button>
+            <button
+              onClick={() => openFolder(server.dir)}
+              disabled={!server.available}
+              title="Open the folder"
+              className="grid size-8 place-items-center rounded-lg border border-border bg-surface-2 text-content-muted transition-colors hover:bg-surface-3 hover:text-content disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FolderOpen className="size-3.5" />
+            </button>
 
-          {!server.installed_at && !server.launch_script ? (
-            <button
-              onClick={() => void run(installServer(server.id))}
-              disabled={busy || !server.available}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-(--accent) px-3 py-1.5 text-[13px] font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {busy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Download className="size-3.5" />
-              )}
-              Install
-            </button>
-          ) : live ? (
-            <>
+            {!server.installed_at && !server.launch_script ? (
               <button
-                onClick={() => void run(restartServer(server.id))}
-                disabled={busy || info?.state === "stopping"}
-                title="Stop it and start it again"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-[13px] font-semibold text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void run(installServer(server.id))}
+                disabled={busy || !server.available}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-(--accent) px-3 py-1.5 text-[13px] font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
               >
-                <RotateCw className="size-3.5" />
-                Restart
+                {busy ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                Install
               </button>
+            ) : live ? (
+              <>
+                <button
+                  onClick={() => void run(restartServer(server.id))}
+                  disabled={busy || info?.state === "stopping"}
+                  title="Stop it and start it again"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-[13px] font-semibold text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RotateCw className="size-3.5" />
+                  Restart
+                </button>
+                <button
+                  onClick={() => void run(stopServer(server.id))}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-[13px] font-semibold text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <CircleStop className="size-3.5" />
+                  {info?.state === "stopping" ? "Stopping" : "Stop"}
+                </button>
+                <button
+                  onClick={() => setForcing(true)}
+                  title="Kill the process without letting it save"
+                  className="grid size-8 place-items-center rounded-lg border border-danger/40 bg-danger/10 text-danger transition-colors hover:bg-danger/20"
+                >
+                  <Zap className="size-3.5" />
+                </button>
+              </>
+            ) : (
               <button
-                onClick={() => void run(stopServer(server.id))}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-[13px] font-semibold text-content transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void run(startServer(server.id))}
+                disabled={busy || !server.available}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-(--accent) px-3 py-1.5 text-[13px] font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
               >
-                <CircleStop className="size-3.5" />
-                {info?.state === "stopping" ? "Stopping" : "Stop"}
+                {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+                Start
               </button>
-              <button
-                onClick={() => setForcing(true)}
-                title="Kill the process without letting it save"
-                className="grid size-8 place-items-center rounded-lg border border-danger/40 bg-danger/10 text-danger transition-colors hover:bg-danger/20"
-              >
-                <Zap className="size-3.5" />
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => void run(startServer(server.id))}
-              disabled={busy || !server.available}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-(--accent) px-3 py-1.5 text-[13px] font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-              Start
-            </button>
-          )}
+            )}
           </div>
         </div>
       </div>
