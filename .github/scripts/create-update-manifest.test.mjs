@@ -34,23 +34,23 @@ test("creates a signed manifest for each build platform", () => {
     platforms: {
       "linux-x86_64": {
         signature: "linux-signature",
-        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt%20Launcher.AppImage",
+        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt.Launcher.AppImage",
       },
       "windows-x86_64": {
         signature: "windows-nsis-signature",
-        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt%20Launcher-setup.exe",
+        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt.Launcher-setup.exe",
       },
       "windows-x86_64-nsis": {
         signature: "windows-nsis-signature",
-        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt%20Launcher-setup.exe",
+        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt.Launcher-setup.exe",
       },
       "windows-x86_64-msi": {
         signature: "windows-msi-signature",
-        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt%20Launcher.msi",
+        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt.Launcher.msi",
       },
       "darwin-aarch64": {
         signature: "mac-signature",
-        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt%20Launcher.app.tar.gz",
+        url: "https://github.com/MegalithOfficial/basalt-launcher/releases/download/v1.2.3/Basalt.Launcher.app.tar.gz",
       },
     },
   });

@@ -34,6 +34,10 @@ function updaterArtifacts(platform, files) {
   return [];
 }
 
+function releaseAssetName(file) {
+  return basename(file).replaceAll(" ", ".");
+}
+
 export function createManifest(assetsDirectory, repository, tag, version) {
   const root = resolve(assetsDirectory);
   const markers = walk(root).filter((file) => basename(file) === "updater-platform.txt");
@@ -50,7 +54,7 @@ export function createManifest(assetsDirectory, repository, tag, version) {
     for (const [target, artifact] of artifacts) {
       if (platforms[target]) throw new Error(`Duplicate updater platform ${target}`);
 
-      const name = basename(artifact);
+      const name = releaseAssetName(artifact);
       platforms[target] = {
         signature: readFileSync(`${artifact}.sig`, "utf8").trim(),
         url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(name)}`,
