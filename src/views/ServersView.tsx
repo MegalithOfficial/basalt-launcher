@@ -95,9 +95,9 @@ export function ServersView() {
       <PageHeader
         title="Servers"
         subtitle={
-          servers.length === 0
-            ? "Host a Minecraft server from Basalt."
-            : `${servers.length} server${servers.length === 1 ? "" : "s"}`
+          servers.length > 0
+            ? `${servers.length} ${servers.length === 1 ? "server" : "servers"}`
+            : undefined
         }
         actions={
           <Button onClick={() => setCreating(true)}>
