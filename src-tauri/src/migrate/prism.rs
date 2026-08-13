@@ -17,7 +17,6 @@ use super::{
     MigrationOutcome, MigrationScan,
 };
 
-/// Prism, PolyMC and MultiMC share a layout, so one reader covers all three.
 const DIR_NAMES: [&str; 6] = [
     "PrismLauncher",
     "prismlauncher",
@@ -27,8 +26,9 @@ const DIR_NAMES: [&str; 6] = [
     "multimc",
 ];
 
-/// Prism keeps the game under a subfolder; which one depends on platform and age.
 const GAME_DIRS: [&str; 2] = [".minecraft", "minecraft"];
+
+const LAUNCHER_CONFIGS: [&str; 3] = ["prismlauncher.cfg", "polymc.cfg", "multimc.cfg"];
 
 const ICON_EXTENSIONS: [&str; 4] = ["png", "webp", "jpg", "jpeg"];
 const MAX_ICON_BYTES: u64 = 4 * 1024 * 1024;
@@ -38,7 +38,6 @@ const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 struct Config(Vec<(String, String)>);
 
 impl Config {
-    /// instance.cfg is flat `key=value`, optionally under a `[General]` heading.
     fn parse(text: &str) -> Self {
         Self(
             text.lines()
@@ -66,8 +65,6 @@ impl Config {
         self.get(key)?.parse().ok()
     }
 
-    /// Memory and Java keys linger after an override is switched off, so they only
-    /// count when their matching flag is set.
     fn overridden(&self, flag: &str, key: &str) -> Option<&str> {
         self.flag(flag).then(|| self.get(key)).flatten()
     }
@@ -153,7 +150,20 @@ fn loader_from(uid: &str) -> Option<&'static str> {
     }
 }
 
-fn instances_dir(root: &Path) -> PathBuf {
+fn instances_dir(files: &FileManager, root: &Path) -> PathBuf {
+    for name in LAUNCHER_CONFIGS {
+        let Ok(config) = read_config(files, &root.join(name)) else {
+            continue;
+        };
+        let Some(configured) = config.get("InstanceDir").map(PathBuf::from) else {
+            continue;
+        };
+        return if configured.is_absolute() {
+            configured
+        } else {
+            root.join(configured)
+        };
+    }
     root.join("instances")
 }
 
@@ -169,14 +179,21 @@ fn game_dir(files: &FileManager, instance: &Path) -> Option<PathBuf> {
         })
 }
 
-fn read_config(files: &FileManager, dir: &Path) -> Result<Config> {
-    let path = dir.join("instance.cfg");
-    let metadata = files.external_symlink_metadata(&path)?;
+fn read_config(files: &FileManager, path: &Path) -> Result<Config> {
+    let metadata = files.external_symlink_metadata(path)?;
     if !metadata.is_file() || metadata.len() > MAX_CONFIG_BYTES {
-        return Err(Error::other("instance.cfg is not a readable config"));
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("config");
+        return Err(Error::other(format!("{name} is not a readable config")));
     }
-    let bytes = files.read_external(&path)?;
+    let bytes = files.read_external(path)?;
     Ok(Config::parse(&String::from_utf8_lossy(&bytes)))
+}
+
+fn read_instance_config(files: &FileManager, dir: &Path) -> Result<Config> {
+    read_config(files, &dir.join("instance.cfg"))
 }
 
 fn read_components(files: &FileManager, dir: &Path) -> Option<ComponentPack> {
@@ -184,7 +201,6 @@ fn read_components(files: &FileManager, dir: &Path) -> Option<ComponentPack> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// Icons live in the launcher's shared folder, and built-in keys have no file at all.
 fn read_icon(files: &FileManager, root: &Path, key: Option<&str>) -> Option<String> {
     let key = key.filter(|key| *key != "default")?;
     for extension in ICON_EXTENSIONS {
@@ -222,7 +238,7 @@ fn pack_source(config: &Config) -> Option<(&'static str, String, Option<String>)
 
 pub fn detect(files: &FileManager) -> Option<LauncherSource> {
     for root in candidate_roots(&DIR_NAMES) {
-        let Ok(entries) = files.read_external_dir(instances_dir(&root)) else {
+        let Ok(entries) = files.read_external_dir(instances_dir(files, &root)) else {
             continue;
         };
         let count = entries
@@ -259,7 +275,7 @@ fn candidate_for(files: &FileManager, root: &Path, dir: &Path) -> MigrationCandi
         .to_string();
 
     let mut warnings = Vec::new();
-    let config = match read_config(files, dir) {
+    let config = match read_instance_config(files, dir) {
         Ok(config) => config,
         Err(error) => {
             return MigrationCandidate {
@@ -340,7 +356,7 @@ fn candidate_for(files: &FileManager, root: &Path, dir: &Path) -> MigrationCandi
 }
 
 pub fn scan(files: &FileManager, root: &Path) -> Result<MigrationScan> {
-    let instances = instances_dir(root);
+    let instances = instances_dir(files, root);
     let entries = files
         .read_external_dir(&instances)
         .map_err(|_| Error::other(format!("no instances folder under {}", root.display())))?;
@@ -459,7 +475,7 @@ pub fn import(
     ids: &[String],
     task: &TaskHandle,
 ) -> Result<MigrationOutcome> {
-    let instances = instances_dir(root);
+    let instances = instances_dir(files, root);
 
     let mut planned = Vec::new();
     let mut total_bytes = 0u64;
@@ -468,7 +484,7 @@ pub fn import(
         if relative_within(&instances, &source).is_none() {
             return Err(Error::other(format!("not an instance folder: {id}")));
         }
-        let config = read_config(files, &source)?;
+        let config = read_instance_config(files, &source)?;
         let game = game_dir(files, &source)
             .ok_or_else(|| Error::other(format!("{id} has no game folder")))?;
         let entries = walk_files(files, &game, &|_| false)?;
@@ -661,6 +677,39 @@ version = 'SjuTFuhz'
 addonId = 'P7dR8mSH'
 type = 'REQUIRED'
 "#;
+
+    #[test]
+    fn instance_folder_follows_the_launcher_config() {
+        use crate::paths::Paths;
+
+        let base = std::env::temp_dir().join(format!("basalt-prism-{}", uuid::Uuid::new_v4()));
+        let root = base.join("PrismLauncher");
+        let moved = base.join("games").join("prism-instances");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&moved).unwrap();
+        let files = FileManager::new(Paths::plain(base.join("data"))).unwrap();
+
+        assert_eq!(instances_dir(&files, &root), root.join("instances"));
+
+        std::fs::write(
+            root.join("prismlauncher.cfg"),
+            format!(
+                "[General]\nConfigVersion=1.3\nInstanceDir={}\n",
+                moved.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(instances_dir(&files, &root), moved);
+
+        std::fs::write(
+            root.join("prismlauncher.cfg"),
+            "[General]\nInstanceDir=instances\n",
+        )
+        .unwrap();
+        assert_eq!(instances_dir(&files, &root), root.join("instances"));
+
+        std::fs::remove_dir_all(base).ok();
+    }
 
     #[test]
     fn config_reads_flat_keys_under_a_heading() {

@@ -48,8 +48,20 @@ fn database(root: &Path) -> PathBuf {
     root.join("app.db")
 }
 
+fn custom_dir(root: &Path) -> Option<PathBuf> {
+    let conn = open(root).ok()?;
+    let configured: Option<String> = conn
+        .query_row("SELECT custom_dir FROM settings", [], |row| row.get(0))
+        .ok()?;
+    configured
+        .filter(|path| !path.trim().is_empty())
+        .map(PathBuf::from)
+}
+
 fn profiles_dir(root: &Path) -> PathBuf {
-    root.join("profiles")
+    custom_dir(root)
+        .unwrap_or_else(|| root.to_path_buf())
+        .join("profiles")
 }
 
 fn open(root: &Path) -> Result<Connection> {
@@ -414,7 +426,7 @@ pub fn import(
 mod tests {
     use rusqlite::Connection;
 
-    use super::read_profiles;
+    use super::{profiles_dir, read_profiles};
 
     #[test]
     fn a_corrupt_profile_row_is_reported() {
@@ -453,6 +465,37 @@ mod tests {
 
         let error = read_profiles(&root).unwrap_err();
         assert!(error.to_string().contains("Modrinth instance row"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn profile_folder_follows_the_custom_directory() {
+        let root = std::env::temp_dir().join(format!("basalt-modrinth-{}", uuid::Uuid::new_v4()));
+        let moved = root.join("games").join("modrinth");
+        std::fs::create_dir_all(&root).unwrap();
+
+        assert_eq!(profiles_dir(&root), root.join("profiles"));
+
+        let connection = Connection::open(root.join("app.db")).unwrap();
+        connection
+            .execute_batch("CREATE TABLE settings (id INTEGER, custom_dir TEXT);")
+            .unwrap();
+        connection
+            .execute("INSERT INTO settings VALUES (0, NULL)", [])
+            .unwrap();
+        drop(connection);
+        assert_eq!(profiles_dir(&root), root.join("profiles"));
+
+        let connection = Connection::open(root.join("app.db")).unwrap();
+        connection
+            .execute(
+                "UPDATE settings SET custom_dir = ?1",
+                [moved.display().to_string()],
+            )
+            .unwrap();
+        drop(connection);
+        assert_eq!(profiles_dir(&root), moved.join("profiles"));
 
         std::fs::remove_dir_all(root).unwrap();
     }
