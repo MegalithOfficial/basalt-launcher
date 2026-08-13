@@ -26,6 +26,7 @@
   libpulseaudio,
   pipewire,
   udev,
+  wayland,
   buildChannel ? "release",
 }:
 
@@ -58,6 +59,7 @@ let
       libxext
       libxrandr
       libxxf86vm
+      wayland
 
       # lwjgl
       (lib.getLib stdenv.cc.cc)
@@ -114,17 +116,11 @@ rustPlatform.buildRustPackage {
 
   doCheck = false;
 
-  postInstall = ''
+  preFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
     gappsWrapperArgs+=(
-      ${lib.optionalString stdenv.hostPlatform.isLinux ''
-        --set LD_LIBRARY_PATH ${runtimeDependencies}
-        --set __NV_DISABLE_EXPLICIT_SYNC 1
-      ''}
+      --set LD_LIBRARY_PATH ${runtimeDependencies}
+      --set __NV_DISABLE_EXPLICIT_SYNC 1
     )
-
-    glibPostInstallHook
-    gappsWrapperArgsHook
-    wrapGApp "$out/bin/basalt-launcher"
   '';
 
   meta = {
