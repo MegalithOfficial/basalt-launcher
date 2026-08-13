@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 docs/*.md
+
+.devenv*
+.direnv
+.envrc
+devenv.*
+/result

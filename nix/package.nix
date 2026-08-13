@@ -4,39 +4,89 @@
   importNpmLock,
   nodejs,
   pkg-config,
-  wrapGAppsHook3,
-  makeDesktopItem,
-  copyDesktopItems,
+  wrapGAppsHook4,
   glib-networking,
-  gtk3,
-  libayatana-appindicator,
-  librsvg,
+  cacert,
+  npmHooks,
+  cargo-tauri,
   openssl,
+  stdenv,
   webkitgtk_4_1,
+  gsettings-desktop-schemas,
+  addDriverRunpath,
+  libGL,
+  libx11,
+  libxcursor,
+  libxext,
+  libxrandr,
+  libxxf86vm,
+  flite,
+  alsa-lib,
+  libjack2,
+  libpulseaudio,
+  pipewire,
+  udev,
+  wayland,
   buildChannel ? "release",
 }:
 
 let
   source = lib.cleanSourceWith {
     src = ../.;
-    filter = path: type:
-      let name = baseNameOf path;
-      in !(builtins.elem name [ ".git" "dist" "node_modules" "target" ]);
+    filter =
+      path: type:
+      let
+        name = baseNameOf path;
+      in
+      !(builtins.elem name [
+        ".git"
+        "dist"
+        "node_modules"
+        "target"
+      ]);
   };
-  manifest = builtins.fromTOML (builtins.readFile ../src-tauri/Cargo.toml);
-  desktopItem = makeDesktopItem {
-    name = "basalt-launcher";
-    desktopName = "Basalt Launcher";
-    comment = "A polished Minecraft launcher";
-    exec = "basalt-launcher";
-    icon = "basalt-launcher";
-    categories = [ "Game" ];
-  };
+  manifest = fromTOML (builtins.readFile ../src-tauri/Cargo.toml);
+
+  # similar to https://github.com/NixOS/nixpkgs/blob/2fcb964de67fcf60b43471c55d5d99e61a9ccb5a/pkgs/by-name/mo/modrinth-app/package.nix#L54
+  runtimeDependencies = lib.optionalString stdenv.hostPlatform.isLinux (
+    lib.makeLibraryPath [
+      addDriverRunpath.driverLink
+
+      # glfw
+      libGL
+      libx11
+      libxcursor
+      libxext
+      libxrandr
+      libxxf86vm
+      wayland
+
+      # lwjgl
+      (lib.getLib stdenv.cc.cc)
+
+      # narrator support
+      flite
+
+      # openal
+      alsa-lib
+      libjack2
+      libpulseaudio
+      pipewire
+
+      # oshi
+      udev
+    ]
+  );
 in
 rustPlatform.buildRustPackage {
   pname = if buildChannel == "dev" then "basalt-launcher-dev" else "basalt-launcher";
   inherit (manifest.package) version;
   src = source;
+
+  postPatch = ''
+    substituteInPlace src-tauri/tauri.conf.json \
+      --replace 'bun run build:frontend' 'npm run build:frontend'
+  '';
 
   cargoRoot = "src-tauri";
   buildAndTestSubdir = "src-tauri";
@@ -45,37 +95,33 @@ rustPlatform.buildRustPackage {
   npmDeps = importNpmLock { npmRoot = source; };
 
   nativeBuildInputs = [
+    cacert
+    cargo-tauri.hook
     nodejs
     pkg-config
-    wrapGAppsHook3
-    copyDesktopItems
     importNpmLock.npmConfigHook
+    npmHooks.npmInstallHook
+    wrapGAppsHook4
   ];
 
   buildInputs = [
-    glib-networking
-    gtk3
-    libayatana-appindicator
-    librsvg
     openssl
     webkitgtk_4_1
+    glib-networking
+    gsettings-desktop-schemas
   ];
 
   BASALT_BUILD_CHANNEL = buildChannel;
   BASALT_DISTRIBUTION = "nix";
 
-  preBuild = ''
-    npm run build:frontend
-  '';
-
   doCheck = false;
 
-  postInstall = ''
-    install -Dm644 src-tauri/icons/128x128.png \
-      "$out/share/icons/hicolor/128x128/apps/basalt-launcher.png"
+  preFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
+    gappsWrapperArgs+=(
+      --set LD_LIBRARY_PATH ${runtimeDependencies}
+      --set __NV_DISABLE_EXPLICIT_SYNC 1
+    )
   '';
-
-  desktopItems = [ desktopItem ];
 
   meta = {
     description = "A polished Minecraft launcher with practical instance and content management";
