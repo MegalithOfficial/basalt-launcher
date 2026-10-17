@@ -31,6 +31,8 @@ const MODRINTH: &str = "https://api.modrinth.com/v2";
 #[derive(Deserialize)]
 pub(crate) struct MrIndex {
     pub name: String,
+    #[serde(rename = "versionId", default)]
+    pub version_id: Option<String>,
     #[serde(default)]
     pub dependencies: HashMap<String, String>,
     #[serde(default)]

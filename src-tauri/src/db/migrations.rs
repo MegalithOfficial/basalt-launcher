@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::Result;
 
-pub(super) const SCHEMA_VERSION: i64 = 17;
+pub(super) const SCHEMA_VERSION: i64 = 18;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
@@ -344,6 +344,16 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
              FROM content_sources;
              DROP TABLE content_sources;",
         )?;
+    }
+
+    for table in ["content_files", "server_content_files"] {
+        for column in ["alt_provider", "alt_project_id", "alt_version_id"] {
+            add_column_if_missing(conn, table, column, "TEXT")?;
+        }
+        add_column_if_missing(conn, table, "alt_checked_at", "INTEGER")?;
+    }
+    for table in ["content_updates", "server_content_updates"] {
+        add_column_if_missing(conn, table, "provider", "TEXT")?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;

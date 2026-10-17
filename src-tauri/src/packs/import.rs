@@ -181,7 +181,7 @@ fn preview(archive: &Archive) -> PackPreview {
             PackPreview {
                 format: PackPreviewFormat::Mrpack,
                 name: index.name.clone(),
-                version: None,
+                version: index.version_id.clone().filter(|v| !v.trim().is_empty()),
                 author: None,
                 game_version: game_version.clone().unwrap_or_default(),
                 loader: loader.as_ref().map(|(name, _)| name.clone()),
@@ -394,6 +394,7 @@ async fn resolve_curseforge(state: &AppState, manifest: &CfManifest) -> Result<R
             } else {
                 manifest.name.clone()
             },
+            version_id: manifest.version.clone().filter(|v| !v.is_empty()),
             dependencies,
             files,
         },

@@ -238,6 +238,7 @@ mod tests {
     fn index(files: Vec<MrFile>, dependencies: &[(&str, &str)]) -> MrIndex {
         MrIndex {
             name: "Test Pack".to_string(),
+            version_id: None,
             dependencies: dependencies
                 .iter()
                 .map(|(key, value)| ((*key).to_string(), (*value).to_string()))

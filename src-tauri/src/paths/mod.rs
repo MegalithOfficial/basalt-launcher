@@ -454,13 +454,14 @@ mod tests {
     #[test]
     fn extra_roots_drop_anything_already_covered() {
         let p = paths();
+        let smp = std::env::temp_dir().join("smp");
         p.adopt_extras(vec![
             p.root.join("servers").join("inside"),
-            PathBuf::from("/mnt/disk/smp"),
-            PathBuf::from("/mnt/disk/smp/world"),
+            smp.clone(),
+            smp.join("world"),
             PathBuf::from("relative/path"),
         ]);
-        assert_eq!(p.extra_roots(), vec![PathBuf::from("/mnt/disk/smp")]);
+        assert_eq!(p.extra_roots(), vec![smp]);
         assert!(p.capability_roots().iter().all(|root| *root == p.root));
         assert!(p.unavailable().is_empty());
     }
@@ -468,11 +469,9 @@ mod tests {
     #[test]
     fn an_extra_root_replaces_the_nested_ones_it_covers() {
         let p = paths();
-        p.adopt_extras(vec![
-            PathBuf::from("/mnt/disk/smp/world"),
-            PathBuf::from("/mnt/disk/smp"),
-        ]);
-        assert_eq!(p.extra_roots(), vec![PathBuf::from("/mnt/disk/smp")]);
+        let smp = std::env::temp_dir().join("smp");
+        p.adopt_extras(vec![smp.join("world"), smp.clone()]);
+        assert_eq!(p.extra_roots(), vec![smp]);
     }
 
     #[test]

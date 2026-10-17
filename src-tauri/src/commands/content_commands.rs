@@ -407,6 +407,25 @@ pub fn get_content_updates(
     state.db.content_updates(&instance_id)
 }
 
+/** An update names the platform it was found on, older rows mean the file's own. */
+fn update_source(
+    file: &crate::db::ContentFile,
+    update: &crate::db::ContentUpdate,
+) -> Result<(search::Provider, String)> {
+    let provider = update.provider.as_deref().or(file.provider.as_deref());
+    let (Some(provider), Some(primary)) = (provider, file.provider.as_deref()) else {
+        return Err(Error::other("This file is not linked to a project."));
+    };
+    let project_id = if provider == primary {
+        file.project_id.clone()
+    } else {
+        file.alt_project_id.clone()
+    };
+    let project_id =
+        project_id.ok_or_else(|| Error::other("This file is not linked to a project."))?;
+    Ok((search::Provider::parse(provider)?, project_id))
+}
+
 async fn restricted_update(
     state: &AppState,
     instance_id: &str,
@@ -419,18 +438,16 @@ async fn restricted_update(
         .db
         .content_file(instance_id, kind, file_name)?
         .ok_or_else(|| Error::other("This file is not linked to a project."))?;
-    let (Some(provider), Some(project_id)) = (file.provider, file.project_id) else {
-        return Err(Error::other("This file is not linked to a project."));
-    };
-    if provider != "curseforge" {
-        return Ok(None);
-    }
     let update = state
         .db
         .content_updates(instance_id)?
         .into_iter()
         .find(|update| update.kind == kind && update.file_name == file_name)
         .ok_or_else(|| Error::other("No update is available for this file."))?;
+    let (provider, project_id) = update_source(&file, &update)?;
+    if provider != search::Provider::Curseforge {
+        return Ok(None);
+    }
     let version = search::fetch_version(
         state,
         search::Provider::Curseforge,
@@ -523,6 +540,8 @@ pub async fn apply_content_update(
         let primary = version
             .primary_file()
             .ok_or_else(|| Error::other("This update has no downloadable file."))?;
+        let (alt_provider, alt_project_id) =
+            search::resolve::alternate_link(Some(&previous), search::Provider::Curseforge);
         state.db.record_content_file(
             &instance_id,
             &kind,
@@ -530,9 +549,16 @@ pub async fn apply_content_update(
                 file_name: requirement.file_name.clone(),
                 sha1: primary.sha1.clone(),
                 sha512: primary.sha512.clone(),
+                murmur2: None,
+                provider: Some(search::Provider::Curseforge.as_str().to_string()),
+                project_id: Some(requirement.project_id.clone()),
                 version_id: Some(version.id.clone()),
                 dependencies: serde_json::to_string(&version.dependencies).ok(),
                 installed_at: chrono::Utc::now().timestamp(),
+                alt_provider,
+                alt_project_id,
+                alt_version_id: None,
+                alt_checked_at: None,
                 ..previous.clone()
             },
         )?;
@@ -554,18 +580,14 @@ pub async fn apply_content_update(
         .db
         .content_file(&instance_id, &kind, &file_name)?
         .ok_or_else(|| Error::other("This file is not linked to a project."))?;
-    let (Some(provider), Some(project_id)) = (file.provider.clone(), file.project_id.clone())
-    else {
-        return Err(Error::other("This file is not linked to a project."));
-    };
     let update = state
         .db
         .content_updates(&instance_id)?
         .into_iter()
         .find(|u| u.kind == kind && u.file_name == file_name)
         .ok_or_else(|| Error::other("No update is available for this file."))?;
+    let (provider, project_id) = update_source(&file, &update)?;
 
-    let provider = search::Provider::parse(&provider)?;
     let plan = search::resolve::plan(
         &state,
         provider,

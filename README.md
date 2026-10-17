@@ -58,6 +58,9 @@ settings.
 - **Content discovery.** Browse Modrinth and CurseForge with compatibility filtering,
   dependency resolution, changelogs, and update checks.
 - **Modpack installation.** Create an instance directly from a Modrinth modpack.
+- **Modpack export.** Write an instance back out as a Modrinth `.mrpack` or
+  CurseForge zip, pick which folders and files travel along, and let linked mods
+  go by download link instead of being bundled.
 - **Microsoft accounts.** Manage multiple accounts with device-code sign-in and
   silent token refresh.
 - **Skins and capes.** Import, preview, save, and apply skins, then manage capes from

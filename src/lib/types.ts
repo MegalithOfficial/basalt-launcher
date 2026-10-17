@@ -191,11 +191,16 @@ export interface ContentFile {
   origin: ContentOrigin;
   pack_version_id: string | null;
   installed_at: number;
+  alt_provider: SearchProvider | null;
+  alt_project_id: string | null;
+  alt_version_id: string | null;
+  alt_checked_at: number | null;
 }
 
 export interface ContentUpdate {
   kind: string;
   file_name: string;
+  provider: SearchProvider | null;
   latest_version_id: string;
   latest_name: string;
   latest_file_name: string;
@@ -396,6 +401,23 @@ export interface PackExport {
   linked: number;
   bundled: number;
   bytes: number;
+}
+
+export interface ExportCandidate {
+  path: string;
+  directory: boolean;
+  size: number;
+  default_selected: boolean;
+  modrinth: number;
+  curseforge: number;
+}
+
+export interface ExportOptions {
+  name: string | null;
+  version: string | null;
+  description: string | null;
+  included: string[];
+  excluded: string[];
 }
 
 export type TaskKind =

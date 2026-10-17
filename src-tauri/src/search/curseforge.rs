@@ -220,6 +220,8 @@ pub struct File {
     pub hashes: Vec<Hash>,
     #[serde(rename = "fileLength", default)]
     pub file_length: Option<u64>,
+    #[serde(rename = "fileFingerprint", default)]
+    pub file_fingerprint: u64,
     #[serde(rename = "alternateFileId", default)]
     pub alternate_file_id: u64,
     #[serde(rename = "parentProjectFileId", default)]
@@ -711,7 +713,6 @@ struct FingerprintMatches {
 
 #[derive(Deserialize)]
 pub struct FingerprintMatch {
-    pub id: u64,
     pub file: File,
 }
 
@@ -801,7 +802,7 @@ pub async fn taxonomy(state: &AppState, kind: ContentKind) -> Result<FilterTaxon
 
 #[cfg(test)]
 mod tests {
-    use super::{split_game_versions, File, SortableGameVersion};
+    use super::{split_game_versions, File, FingerprintMatch, SortableGameVersion};
 
     fn file_with(game_versions: &[&str]) -> File {
         File {
@@ -817,6 +818,7 @@ mod tests {
             download_url: None,
             hashes: Vec::new(),
             file_length: None,
+            file_fingerprint: 0,
             game_versions: game_versions.iter().map(|s| s.to_string()).collect(),
             sortable_game_versions: Vec::new(),
             dependencies: Vec::new(),
@@ -851,5 +853,13 @@ mod tests {
         let (versions, loaders) = split_game_versions(&file);
         assert_eq!(versions, vec!["1.21.1"]);
         assert_eq!(loaders, vec!["neoforge"]);
+    }
+
+    #[test]
+    fn a_fingerprint_match_carries_the_fingerprint_on_its_file() {
+        let body = r#"{"id":609977,"file":{"id":5637783,"modId":609977,"fileName":"AE2-Things-1.4.2-beta.jar","fileFingerprint":777740976}}"#;
+        let parsed: FingerprintMatch = serde_json::from_str(body).unwrap();
+        assert_eq!(parsed.file.mod_id, 609977);
+        assert_eq!(parsed.file.file_fingerprint, 777740976);
     }
 }

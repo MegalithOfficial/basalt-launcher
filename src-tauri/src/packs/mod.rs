@@ -2,7 +2,7 @@ mod export;
 mod import;
 pub(crate) mod packwiz;
 
-pub use export::{export_instance, PackExport};
+pub use export::{export_candidates, export_instance, ExportCandidate, ExportOptions, PackExport};
 pub use import::{
     finish_import, inspect_pack, prepare_import, prepare_packwiz_import, PackPreview,
 };
@@ -18,18 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
-const CONTENT_DIRS: [&str; 4] = ["mods", "resourcepacks", "shaderpacks", "schematics"];
-
-const SKIP_DIRS: [&str; 8] = [
-    "saves",
-    "logs",
-    "crash-reports",
-    "screenshots",
-    "backups",
-    ".fabric",
-    "downloads",
-    "versions",
-];
+pub const CONTENT_DIRS: [&str; 4] = ["mods", "resourcepacks", "shaderpacks", "schematics"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -73,15 +62,6 @@ pub(super) fn loader_dependency_key(loader: &str) -> Option<&'static str> {
     }
 }
 
-pub(super) fn is_skipped(relative: &Path) -> bool {
-    relative
-        .components()
-        .next()
-        .and_then(|part| part.as_os_str().to_str())
-        .map(|name| SKIP_DIRS.contains(&name))
-        .unwrap_or(false)
-}
-
 pub(super) fn is_content_path(relative: &Path) -> bool {
     relative
         .components()
@@ -95,14 +75,12 @@ pub(super) fn is_content_path(relative: &Path) -> bool {
 mod tests {
     use std::path::Path;
 
-    use super::{is_content_path, is_skipped, loader_dependency_key, PackFormat};
+    use super::{is_content_path, loader_dependency_key, PackFormat};
 
     #[test]
     fn classifies_instance_paths() {
         assert!(is_content_path(Path::new("mods/sodium.jar")));
         assert!(!is_content_path(Path::new("config/sodium.json")));
-        assert!(is_skipped(Path::new("saves/world/level.dat")));
-        assert!(!is_skipped(Path::new("config/options.txt")));
     }
 
     #[test]

@@ -52,12 +52,20 @@ fn linux_install_source(
     aur_marker: bool,
     eopkg_marker: bool,
 ) -> InstallSource {
-    if appimage {
+    if appimage && distribution == "linux_bundle" {
         return source(
             "appimage",
             "AppImage",
             UpdatePolicy::SelfManaged,
             "Basalt downloads and installs signed updates.",
+        );
+    }
+    if appimage {
+        return source(
+            "appimage",
+            "AppImage (local build)",
+            UpdatePolicy::Manual,
+            "Rebuild the AppImage from your checkout to update.",
         );
     }
     if flatpak {
@@ -791,6 +799,14 @@ mod tests {
     fn treats_missing_components_as_zero() {
         assert!(!is_newer("1.0", "1.0.0"));
         assert!(is_newer("1.0.1", "1.0"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_locally_built_appimage_never_pulls_release_builds() {
+        let local = linux_install_source("source", true, false, false, false, false, false);
+        assert_eq!(local.id, "appimage");
+        assert_eq!(local.policy, UpdatePolicy::Manual);
     }
 
     #[test]

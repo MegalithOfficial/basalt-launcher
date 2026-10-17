@@ -286,6 +286,7 @@ pub fn run() {
             commands::pack_commands::import_pack_file,
             commands::pack_commands::import_packwiz_url,
             commands::pack_commands::export_instance_pack,
+            commands::pack_commands::list_export_candidates,
             commands::pack_commands::pack_export_name,
             commands::launch_commands::launch_instance,
             commands::launch_commands::kill_instance,

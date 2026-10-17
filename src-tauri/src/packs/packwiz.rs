@@ -869,6 +869,7 @@ pub(crate) async fn resolve(state: &AppState, source: &str) -> Result<ResolvedPa
         },
         index: MrIndex {
             name: pack.name,
+            version_id: None,
             dependencies,
             files,
         },

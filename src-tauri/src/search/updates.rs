@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::{curseforge, model::*, modrinth};
 use crate::{db::ContentUpdate, error::Result, state::AppState};
@@ -14,23 +14,62 @@ pub fn is_stale(checked_at: Option<i64>) -> bool {
     }
 }
 
+/** One file as seen by one platform, primary or alternate. */
+struct Tracked {
+    file_name: String,
+    sha1: Option<String>,
+    project_id: String,
+    version_id: Option<String>,
+}
+
+fn primary_link(file: &crate::db::ContentFile) -> Option<(Provider, Tracked)> {
+    let provider = Provider::parse(file.provider.as_deref()?).ok()?;
+    Some((
+        provider,
+        Tracked {
+            file_name: file.file_name.clone(),
+            sha1: file.sha1.clone(),
+            project_id: file.project_id.clone()?,
+            version_id: file.version_id.clone(),
+        },
+    ))
+}
+
+fn alternate_link(file: &crate::db::ContentFile) -> Option<(Provider, Tracked)> {
+    let provider = Provider::parse(file.alt_provider.as_deref()?).ok()?;
+    Some((
+        provider,
+        Tracked {
+            file_name: file.file_name.clone(),
+            sha1: file.sha1.clone(),
+            project_id: file.alt_project_id.clone()?,
+            version_id: file.alt_version_id.clone(),
+        },
+    ))
+}
+
+fn split_by_provider(links: Vec<(Provider, Tracked)>) -> (Vec<Tracked>, Vec<Tracked>) {
+    let mut modrinth = Vec::new();
+    let mut curseforge = Vec::new();
+    for (provider, tracked) in links {
+        match provider {
+            Provider::Modrinth => modrinth.push(tracked),
+            Provider::Curseforge => curseforge.push(tracked),
+        }
+    }
+    (modrinth, curseforge)
+}
+
 async fn modrinth_updates(
     state: &AppState,
-    files: &[crate::db::ContentFile],
+    tracked: Vec<Tracked>,
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
-    include_pack: bool,
 ) -> Vec<ContentUpdate> {
-    let candidates: Vec<(String, String, String)> = files
-        .iter()
-        .filter(|f| include_pack || f.origin != "pack")
-        .filter(|f| f.provider.as_deref() == Some("modrinth"))
-        .filter_map(|f| {
-            let sha1 = f.sha1.clone()?;
-            let version_id = f.version_id.clone()?;
-            Some((f.file_name.clone(), sha1, version_id))
-        })
+    let candidates: Vec<(String, String, String)> = tracked
+        .into_iter()
+        .filter_map(|t| Some((t.file_name, t.sha1?, t.version_id?)))
         .collect();
 
     if candidates.is_empty() {
@@ -67,6 +106,7 @@ async fn modrinth_updates(
             Some(ContentUpdate {
                 kind: kind.to_string(),
                 file_name,
+                provider: Some(Provider::Modrinth.as_str().to_string()),
                 latest_version_id: version.id.clone(),
                 latest_name: if version.name.is_empty() {
                     version.version_number.clone()
@@ -81,32 +121,21 @@ async fn modrinth_updates(
 
 async fn curseforge_updates(
     state: &AppState,
-    files: &[crate::db::ContentFile],
+    tracked: Vec<Tracked>,
     kind: &str,
     game_version: &str,
     loader: Option<&str>,
-    include_pack: bool,
 ) -> Vec<ContentUpdate> {
-    if curseforge::key(state).is_err() {
+    if tracked.is_empty() || curseforge::key(state).is_err() {
         return Vec::new();
     }
     let Ok(content_kind) = ContentKind::parse(kind) else {
         return Vec::new();
     };
-
-    let tracked: Vec<(String, String, Option<String>)> = files
-        .iter()
-        .filter(|f| include_pack || f.origin != "pack")
-        .filter(|f| f.provider.as_deref() == Some("curseforge"))
-        .filter_map(|f| {
-            let project_id = f.project_id.clone()?;
-            Some((f.file_name.clone(), project_id, f.version_id.clone()))
-        })
+    let tracked: Vec<(String, String, Option<String>)> = tracked
+        .into_iter()
+        .map(|t| (t.file_name, t.project_id, t.version_id))
         .collect();
-
-    if tracked.is_empty() {
-        return Vec::new();
-    }
 
     let mut best: HashMap<String, ProjectVersion> = HashMap::new();
     for (_, project_id, _) in &tracked {
@@ -137,12 +166,49 @@ async fn curseforge_updates(
             Some(ContentUpdate {
                 kind: kind.to_string(),
                 file_name,
+                provider: Some(Provider::Curseforge.as_str().to_string()),
                 latest_version_id: latest.id.clone(),
                 latest_name: latest.name.clone(),
                 latest_file_name: latest.file_name.clone(),
             })
         })
         .collect()
+}
+
+/**
+ * The platform a file was downloaded from is asked first. Files it has nothing
+ * newer for are then asked on their alternate platform, so a mod whose author
+ * moved on to the other site still gets updates.
+ */
+async fn check_files(
+    state: &AppState,
+    files: &[crate::db::ContentFile],
+    kind: &str,
+    game_version: &str,
+    loader: Option<&str>,
+    include_pack: bool,
+) -> Vec<ContentUpdate> {
+    let files: Vec<&crate::db::ContentFile> = files
+        .iter()
+        .filter(|f| include_pack || f.origin != "pack")
+        .collect();
+
+    let (modrinth, curseforge) =
+        split_by_provider(files.iter().filter_map(|f| primary_link(f)).collect());
+    let mut all = modrinth_updates(state, modrinth, kind, game_version, loader).await;
+    all.extend(curseforge_updates(state, curseforge, kind, game_version, loader).await);
+
+    let found: HashSet<&str> = all.iter().map(|u| u.file_name.as_str()).collect();
+    let (modrinth, curseforge) = split_by_provider(
+        files
+            .iter()
+            .filter(|f| !found.contains(f.file_name.as_str()))
+            .filter_map(|f| alternate_link(f))
+            .collect(),
+    );
+    all.extend(modrinth_updates(state, modrinth, kind, game_version, loader).await);
+    all.extend(curseforge_updates(state, curseforge, kind, game_version, loader).await);
+    all
 }
 
 pub async fn check(
@@ -162,10 +228,7 @@ pub async fn check(
             .db
             .content_files(instance_id, kind)
             .unwrap_or_default();
-        all.extend(modrinth_updates(state, &files, kind, game_version, loader, include_pack).await);
-        all.extend(
-            curseforge_updates(state, &files, kind, game_version, loader, include_pack).await,
-        );
+        all.extend(check_files(state, &files, kind, game_version, loader, include_pack).await);
     }
     state
         .db
@@ -183,8 +246,7 @@ pub async fn check_server(
         .server_content_files(&server.id, kind)
         .unwrap_or_default();
     let loader = Some(server.flavor.id());
-    let mut all = modrinth_updates(state, &files, kind, &server.version_id, loader, true).await;
-    all.extend(curseforge_updates(state, &files, kind, &server.version_id, loader, true).await);
+    let all = check_files(state, &files, kind, &server.version_id, loader, true).await;
     state
         .db
         .replace_server_content_updates(&server.id, &all, chrono::Utc::now().timestamp())?;

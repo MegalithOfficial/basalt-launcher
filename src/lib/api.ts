@@ -38,6 +38,8 @@ import type {
   ModpackInstallPlan,
   ModpackUpgrade,
   ModpackUpgradePlan,
+  ExportCandidate,
+  ExportOptions,
   PackExport,
   PackFormat,
   PackPreview,
@@ -422,8 +424,14 @@ export const api = {
     call<Instance>("import_pack_file", { path, name }),
   importPackwizUrl: (url: string, name: string | null) =>
     call<Instance>("import_packwiz_url", { url, name }),
-  exportInstancePack: (instanceId: string, format: PackFormat, path: string) =>
-    call<PackExport>("export_instance_pack", { instanceId, format, path }),
+  exportInstancePack: (
+    instanceId: string,
+    format: PackFormat,
+    path: string,
+    options: ExportOptions,
+  ) => call<PackExport>("export_instance_pack", { instanceId, format, path, options }),
+  listExportCandidates: (instanceId: string, parent: string | null) =>
+    call<ExportCandidate[]>("list_export_candidates", { instanceId, parent }),
   packExportName: (name: string, format: PackFormat) =>
     call<string>("pack_export_name", { name, format }),
   listTasks: () => call<Task[]>("list_tasks"),

@@ -100,10 +100,27 @@ pub async fn export_instance_pack(
     instance_id: String,
     format: String,
     path: String,
+    options: packs::ExportOptions,
 ) -> Result<PackExport> {
     let format = PackFormat::parse(&format)?;
     let instance = find_instance(&state, &instance_id)?;
-    packs::export_instance(&state, &instance, format, PathBuf::from(path)).await
+    packs::export_instance(&state, &instance, format, PathBuf::from(path), options).await
+}
+
+#[tauri::command]
+pub fn list_export_candidates(
+    state: State<'_, AppState>,
+    instance_id: String,
+    parent: Option<String>,
+) -> Result<Vec<packs::ExportCandidate>> {
+    let instance = find_instance(&state, &instance_id)?;
+    let mut sources = Vec::new();
+    for kind in packs::CONTENT_DIRS {
+        for file in state.db.content_files(&instance.id, kind)? {
+            sources.push((kind.to_string(), file));
+        }
+    }
+    packs::export_candidates(&state.files, &instance, &sources, parent.as_deref())
 }
 
 #[tauri::command]

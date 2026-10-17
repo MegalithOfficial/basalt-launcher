@@ -18,6 +18,7 @@ import type {
   AccountView,
   AppUpdateStatus,
   ConsoleLine,
+  ContentItem,
   ContentKind,
   ContentUpdate,
   PendingOperation,
@@ -493,6 +494,25 @@ function pruneInstances(ids: string[]) {
   };
 }
 
+/**
+ * Both platform ids of a file land in one map so Discover recognises it on
+ * either tab. Modrinth ids are base62, CurseForge ids numeric, no collisions.
+ */
+function installedByProject(items: ContentItem[]) {
+  const map: Record<string, { file_name: string; version_id: string | null }> = {};
+  for (const item of items) {
+    const source = item.source;
+    if (!source) continue;
+    if (source.project_id) {
+      map[source.project_id] = { file_name: item.file_name, version_id: source.version_id };
+    }
+    if (source.alt_project_id) {
+      map[source.alt_project_id] = { file_name: item.file_name, version_id: source.alt_version_id };
+    }
+  }
+  return map;
+}
+
 export const useStore = create<AppStore>((set) => ({
   view: "home",
   ready: false,
@@ -519,7 +539,13 @@ export const useStore = create<AppStore>((set) => ({
   launching: [],
   logsTab: "launcher",
   media: {},
-  selectedInstanceId: null,
+  selectedInstanceId: (() => {
+    try {
+      return localStorage.getItem("home-instance");
+    } catch {
+      return null;
+    }
+  })(),
   detailInstanceId: null,
   detailServerId: null,
   viewStack: [],
@@ -635,15 +661,7 @@ export const useStore = create<AppStore>((set) => ({
   refreshServerContentSources: async (serverId) => {
     try {
       const items = await api.listServerContent(serverId);
-      const map: Record<string, { file_name: string; version_id: string | null }> = {};
-      items.forEach((item) => {
-        if (item.source?.project_id) {
-          map[item.source.project_id] = {
-            file_name: item.file_name,
-            version_id: item.source.version_id,
-          };
-        }
-      });
+      const map = installedByProject(items);
       set((s) => ({
         contentSources: { ...s.contentSources, [`${serverId}:mods`]: map },
       }));
@@ -655,15 +673,7 @@ export const useStore = create<AppStore>((set) => ({
   refreshContentSources: async (instanceId, kind) => {
     try {
       const items = await api.listInstanceContent(instanceId, kind);
-      const map: Record<string, { file_name: string; version_id: string | null }> = {};
-      items.forEach((item) => {
-        if (item.source?.project_id) {
-          map[item.source.project_id] = {
-            file_name: item.file_name,
-            version_id: item.source.version_id,
-          };
-        }
-      });
+      const map = installedByProject(items);
       set((s) => ({
         contentSources: { ...s.contentSources, [`${instanceId}:${kind}`]: map },
       }));
@@ -1102,7 +1112,9 @@ export const useStore = create<AppStore>((set) => ({
           serverConsole,
           ready: true,
           error: null,
-          selectedInstanceId: s.selectedInstanceId ?? instances[0]?.id ?? null,
+          selectedInstanceId: instances.some((i) => i.id === s.selectedInstanceId)
+            ? s.selectedInstanceId
+            : (instances[0]?.id ?? null),
           discoverTargetId: s.discoverTargetId ?? instances[0]?.id ?? null,
           tasks: Object.fromEntries(tasks.map((t) => [t.id, t])),
           taskOrder: tasks.map((t) => t.id),
@@ -1660,6 +1672,16 @@ export const useStore = create<AppStore>((set) => ({
     }
   },
 }));
+
+useStore.subscribe((state, previous) => {
+  if (state.selectedInstanceId === previous.selectedInstanceId) return;
+  try {
+    if (state.selectedInstanceId) localStorage.setItem("home-instance", state.selectedInstanceId);
+    else localStorage.removeItem("home-instance");
+  } catch {
+    return;
+  }
+});
 
 const BROWSE_VIEWS = new Set<View>(["discover", "project"]);
 

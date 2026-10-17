@@ -555,6 +555,7 @@ fn record_mods(db: &Db, instance_id: &str, manifest: &InstanceFile, pack_version
                 pack_version.map(str::to_string)
             },
             installed_at: now,
+            ..Default::default()
         };
         let _ = db.record_content_file(instance_id, kind, &record);
     }

@@ -272,6 +272,7 @@ fn record_files(
             origin: if pack.is_some() { "pack" } else { "user" }.to_string(),
             pack_version_id: pack.map(str::to_string),
             installed_at: now,
+            ..Default::default()
         };
         db.record_content_file(instance_id, kind, &record)?;
     }

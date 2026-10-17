@@ -36,14 +36,14 @@ pub fn validate(paths: &Paths, target: &Path) -> Result<PathBuf> {
         return Err(Error::other("That path is not a folder."));
     }
     let canonical = target.canonicalize()?;
-    if paths.root.starts_with(&canonical) {
+    if resolved(&paths.root).starts_with(&canonical) {
         return Err(Error::other(
             "That folder holds the Basalt data directory. Pick the server folder itself.",
         ));
     }
     for slot in DataRoot::ALL {
         let located = paths.located_at(slot);
-        if located.starts_with(&canonical) {
+        if resolved(&located).starts_with(&canonical) {
             return Err(Error::other(format!(
                 "That folder holds the {} directory. Pick the server folder itself.",
                 slot.label().to_lowercase()
@@ -56,12 +56,24 @@ pub fn validate(paths: &Paths, target: &Path) -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from);
-    if home.is_some_and(|home| home == canonical) {
+    if home.is_some_and(|home| resolved(&home) == canonical) {
         return Err(Error::other(
             "Pick the server folder, not your home folder.",
         ));
     }
     Ok(canonical)
+}
+
+/**
+ * Same form as `canonicalize` output (`\\?\` on Windows), even for paths that do not exist yet.
+ */
+fn resolved(path: &Path) -> PathBuf {
+    path.ancestors()
+        .find_map(|ancestor| {
+            let rest = path.strip_prefix(ancestor).ok()?;
+            Some(ancestor.canonicalize().ok()?.join(rest))
+        })
+        .unwrap_or_else(|| path.to_path_buf())
 }
 
 pub fn inspect(dir: &Path) -> ServerFolder {
@@ -308,6 +320,19 @@ mod tests {
         let server = root.join("smp");
         std::fs::create_dir_all(&server).unwrap();
         assert!(validate(&paths, &server).is_ok());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_data_directory_reached_through_a_symlink_is_still_guarded() {
+        let root = std::env::temp_dir().join(format!("basalt-import-{}", uuid::Uuid::new_v4()));
+        let real = root.join("real");
+        std::fs::create_dir_all(real.join("data")).unwrap();
+        std::os::unix::fs::symlink(&real, root.join("alias")).unwrap();
+        let paths = Paths::plain(root.join("alias").join("data"));
+
+        assert!(validate(&paths, &real).is_err());
         std::fs::remove_dir_all(root).ok();
     }
 }

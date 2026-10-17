@@ -462,6 +462,7 @@ fn record_index(db: &Db, files: &FileManager, instance_id: &str, game: &Path, pa
                 origin: if pack.is_some() { "pack" } else { "user" }.to_string(),
                 pack_version_id: pack.map(str::to_string),
                 installed_at: now,
+                ..Default::default()
             };
             let _ = db.record_content_file(instance_id, kind, &record);
         }

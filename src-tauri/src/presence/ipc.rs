@@ -1,8 +1,6 @@
-use std::{
-    io::{Read, Write},
-    path::PathBuf,
-    time::Duration,
-};
+use std::io::{Read, Write};
+#[cfg(unix)]
+use std::{path::PathBuf, time::Duration};
 
 use serde_json::{json, Value};
 
@@ -14,6 +12,7 @@ const OP_CLOSE: u32 = 2;
 const OP_PING: u32 = 3;
 const OP_PONG: u32 = 4;
 
+#[cfg(unix)]
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 const SOCKET_SLOTS: u8 = 10;
@@ -265,7 +264,7 @@ mod tests {
             .and_then(|value| value.parse().ok())
             .unwrap_or(20);
         println!("activity accepted, holding {hold}s");
-        std::thread::sleep(Duration::from_secs(hold));
+        std::thread::sleep(std::time::Duration::from_secs(hold));
         let _ = connection.clear_activity();
         connection.close();
     }

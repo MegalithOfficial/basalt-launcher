@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowUpCircle,
   Check,
@@ -413,6 +414,14 @@ export function InstanceView() {
     }),
     sort,
   );
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const rows = useVirtualizer({
+    count: shownItems.length,
+    getScrollElement: () => scroller,
+    estimateSize: () => 58,
+    overscan: 8,
+    gap: 6,
+  });
   const enabledCount = items.filter((i) => i.enabled).length;
   const viewCounts: Record<ContentView, number> = {
     all: items.length,
@@ -1031,7 +1040,7 @@ export function InstanceView() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div ref={setScroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {tab === "datapacks" ? (
           <DatapacksPanel
             instance={instance}
@@ -1197,29 +1206,37 @@ export function InstanceView() {
             )}
           </>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            {shownItems.map((item) => {
+          <div className="relative w-full" style={{ height: rows.getTotalSize() }}>
+            {rows.getVirtualItems().map((row) => {
+              const item = shownItems[row.index];
               const source = item.source;
               const busy =
                 (!!source?.project_id && activeProjects.has(source.project_id)) ||
                 updatingAll ||
                 updatingFile !== null;
               return (
-                <ContentItemCard
+                <div
                   key={item.file_name}
-                  item={item}
-                  busy={busy}
-                  disabled={busyWithTask}
-                  disabledReason={
-                    busyWithTask ? "Wait for the current download to finish" : undefined
-                  }
-                  onOpenProject={(provider, projectId, title) =>
-                    openProject(provider, projectId, tab, title)
-                  }
-                  onUpdate={() => updateOne(item)}
-                  onToggle={() => toggle(item)}
-                  onRemove={() => askRemove(item)}
-                />
+                  data-index={row.index}
+                  ref={rows.measureElement}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${row.start}px)` }}
+                >
+                  <ContentItemCard
+                    item={item}
+                    busy={busy}
+                    disabled={busyWithTask}
+                    disabledReason={
+                      busyWithTask ? "Wait for the current download to finish" : undefined
+                    }
+                    onOpenProject={(provider, projectId, title) =>
+                      openProject(provider, projectId, tab, title)
+                    }
+                    onUpdate={() => updateOne(item)}
+                    onToggle={() => toggle(item)}
+                    onRemove={() => askRemove(item)}
+                  />
+                </div>
               );
             })}
           </div>

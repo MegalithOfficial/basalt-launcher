@@ -7,13 +7,46 @@ use crate::{
 
 use super::{ContentFile, ContentUpdate, Db};
 
+pub(super) const COLUMNS: &str =
+    "file_name, sha1, sha512, murmur2, provider, project_id, version_id,
+                       title, icon_url, mod_id, mod_version, dependencies, origin,
+                       pack_version_id, installed_at, alt_provider, alt_project_id,
+                       alt_version_id, alt_checked_at";
+
+/**
+ * Relinking to another platform keeps the old link as the alternate. Binds:
+ * ?4 provider, ?5 project_id, ?6 version_id, ?7 title, ?8 icon_url.
+ */
+pub(super) const PROVIDER_SWAP: &str = "
+    alt_provider = CASE
+        WHEN provider = ?4 THEN alt_provider
+        WHEN provider IS NOT NULL THEN provider
+        WHEN alt_provider = ?4 THEN NULL
+        ELSE alt_provider END,
+    alt_project_id = CASE
+        WHEN provider = ?4 THEN alt_project_id
+        WHEN provider IS NOT NULL THEN project_id
+        WHEN alt_provider = ?4 THEN NULL
+        ELSE alt_project_id END,
+    alt_version_id = CASE
+        WHEN provider = ?4 THEN alt_version_id
+        WHEN provider IS NOT NULL THEN version_id
+        WHEN alt_provider = ?4 THEN NULL
+        ELSE alt_version_id END,
+    provider = ?4,
+    project_id = ?5,
+    version_id = CASE WHEN provider = ?4 THEN coalesce(?6, version_id) ELSE ?6 END,
+    title = coalesce(?7, title),
+    icon_url = coalesce(?8, icon_url)";
+
 impl Db {
     pub fn all_content_files(&self, instance_id: &str) -> Result<Vec<(String, ContentFile)>> {
         let conn = self.0.lock().unwrap();
         let mut statement = conn.prepare(
             "SELECT kind, file_name, sha1, sha512, murmur2, provider, project_id, version_id,
                     title, icon_url, mod_id, mod_version, dependencies, origin,
-                    pack_version_id, installed_at
+                    pack_version_id, installed_at, alt_provider, alt_project_id,
+                    alt_version_id, alt_checked_at
              FROM content_files WHERE instance_id = ?1 ORDER BY kind, file_name",
         )?;
         let rows = statement.query_map([instance_id], |row| {
@@ -35,6 +68,10 @@ impl Db {
                     origin: row.get(13)?,
                     pack_version_id: row.get(14)?,
                     installed_at: row.get(15)?,
+                    alt_provider: row.get(16)?,
+                    alt_project_id: row.get(17)?,
+                    alt_version_id: row.get(18)?,
+                    alt_checked_at: row.get(19)?,
                 },
             ))
         })?;
@@ -90,9 +127,10 @@ impl Db {
                 "INSERT INTO content_files
                     (instance_id, kind, file_name, sha1, sha512, murmur2, provider, project_id,
                      version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
-                     pack_version_id, installed_at)
+                     pack_version_id, installed_at, alt_provider, alt_project_id,
+                     alt_version_id, alt_checked_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                         ?15, ?16, ?17)",
+                         ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
             )?;
             for (kind, file) in content {
                 insert.execute(params![
@@ -113,6 +151,10 @@ impl Db {
                     file.origin,
                     file.pack_version_id,
                     file.installed_at,
+                    file.alt_provider,
+                    file.alt_project_id,
+                    file.alt_version_id,
+                    file.alt_checked_at,
                 ])?;
             }
         }
@@ -131,8 +173,10 @@ impl Db {
             "INSERT OR REPLACE INTO content_files
                 (instance_id, kind, file_name, sha1, sha512, murmur2, provider, project_id,
                  version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
-                 pack_version_id, installed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                 pack_version_id, installed_at, alt_provider, alt_project_id, alt_version_id,
+                 alt_checked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
+                     ?18, ?19, ?20, ?21)",
             params![
                 instance_id,
                 kind,
@@ -151,6 +195,10 @@ impl Db {
                 file.origin,
                 file.pack_version_id,
                 file.installed_at,
+                file.alt_provider,
+                file.alt_project_id,
+                file.alt_version_id,
+                file.alt_checked_at,
             ],
         )?;
         Ok(())
@@ -208,13 +256,10 @@ impl Db {
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "UPDATE content_files SET
-                provider = ?4,
-                project_id = ?5,
-                version_id = coalesce(?6, version_id),
-                title = coalesce(?7, title),
-                icon_url = coalesce(?8, icon_url)
-             WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+            &format!(
+                "UPDATE content_files SET {PROVIDER_SWAP}
+                 WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3"
+            ),
             params![
                 instance_id,
                 kind,
@@ -245,6 +290,41 @@ impl Db {
         Ok(())
     }
 
+    pub fn merge_alt_identity(
+        &self,
+        instance_id: &str,
+        kind: &str,
+        file_name: &str,
+        alt: Option<(&str, &str, Option<&str>)>,
+        checked_at: i64,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        let (provider, project_id, version_id) = match alt {
+            Some((provider, project_id, version_id)) => {
+                (Some(provider), Some(project_id), version_id)
+            }
+            None => (None, None, None),
+        };
+        conn.execute(
+            "UPDATE content_files SET
+                alt_provider = coalesce(?4, alt_provider),
+                alt_project_id = coalesce(?5, alt_project_id),
+                alt_version_id = coalesce(?6, alt_version_id),
+                alt_checked_at = ?7
+             WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+            params![
+                instance_id,
+                kind,
+                file_name,
+                provider,
+                project_id,
+                version_id,
+                checked_at
+            ],
+        )?;
+        Ok(())
+    }
+
     pub(super) fn read_content_file(row: &rusqlite::Row) -> rusqlite::Result<ContentFile> {
         Ok(ContentFile {
             file_name: row.get(0)?,
@@ -262,17 +342,18 @@ impl Db {
             origin: row.get(12)?,
             pack_version_id: row.get(13)?,
             installed_at: row.get(14)?,
+            alt_provider: row.get(15)?,
+            alt_project_id: row.get(16)?,
+            alt_version_id: row.get(17)?,
+            alt_checked_at: row.get(18)?,
         })
     }
 
     pub fn content_files(&self, instance_id: &str, kind: &str) -> Result<Vec<ContentFile>> {
         let conn = self.0.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT file_name, sha1, sha512, murmur2, provider, project_id, version_id,
-                    title, icon_url, mod_id, mod_version, dependencies, origin,
-                    pack_version_id, installed_at
-             FROM content_files WHERE instance_id = ?1 AND kind = ?2",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {COLUMNS} FROM content_files WHERE instance_id = ?1 AND kind = ?2"
+        ))?;
         let rows = stmt.query_map(params![instance_id, kind], Self::read_content_file)?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
@@ -286,10 +367,10 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let result = conn
             .query_row(
-                "SELECT file_name, sha1, sha512, murmur2, provider, project_id, version_id,
-                        title, icon_url, mod_id, mod_version, dependencies, origin,
-                        pack_version_id, installed_at
-                 FROM content_files WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+                &format!(
+                    "SELECT {COLUMNS} FROM content_files
+                     WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3"
+                ),
                 params![instance_id, kind, file_name],
                 Self::read_content_file,
             )
@@ -307,7 +388,8 @@ impl Db {
         let result = conn
             .query_row(
                 "SELECT version_id, file_name FROM content_files
-                 WHERE instance_id = ?1 AND kind = ?2 AND project_id = ?3
+                 WHERE instance_id = ?1 AND kind = ?2
+                   AND (project_id = ?3 OR alt_project_id = ?3)
                  ORDER BY installed_at DESC LIMIT 1",
                 params![instance_id, kind, project_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
@@ -364,21 +446,17 @@ impl Db {
         let mut guard = self.0.lock().unwrap();
         let transaction = guard.transaction()?;
         transaction.execute(
-            "INSERT INTO content_files
-                (instance_id, kind, file_name, sha1, sha512, murmur2, provider, project_id,
-                 version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
-                 pack_version_id, installed_at)
-             SELECT ?2, kind, file_name, sha1, sha512, murmur2, provider, project_id,
-                    version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
-                    pack_version_id, installed_at
-             FROM content_files WHERE instance_id = ?1",
+            &format!(
+                "INSERT INTO content_files (instance_id, kind, {COLUMNS})
+                 SELECT ?2, kind, {COLUMNS} FROM content_files WHERE instance_id = ?1"
+            ),
             params![source_id, destination_id],
         )?;
         transaction.execute(
             "INSERT INTO content_updates
-                (instance_id, kind, file_name, latest_version_id, latest_name,
+                (instance_id, kind, file_name, provider, latest_version_id, latest_name,
                  latest_file_name, checked_at)
-             SELECT ?2, kind, file_name, latest_version_id, latest_name,
+             SELECT ?2, kind, file_name, provider, latest_version_id, latest_name,
                     latest_file_name, checked_at
              FROM content_updates WHERE instance_id = ?1",
             params![source_id, destination_id],
@@ -402,13 +480,14 @@ impl Db {
         for update in updates {
             tx.execute(
                 "INSERT OR REPLACE INTO content_updates
-                    (instance_id, kind, file_name, latest_version_id, latest_name,
+                    (instance_id, kind, file_name, provider, latest_version_id, latest_name,
                      latest_file_name, checked_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     instance_id,
                     update.kind,
                     update.file_name,
+                    update.provider,
                     update.latest_version_id,
                     update.latest_name,
                     update.latest_file_name,
@@ -429,16 +508,17 @@ impl Db {
     pub fn content_updates(&self, instance_id: &str) -> Result<Vec<ContentUpdate>> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT kind, file_name, latest_version_id, latest_name, latest_file_name
+            "SELECT kind, file_name, provider, latest_version_id, latest_name, latest_file_name
              FROM content_updates WHERE instance_id = ?1",
         )?;
         let rows = stmt.query_map(params![instance_id], |row| {
             Ok(ContentUpdate {
                 kind: row.get(0)?,
                 file_name: row.get(1)?,
-                latest_version_id: row.get(2)?,
-                latest_name: row.get(3)?,
-                latest_file_name: row.get(4)?,
+                provider: row.get(2)?,
+                latest_version_id: row.get(3)?,
+                latest_name: row.get(4)?,
+                latest_file_name: row.get(5)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -494,6 +574,153 @@ mod tests {
         }
     }
 
+    fn linked(db: &Db, provider: &str, project: &str) {
+        db.record_content_file(
+            "i",
+            "mods",
+            &ContentFile {
+                file_name: "sodium.jar".into(),
+                provider: Some(provider.into()),
+                project_id: Some(project.into()),
+                version_id: Some(format!("{project}-v1")),
+                origin: "user".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+
+    fn sodium(db: &Db) -> ContentFile {
+        db.content_file("i", "mods", "sodium.jar").unwrap().unwrap()
+    }
+
+    #[test]
+    fn relinking_to_another_platform_demotes_the_old_link_to_alternate() {
+        let db = Db::open_in_memory().unwrap();
+        linked(&db, "modrinth", "AANobbMI");
+        db.merge_provider_identity(
+            "i",
+            "mods",
+            "sodium.jar",
+            "curseforge",
+            "394468",
+            Some("f1"),
+            None,
+            None,
+        )
+        .unwrap();
+        let file = sodium(&db);
+        assert_eq!(file.provider.as_deref(), Some("curseforge"));
+        assert_eq!(file.project_id.as_deref(), Some("394468"));
+        assert_eq!(file.version_id.as_deref(), Some("f1"));
+        assert_eq!(file.alt_provider.as_deref(), Some("modrinth"));
+        assert_eq!(file.alt_project_id.as_deref(), Some("AANobbMI"));
+        assert_eq!(file.alt_version_id.as_deref(), Some("AANobbMI-v1"));
+    }
+
+    #[test]
+    fn relinking_on_the_same_platform_keeps_the_alternate() {
+        let db = Db::open_in_memory().unwrap();
+        linked(&db, "modrinth", "AANobbMI");
+        db.merge_alt_identity(
+            "i",
+            "mods",
+            "sodium.jar",
+            Some(("curseforge", "394468", Some("f1"))),
+            5,
+        )
+        .unwrap();
+        db.merge_provider_identity(
+            "i",
+            "mods",
+            "sodium.jar",
+            "modrinth",
+            "AANobbMI",
+            None,
+            Some("Sodium"),
+            None,
+        )
+        .unwrap();
+        let file = sodium(&db);
+        assert_eq!(file.version_id.as_deref(), Some("AANobbMI-v1"));
+        assert_eq!(file.alt_provider.as_deref(), Some("curseforge"));
+        assert_eq!(file.alt_project_id.as_deref(), Some("394468"));
+        assert_eq!(file.alt_checked_at, Some(5));
+    }
+
+    #[test]
+    fn linking_an_unlinked_file_to_its_alternate_platform_clears_the_alternate() {
+        let db = Db::open_in_memory().unwrap();
+        db.merge_identity(
+            "i",
+            "mods",
+            "sodium.jar",
+            Some("abc"),
+            None,
+            Some(1),
+            None,
+            None,
+        )
+        .unwrap();
+        db.merge_alt_identity(
+            "i",
+            "mods",
+            "sodium.jar",
+            Some(("curseforge", "394468", None)),
+            5,
+        )
+        .unwrap();
+        db.merge_provider_identity(
+            "i",
+            "mods",
+            "sodium.jar",
+            "curseforge",
+            "394468",
+            Some("f1"),
+            None,
+            None,
+        )
+        .unwrap();
+        let file = sodium(&db);
+        assert_eq!(file.provider.as_deref(), Some("curseforge"));
+        assert!(file.alt_provider.is_none());
+        assert!(file.alt_project_id.is_none());
+    }
+
+    #[test]
+    fn a_miss_only_stamps_the_check() {
+        let db = Db::open_in_memory().unwrap();
+        linked(&db, "modrinth", "AANobbMI");
+        db.merge_alt_identity("i", "mods", "sodium.jar", None, 9)
+            .unwrap();
+        let file = sodium(&db);
+        assert!(file.alt_provider.is_none());
+        assert_eq!(file.alt_checked_at, Some(9));
+    }
+
+    #[test]
+    fn an_installed_file_is_found_by_either_platform_id() {
+        let db = Db::open_in_memory().unwrap();
+        linked(&db, "modrinth", "AANobbMI");
+        db.merge_alt_identity(
+            "i",
+            "mods",
+            "sodium.jar",
+            Some(("curseforge", "394468", Some("f1"))),
+            5,
+        )
+        .unwrap();
+        let by_alt = db
+            .installed_project_file("i", "mods", "394468")
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_alt.1, "sodium.jar");
+        assert!(db
+            .installed_project_file("i", "mods", "nope")
+            .unwrap()
+            .is_none());
+    }
+
     #[test]
     fn clone_instance_content_keeps_identity_and_updates() {
         let db = Db::open_in_memory().unwrap();
@@ -518,6 +745,7 @@ mod tests {
             &[ContentUpdate {
                 kind: "mods".into(),
                 file_name: "example.jar".into(),
+                provider: None,
                 latest_version_id: "next".into(),
                 latest_name: "Next".into(),
                 latest_file_name: "example-next.jar".into(),

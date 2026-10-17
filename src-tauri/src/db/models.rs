@@ -81,6 +81,10 @@ pub struct ContentFile {
     pub origin: String,
     pub pack_version_id: Option<String>,
     pub installed_at: i64,
+    pub alt_provider: Option<String>,
+    pub alt_project_id: Option<String>,
+    pub alt_version_id: Option<String>,
+    pub alt_checked_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -97,6 +101,7 @@ pub struct PendingOperation {
 pub struct ContentUpdate {
     pub kind: String,
     pub file_name: String,
+    pub provider: Option<String>,
     pub latest_version_id: String,
     pub latest_name: String,
     pub latest_file_name: String,

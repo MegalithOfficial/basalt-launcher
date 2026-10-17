@@ -185,6 +185,30 @@ impl<'a> Target<'a> {
         }
     }
 
+    pub fn merge_alt_identity(
+        self,
+        state: &AppState,
+        kind: ContentKind,
+        file_name: &str,
+        alt: Option<(&str, &str, Option<&str>)>,
+        checked_at: i64,
+    ) -> Result<()> {
+        match self {
+            Target::Instance(id) => {
+                state
+                    .db
+                    .merge_alt_identity(id, kind.as_str(), file_name, alt, checked_at)
+            }
+            Target::Server(server) => state.db.merge_server_alt_identity(
+                &server.id,
+                kind.as_str(),
+                file_name,
+                alt,
+                checked_at,
+            ),
+        }
+    }
+
     pub fn set_fallback_title(
         self,
         state: &AppState,
@@ -326,6 +350,27 @@ struct InstalledIndex {
     stems: HashSet<String>,
 }
 
+/**
+ * A replaced file's link to the other platform survives the swap: its old
+ * primary becomes the alternate when the new file came from elsewhere.
+ * The version id is left for reconcile, the new jar has a new one.
+ */
+pub fn alternate_link(
+    replaced: Option<&ContentFile>,
+    provider: Provider,
+) -> (Option<String>, Option<String>) {
+    let Some(old) = replaced else {
+        return (None, None);
+    };
+    if old.provider.as_deref() == Some(provider.as_str()) {
+        (old.alt_provider.clone(), old.alt_project_id.clone())
+    } else if old.provider.is_some() && old.project_id.is_some() {
+        (old.provider.clone(), old.project_id.clone())
+    } else {
+        (None, None)
+    }
+}
+
 fn index_installed(state: &AppState, target: Target, kind: ContentKind) -> InstalledIndex {
     let files = target.installed(state, kind);
 
@@ -334,7 +379,10 @@ fn index_installed(state: &AppState, target: Target, kind: ContentKind) -> Insta
     let mut stems = HashSet::new();
 
     for file in files {
-        if let Some(project_id) = &file.project_id {
+        for project_id in [&file.project_id, &file.alt_project_id]
+            .into_iter()
+            .flatten()
+        {
             by_project.insert(project_id.clone(), file.clone());
         }
         if let Some(mod_id) = &file.mod_id {
@@ -674,12 +722,19 @@ pub async fn apply(
 
     let now = chrono::Utc::now().timestamp();
     let mut written = Vec::with_capacity(total);
+    let mut previous: HashMap<String, ContentFile> = target
+        .installed(state, kind)
+        .into_iter()
+        .map(|file| (file.file_name.clone(), file))
+        .collect();
 
     for file in files {
+        let replaced = file.replaces.as_ref().and_then(|old| previous.remove(old));
         if let Some(old) = &file.replaces {
             let _ = content::delete_in(&state.files, &dir, old);
             target.forget(state, kind, old)?;
         }
+        let (alt_provider, alt_project_id) = alternate_link(replaced.as_ref(), provider);
 
         let record = ContentFile {
             file_name: file.file_name.clone(),
@@ -703,6 +758,10 @@ pub async fn apply(
             },
             pack_version_id: pack_version_id.map(str::to_owned),
             installed_at: now,
+            alt_provider,
+            alt_project_id,
+            alt_version_id: None,
+            alt_checked_at: None,
         };
         target.record(state, kind, &record)?;
         written.push(InstalledItem {
@@ -852,8 +911,35 @@ pub fn dependents_of(
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_loader_for, normalize_stem};
-    use crate::search::ContentKind;
+    use super::{alternate_link, ensure_loader_for, normalize_stem};
+    use crate::{
+        db::ContentFile,
+        search::{ContentKind, Provider},
+    };
+
+    #[test]
+    fn a_replaced_file_hands_its_other_platform_link_to_the_new_one() {
+        let old = ContentFile {
+            provider: Some("modrinth".into()),
+            project_id: Some("AANobbMI".into()),
+            alt_provider: Some("curseforge".into()),
+            alt_project_id: Some("394468".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            alternate_link(Some(&old), Provider::Curseforge),
+            (Some("modrinth".into()), Some("AANobbMI".into()))
+        );
+        assert_eq!(
+            alternate_link(Some(&old), Provider::Modrinth),
+            (Some("curseforge".into()), Some("394468".into()))
+        );
+        assert_eq!(alternate_link(None, Provider::Modrinth), (None, None));
+        assert_eq!(
+            alternate_link(Some(&ContentFile::default()), Provider::Modrinth),
+            (None, None)
+        );
+    }
 
     #[test]
     fn vanilla_instances_reject_mod_installs() {

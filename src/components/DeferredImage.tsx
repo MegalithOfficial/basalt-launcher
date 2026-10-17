@@ -116,7 +116,6 @@ export function DeferredImage({
           alt={alt}
           className={className}
           style={style}
-          loading="lazy"
           decoding="async"
           fetchPriority="low"
           draggable={false}

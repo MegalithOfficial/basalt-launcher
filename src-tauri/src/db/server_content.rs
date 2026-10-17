@@ -2,11 +2,10 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::error::Result;
 
-use super::{ContentFile, Db};
-
-const COLUMNS: &str = "file_name, sha1, sha512, murmur2, provider, project_id, version_id,
-                       title, icon_url, mod_id, mod_version, dependencies, origin,
-                       pack_version_id, installed_at";
+use super::{
+    content::{COLUMNS, PROVIDER_SWAP},
+    ContentFile, Db,
+};
 
 impl Db {
     pub fn has_server_pack_content(&self, server_id: &str, pack_version_id: &str) -> Result<bool> {
@@ -29,11 +28,11 @@ impl Db {
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO server_content_files
-                (server_id, kind, file_name, sha1, sha512, murmur2, provider, project_id,
-                 version_id, title, icon_url, mod_id, mod_version, dependencies, origin,
-                 pack_version_id, installed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            &format!(
+                "INSERT OR REPLACE INTO server_content_files (server_id, kind, {COLUMNS})
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+                         ?17, ?18, ?19, ?20, ?21)"
+            ),
             params![
                 server_id,
                 kind,
@@ -52,6 +51,10 @@ impl Db {
                 file.origin,
                 file.pack_version_id,
                 file.installed_at,
+                file.alt_provider,
+                file.alt_project_id,
+                file.alt_version_id,
+                file.alt_checked_at,
             ],
         )?;
         Ok(())
@@ -138,14 +141,38 @@ impl Db {
     ) -> Result<()> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "UPDATE server_content_files SET
-                provider = ?4,
-                project_id = ?5,
-                version_id = coalesce(?6, version_id),
-                title = coalesce(?7, title),
-                icon_url = coalesce(?8, icon_url)
-             WHERE server_id = ?1 AND kind = ?2 AND file_name = ?3",
+            &format!(
+                "UPDATE server_content_files SET {PROVIDER_SWAP}
+                 WHERE server_id = ?1 AND kind = ?2 AND file_name = ?3"
+            ),
             params![server_id, kind, file_name, provider, project_id, version_id, title, icon_url],
+        )?;
+        Ok(())
+    }
+
+    pub fn merge_server_alt_identity(
+        &self,
+        server_id: &str,
+        kind: &str,
+        file_name: &str,
+        alt: Option<(&str, &str, Option<&str>)>,
+        checked_at: i64,
+    ) -> Result<()> {
+        let conn = self.0.lock().unwrap();
+        let (provider, project_id, version_id) = match alt {
+            Some((provider, project_id, version_id)) => {
+                (Some(provider), Some(project_id), version_id)
+            }
+            None => (None, None, None),
+        };
+        conn.execute(
+            "UPDATE server_content_files SET
+                alt_provider = coalesce(?4, alt_provider),
+                alt_project_id = coalesce(?5, alt_project_id),
+                alt_version_id = coalesce(?6, alt_version_id),
+                alt_checked_at = ?7
+             WHERE server_id = ?1 AND kind = ?2 AND file_name = ?3",
+            params![server_id, kind, file_name, provider, project_id, version_id, checked_at],
         )?;
         Ok(())
     }
@@ -181,13 +208,14 @@ impl Db {
         for update in updates {
             tx.execute(
                 "INSERT OR REPLACE INTO server_content_updates
-                    (server_id, kind, file_name, latest_version_id, latest_name,
+                    (server_id, kind, file_name, provider, latest_version_id, latest_name,
                      latest_file_name, checked_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     server_id,
                     update.kind,
                     update.file_name,
+                    update.provider,
                     update.latest_version_id,
                     update.latest_name,
                     update.latest_file_name,
@@ -202,16 +230,17 @@ impl Db {
     pub fn server_content_updates(&self, server_id: &str) -> Result<Vec<super::ContentUpdate>> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT kind, file_name, latest_version_id, latest_name, latest_file_name
+            "SELECT kind, file_name, provider, latest_version_id, latest_name, latest_file_name
              FROM server_content_updates WHERE server_id = ?1",
         )?;
         let rows = stmt.query_map(params![server_id], |row| {
             Ok(super::ContentUpdate {
                 kind: row.get(0)?,
                 file_name: row.get(1)?,
-                latest_version_id: row.get(2)?,
-                latest_name: row.get(3)?,
-                latest_file_name: row.get(4)?,
+                provider: row.get(2)?,
+                latest_version_id: row.get(3)?,
+                latest_name: row.get(4)?,
+                latest_file_name: row.get(5)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -264,6 +293,7 @@ mod tests {
             origin: "user".to_string(),
             pack_version_id: None,
             installed_at: 10,
+            ..Default::default()
         }
     }
 
